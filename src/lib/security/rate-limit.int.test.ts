@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { FieldPath } from "firebase-admin/firestore";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { RateLimitedError } from "@/lib/errors";
+import { RateLimitedError, ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 
 import { assertRateLimit, checkRateLimit } from "./rate-limit";
@@ -79,6 +79,56 @@ describe("checkRateLimit", () => {
     expect(doc.id.startsWith(`${hashOf(key)}_`)).toBe(true);
     expect(JSON.stringify(doc.data())).not.toContain(key);
     expect(doc.get("expiresAt")).toBeDefined();
+  });
+});
+
+describe("checkRateLimit input validation", () => {
+  const cases: Array<[string, string, Partial<{ limit: number; windowSec: number }>]> = [
+    ["limit 0", "limit", { limit: 0 }],
+    ["limit -1", "limit", { limit: -1 }],
+    ["limit 1.5", "limit", { limit: 1.5 }],
+    ["limit NaN", "limit", { limit: NaN }],
+    ["windowSec 0", "windowSec", { windowSec: 0 }],
+    ["windowSec -1", "windowSec", { windowSec: -1 }],
+    ["windowSec NaN", "windowSec", { windowSec: NaN }],
+    ["windowSec Infinity", "windowSec", { windowSec: Infinity }],
+    ["windowSec sub-millisecond", "windowSec", { windowSec: 0.0001 }],
+  ];
+
+  it.each(cases)("rejects %s without writing", async (_label, field, override) => {
+    const key = newKey("invalid");
+    const err = await checkRateLimit(key, { ...opts, ...override }, Date.now()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(JSON.stringify((err as ValidationError).details)).toContain(`opts.${field}`);
+    expect((await docsFor(key)).empty).toBe(true);
+  });
+
+  it.each([NaN, Infinity])("rejects non-finite now (%s) without writing", async (now) => {
+    const key = newKey("invalid-now");
+    await expect(checkRateLimit(key, opts, now)).rejects.toBeInstanceOf(ValidationError);
+    expect((await docsFor(key)).empty).toBe(true);
+  });
+
+  it("rejects an empty key without writing and does not echo values", async () => {
+    const before = (await adminDb().collection("rateLimits").get()).size;
+    const err = await checkRateLimit("", opts, Date.now()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(JSON.stringify((err as ValidationError).details)).toContain("key");
+    expect((await adminDb().collection("rateLimits").get()).size).toBe(before);
+  });
+
+  it("does not include the offending values in the error details", async () => {
+    const secretKey = "";
+    const err = (await checkRateLimit(secretKey, { limit: 1.5, windowSec: -7 }, 12345.5).catch(
+      (e: unknown) => e,
+    )) as ValidationError;
+    const text = JSON.stringify(err.details);
+    expect(text).not.toContain("1.5");
+    expect(text).not.toContain("-7");
+  });
+
+  it("assertRateLimit also rejects invalid input with ValidationError", async () => {
+    await expect(assertRateLimit("", opts)).rejects.toBeInstanceOf(ValidationError);
   });
 });
 

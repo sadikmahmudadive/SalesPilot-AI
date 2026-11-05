@@ -46,12 +46,24 @@ describe("writeAudit", () => {
   it.each(["organizationId", "actorUid", "action", "resource", "resourceId"] as const)(
     "rejects an empty %s without writing",
     async (field) => {
+      // organizationId and actorUid both carry the marker; query on whichever one is not
+      // overridden so the "nothing written" assertion is never vacuous.
       const marker = `marker-${randomUUID()}`;
-      await expect(writeAudit({ ...base, resourceId: marker, [field]: "  " })).rejects.toBeInstanceOf(ValidationError);
-      const snap = await adminDb().collection("auditLogs").where("resourceId", "==", marker).get();
+      const entry = { ...base, organizationId: marker, actorUid: marker, [field]: "  " };
+      await expect(writeAudit(entry)).rejects.toBeInstanceOf(ValidationError);
+      const probe = field === "organizationId" ? "actorUid" : "organizationId";
+      const snap = await adminDb().collection("auditLogs").where(probe, "==", marker).get();
       expect(snap.empty).toBe(true);
     },
   );
+
+  it("accepts the probe query (control: a valid entry with the marker is found)", async () => {
+    const marker = `marker-${randomUUID()}`;
+    const id = await writeAudit({ ...base, organizationId: marker, actorUid: marker });
+    createdIds.push(id);
+    const snap = await adminDb().collection("auditLogs").where("organizationId", "==", marker).get();
+    expect(snap.size).toBe(1);
+  });
 });
 
 describe("writeAuditInTransaction", () => {

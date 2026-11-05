@@ -12,6 +12,14 @@ import { ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { redact } from "@/lib/logger";
 
+/**
+ * `before` / `after` are passed through the logger's `redact()` before storage, which
+ * has caveats. Callers should pass plain JSON-like snapshots, not raw Firestore data:
+ * - Dates become ISO strings.
+ * - Firestore Timestamps are not recognised and become `{ _seconds, _nanoseconds }`.
+ * - Nesting deeper than 8 levels is replaced with "[Truncated]".
+ * - Any key matching key/token/secret/password/... is masked; phone-like keys are partly masked.
+ */
 export interface AuditEntry {
   organizationId: string;
   actorUid: string;
