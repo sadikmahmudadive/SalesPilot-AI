@@ -2,13 +2,12 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 const alias = {
-  "@": path.resolve(__dirname, "src"),
-  "server-only": path.resolve(__dirname, "src/test/server-only-stub.ts"),
+  "@": path.resolve(import.meta.dirname, "src"),
+  "server-only": path.resolve(import.meta.dirname, "src/test/server-only-stub.ts"),
 };
 
 export default defineConfig({
   test: {
-    passWithNoTests: true,
     projects: [
       {
         resolve: { alias },
