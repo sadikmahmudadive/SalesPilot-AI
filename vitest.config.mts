@@ -25,6 +25,7 @@ export default defineConfig({
           environment: "node",
           include: ["src/**/*.int.test.ts", "tests/rules/**/*.rules.test.ts"],
           exclude: ["**/node_modules/**", "**/.next/**"],
+          setupFiles: ["src/test/setup-integration.ts"],
           testTimeout: 20000,
           fileParallelism: false,
         },
