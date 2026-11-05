@@ -84,6 +84,16 @@ export class InsufficientStockError extends AppError {
   }
 }
 
+export class UnsupportedMediaTypeError extends AppError {
+  readonly code = 'UNSUPPORTED_MEDIA_TYPE';
+  readonly status = 415;
+
+  constructor(message = 'Content-Type must be application/json') {
+    super(message);
+    this.name = 'UnsupportedMediaTypeError';
+  }
+}
+
 export class RateLimitedError extends AppError {
   readonly code = 'RATE_LIMITED';
   readonly status = 429;

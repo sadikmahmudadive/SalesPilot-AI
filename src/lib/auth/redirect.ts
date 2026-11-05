@@ -21,6 +21,9 @@ export const PROTECTED_PREFIXES = [
   "/settings",
 ] as const;
 
+/** Name of the session cookie. Lives here (pure) so the proxy can share it without importing server-only code. */
+export const SESSION_COOKIE_NAME = "__session";
+
 const AUTH_PAGES = ["/login", "/register"] as const;
 
 export const DEFAULT_AFTER_LOGIN = "/dashboard";
@@ -48,7 +51,7 @@ export function decideRedirect(pathname: string, search: string, hasCookie: bool
 /**
  * Validates a `next` value before the login flow navigates to it. Only a same-origin
  * relative path is accepted; anything else (absolute URL, protocol-relative `//host`,
- * `/\host`, backslashes, whitespace/control characters, overlong values) falls back to
+ * `/\host`, backslashes, dot segments, encoded `/` `\` `.` in the path, whitespace/control characters, overlong values) falls back to
  * `/dashboard`. Backslashes are rejected anywhere because browsers treat `\` as `/`.
  */
 export function safeNextPath(raw: string | null | undefined): string {
@@ -56,5 +59,16 @@ export function safeNextPath(raw: string | null | undefined): string {
   if (raw[0] !== "/" || raw[1] === "/") return DEFAULT_AFTER_LOGIN;
   // C0 controls (incl. tab/CR/LF), DEL, C1 controls, Unicode line/paragraph separators, backslash.
   if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029\\]/.test(raw)) return DEFAULT_AFTER_LOGIN;
+  // Path part only (the query/fragment may legitimately contain dots or %2F).
+  const path = raw.split(/[?#]/, 1)[0]!;
+  // Dot segments (`/.//evil.com` normalises to `//evil.com`) and encoded separators/dots are refused.
+  if (path.split("/").some((seg) => seg === "." || seg === "..")) return DEFAULT_AFTER_LOGIN;
+  if (/%(2e|2f|5c)/i.test(path)) return DEFAULT_AFTER_LOGIN;
+  // Belt and braces: after URL resolution it must still be the same origin.
+  try {
+    if (new URL(raw, "http://sp.invalid").origin !== "http://sp.invalid") return DEFAULT_AFTER_LOGIN;
+  } catch {
+    return DEFAULT_AFTER_LOGIN;
+  }
   return raw;
 }

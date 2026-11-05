@@ -50,11 +50,10 @@ describe("POST /api/auth/session", () => {
     expect(JSON.parse(text)).toEqual({ ok: true });
 
     const setCookie = res.headers.get("set-cookie")!;
-    expect(setCookie.startsWith(`${SESSION_COOKIE_NAME}=`)).toBe(true);
-    expect(setCookie).toContain("HttpOnly");
-    expect(setCookie).toContain("SameSite=Lax");
-    expect(setCookie).toContain("Path=/");
-    expect(setCookie).toMatch(/Max-Age=\d+/);
+    const attrs = setCookie.split("; ");
+    expect(attrs[0]).toMatch(new RegExp(`^${SESSION_COOKIE_NAME}=[A-Za-z0-9._~+/=-]+$`));
+    // Exact attribute set (NODE_ENV=test, so no Secure).
+    expect(attrs.slice(1)).toEqual(["Path=/", expect.stringMatching(/^Max-Age=\d+$/), "HttpOnly", "SameSite=Lax"]);
     expect(res.headers.get("cache-control")).toBe("no-store");
 
     // The cookie we issued is a real, verifiable session for that user.
@@ -154,22 +153,115 @@ describe("POST /api/auth/session", () => {
   });
 });
 
+describe("POST /api/auth/session: login CSRF guard", () => {
+  const tokenBody = (idToken: string): string => JSON.stringify({ idToken });
+
+  it("text/plain POST (cross-site form enctype=text/plain) -> 415 and no Set-Cookie, even with a valid token", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post(tokenBody(user.idToken), uniqueIp(), { "content-type": "text/plain" });
+    expect(res.status).toBe(415);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("form-urlencoded and multipart POSTs -> 415", async () => {
+    for (const ct of ["application/x-www-form-urlencoded", "multipart/form-data; boundary=x"]) {
+      const res = await post(tokenBody("garbage"), uniqueIp(), { "content-type": ct });
+      expect(res.status).toBe(415);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("cross-origin Origin -> 403 and no Set-Cookie, even with a valid token", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post({ idToken: user.idToken }, uniqueIp(), { origin: "https://evil.com" });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("FORBIDDEN");
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("Sec-Fetch-Site: cross-site -> 403 and no Set-Cookie", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post({ idToken: user.idToken }, uniqueIp(), { "sec-fetch-site": "cross-site" });
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("Origin evil.com with a matching Host header still fails", async () => {
+    const res = await post({ idToken: "garbage" }, uniqueIp(), { origin: "https://evil.com", host: "evil.com" });
+    expect(res.status).toBe(403);
+  });
+
+  it("rejected requests do not consume the rate limit", async () => {
+    const ip = uniqueIp();
+    for (let i = 0; i < 12; i++) await post({ idToken: "garbage" }, ip, { origin: "https://evil.com" });
+    expect((await post({ idToken: "garbage" }, ip)).status).toBe(401);
+  });
+
+  it("same-origin JSON POST works (Origin + Sec-Fetch-Site: same-origin)", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post({ idToken: user.idToken }, uniqueIp(), {
+      origin: "http://localhost",
+      "sec-fetch-site": "same-origin",
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  it("JSON with a charset parameter works", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post({ idToken: user.idToken }, uniqueIp(), { "content-type": "application/json; charset=utf-8" });
+    expect(res.status).toBe(200);
+  });
+
+  it("missing Origin plus JSON works (non-browser client)", async () => {
+    const user = await createEmulatorUser();
+    users.push(user);
+    const res = await post({ idToken: user.idToken });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("DELETE /api/auth/session", () => {
-  const del = (cookie?: string): Promise<Response> =>
+  const del = (cookie?: string, extra: Record<string, string> = {}): Promise<Response> =>
     DELETE(
       new Request("http://localhost/api/auth/session", {
         method: "DELETE",
-        headers: cookie ? { cookie: `${SESSION_COOKIE_NAME}=${cookie}` } : {},
+        headers: { ...(cookie ? { cookie: `${SESSION_COOKIE_NAME}=${cookie}` } : {}), ...extra },
       }),
     );
 
+  it("cross-origin DELETE -> 403, no cookie change and the session is not revoked", async () => {
+    const { value } = await signedInSession();
+    await sleep(1100);
+    const res = await del(value, { origin: "https://evil.com" });
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    await expect(verifySessionValue(value)).resolves.not.toBeNull();
+    const cross = await del(value, { "sec-fetch-site": "cross-site" });
+    expect(cross.status).toBe(403);
+    await expect(verifySessionValue(value)).resolves.not.toBeNull();
+  });
+
+  it("same-origin DELETE with any content type still works", async () => {
+    const res = await del(undefined, { origin: "http://localhost", "sec-fetch-site": "same-origin" });
+    expect(res.status).toBe(200);
+  });
+
   function expectCleared(res: Response): void {
-    const setCookie = res.headers.get("set-cookie")!;
-    expect(setCookie.startsWith(`${SESSION_COOKIE_NAME}=;`)).toBe(true);
-    expect(setCookie).toContain("Max-Age=0");
-    expect(setCookie).toContain("HttpOnly");
-    expect(setCookie).toContain("SameSite=Lax");
-    expect(setCookie).toContain("Path=/");
+    expect(res.headers.get("set-cookie")!.split("; ")).toEqual([
+      `${SESSION_COOKIE_NAME}=`,
+      "Path=/",
+      "Max-Age=0",
+      "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+      "HttpOnly",
+      "SameSite=Lax",
+    ]);
   }
 
   it("clears the cookie and revokes the user's sessions", async () => {

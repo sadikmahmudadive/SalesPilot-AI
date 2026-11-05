@@ -171,26 +171,28 @@ describe("cookie serialization", () => {
     expect(SESSION_COOKIE_NAME).toBe("__session");
   });
 
-  it("sets HttpOnly, SameSite=Lax, Path=/ and Max-Age", () => {
-    const c = serializeSessionCookie("abc.def", 432000);
-    expect(c.startsWith("__session=abc.def;")).toBe(true);
-    expect(c).toContain("HttpOnly");
-    expect(c).toContain("SameSite=Lax");
-    expect(c).toContain("Path=/");
-    expect(c).toContain("Max-Age=432000");
+  it("sets exactly Path=/, Max-Age, HttpOnly and SameSite=Lax (no Secure in test)", () => {
+    const attrs = serializeSessionCookie("abc.def", 432000).split("; ");
+    expect(attrs).toEqual(["__session=abc.def", "Path=/", "Max-Age=432000", "HttpOnly", "SameSite=Lax"]);
+  });
+
+  it("adds exactly one Secure attribute in production", () => {
+    envState.NODE_ENV = "production";
+    const attrs = serializeSessionCookie("abc.def", 432000).split("; ");
+    expect(attrs).toEqual(["__session=abc.def", "Path=/", "Max-Age=432000", "HttpOnly", "SameSite=Lax", "Secure"]);
   });
 
   it("omits Secure in development and test", () => {
     for (const env of ["development", "test"]) {
       envState.NODE_ENV = env;
-      expect(serializeSessionCookie("v", 10)).not.toContain("Secure");
+      expect(serializeSessionCookie("v", 10).split("; ")).not.toContain("Secure");
     }
   });
 
   it("includes Secure in production and when NODE_ENV is unset or unknown (fail safe)", () => {
     for (const env of ["production", undefined, "staging"]) {
       envState.NODE_ENV = env;
-      expect(serializeSessionCookie("v", 10)).toContain("; Secure");
+      expect(serializeSessionCookie("v", 10).split("; ")).toContain("Secure");
     }
   });
 
@@ -208,14 +210,15 @@ describe("cookie serialization", () => {
 
   it("clearSessionCookie expires the cookie with the same attributes", () => {
     envState.NODE_ENV = "production";
-    const c = clearSessionCookie();
-    expect(c.startsWith("__session=;")).toBe(true);
-    expect(c).toContain("Max-Age=0");
-    expect(c).toContain("HttpOnly");
-    expect(c).toContain("SameSite=Lax");
-    expect(c).toContain("Path=/");
-    expect(c).toContain("Secure");
-    expect(c).toContain("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+    expect(clearSessionCookie().split("; ")).toEqual([
+      "__session=",
+      "Path=/",
+      "Max-Age=0",
+      "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+      "HttpOnly",
+      "SameSite=Lax",
+      "Secure",
+    ]);
   });
 });
 

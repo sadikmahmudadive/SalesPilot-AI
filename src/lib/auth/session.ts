@@ -11,10 +11,12 @@
 import "server-only";
 
 import { getServerEnv } from "@/config/env";
+import { SESSION_COOKIE_NAME } from "@/lib/auth/redirect";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminAuth } from "@/lib/firebase/admin";
 
-export const SESSION_COOKIE_NAME = "__session";
+// Defined in the pure redirect module so the proxy can share it; re-exported for server code.
+export { SESSION_COOKIE_NAME };
 
 /** An ID token is only exchanged if the user actually signed in within this window. */
 export const MAX_AUTH_AGE_SEC = 5 * 60;

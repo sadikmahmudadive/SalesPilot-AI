@@ -7,6 +7,7 @@ import {
   NotFoundError,
   RateLimitedError,
   UnauthenticatedError,
+  UnsupportedMediaTypeError,
   ValidationError,
 } from '../errors';
 import { newRequestId, toErrorResponse } from './respond';
@@ -21,6 +22,7 @@ describe('toErrorResponse', () => {
     ['NotFoundError', new NotFoundError(), 404, 'NOT_FOUND'],
     ['ConflictError', new ConflictError(), 409, 'CONFLICT'],
     ['InsufficientStockError', new InsufficientStockError(), 409, 'INSUFFICIENT_STOCK'],
+    ['UnsupportedMediaTypeError', new UnsupportedMediaTypeError(), 415, 'UNSUPPORTED_MEDIA_TYPE'],
     ['RateLimitedError', new RateLimitedError(5), 429, 'RATE_LIMITED'],
     ['IntegrationNotConfiguredError', new IntegrationNotConfiguredError('zalo'), 503, 'INTEGRATION_NOT_CONFIGURED'],
   ];

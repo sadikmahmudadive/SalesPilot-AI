@@ -97,6 +97,9 @@ describe("safeNextPath", () => {
     ["/orders/12?tab=a&b=c", "/orders/12?tab=a&b=c"],
     ["/dashboard", "/dashboard"],
     ["/a#frag", "/a#frag"],
+    ["/orders/12/items/3?tab=a&back=../x&n=1", "/orders/12/items/3?tab=a&back=../x&n=1"],
+    ["/files/a.b/c..d/.hidden", "/files/a.b/c..d/.hidden"],
+    ["/search?q=%2F%2Fevil.com", "/search?q=%2F%2Fevil.com"],
   ])("accepts %s", (raw, expected) => {
     expect(safeNextPath(raw)).toBe(expected);
   });
@@ -126,6 +129,19 @@ describe("safeNextPath", () => {
     ["unicode line separator", "/a\u2028b"],
     ["backslash inside", "/a\\b"],
     ["just a space", " "],
+    ["dot-slash-slash", "/.//evil.com"],
+    ["dot segment", "/./orders"],
+    ["dotdot segment", "/a/../b"],
+    ["leading dotdot", "/../etc"],
+    ["trailing dot segment", "/a/."],
+    ["trailing dotdot segment", "/a/.."],
+    ["dot segment before query", "/a/../b?x=1"],
+    ["encoded slash", "/%2F/evil.com"],
+    ["encoded slash lower", "/%2f/evil.com"],
+    ["encoded backslash", "/%5Cevil.com"],
+    ["encoded dot segment", "/%2e%2e/b"],
+    ["encoded dot", "/a/%2E/b"],
+    ["encoded double slash", "/%2F%2Fevil.com"],
     ["too long", "/" + "a".repeat(3000)],
   ])("rejects %s", (_label, raw) => {
     expect(safeNextPath(raw as string | null)).toBe("/dashboard");
