@@ -14,6 +14,7 @@ const required = z.string().min(1);
 const optional = z.string().min(1).optional();
 
 const serverShape = {
+  NODE_ENV: optional,
   FIREBASE_PROJECT_ID: required,
   FIREBASE_CLIENT_EMAIL: optional,
   FIREBASE_PRIVATE_KEY: z
@@ -60,8 +61,30 @@ const serverShape = {
 };
 
 const serverSchema = z.object(serverShape).superRefine((env, ctx) => {
-  const emulator = Boolean(env.FIRESTORE_EMULATOR_HOST || env.FIREBASE_AUTH_EMULATOR_HOST);
-  if (emulator) return;
+  const firestoreHost = Boolean(env.FIRESTORE_EMULATOR_HOST);
+  const authHost = Boolean(env.FIREBASE_AUTH_EMULATOR_HOST);
+
+  // Emulator mode is all-or-nothing: a single host would silently mix the emulator with
+  // production services for the other half.
+  if (firestoreHost !== authHost) {
+    const missing = firestoreHost ? "FIREBASE_AUTH_EMULATOR_HOST" : "FIRESTORE_EMULATOR_HOST";
+    ctx.addIssue({
+      code: "custom",
+      path: [missing],
+      message: "must be set together with the other emulator host",
+    });
+    return;
+  }
+
+  if (firestoreHost && authHost) {
+    if (env.NODE_ENV === "production") {
+      for (const name of ["FIRESTORE_EMULATOR_HOST", "FIREBASE_AUTH_EMULATOR_HOST"] as const) {
+        ctx.addIssue({ code: "custom", path: [name], message: "not allowed in production" });
+      }
+    }
+    return;
+  }
+
   for (const name of ["FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY"] as const) {
     if (!env[name]) {
       ctx.addIssue({ code: "custom", path: [name], message: "required outside the emulator" });
@@ -99,9 +122,14 @@ export function getServerEnv(): ServerEnv {
   return serverCache;
 }
 
-/** True when running against the Firebase emulators (Firestore or Auth host is set). */
+/**
+ * True only when BOTH emulator hosts are set (and never in production). Fail-closed:
+ * a partial or production configuration is rejected by getServerEnv(), which callers
+ * must run before trusting this gate.
+ */
 export function isEmulator(): boolean {
-  return Boolean(process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST);
+  if (process.env.NODE_ENV === "production") return false;
+  return Boolean(process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST);
 }
 
 /** True only when ALL variables of the integration are present and non-empty. */

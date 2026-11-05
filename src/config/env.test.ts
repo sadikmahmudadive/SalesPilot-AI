@@ -8,6 +8,7 @@ const ALL_KEYS = [
   "FIREBASE_PRIVATE_KEY",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_AUTH_EMULATOR_HOST",
+  "NODE_ENV",
   "SESSION_COOKIE_MAX_DAYS",
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
@@ -89,20 +90,69 @@ describe("getServerEnv", () => {
     expect(message).not.toContain("sk-secret");
   });
 
-  it("does not require service-account credentials when an emulator host is set", () => {
+  it("does not require service-account credentials when both emulator hosts are set", () => {
     stubAll({
       FIREBASE_PROJECT_ID: "demo-salespilot",
       FIRESTORE_EMULATOR_HOST: "127.0.0.1:8085",
+      FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9199",
     });
     expect(() => getServerEnv()).not.toThrow();
     expect(isEmulator()).toBe(true);
   });
 
-  it("treats FIREBASE_AUTH_EMULATOR_HOST alone as emulator mode", () => {
+  it("throws naming FIREBASE_AUTH_EMULATOR_HOST when only the Firestore host is set", () => {
+    stubAll({
+      FIREBASE_PROJECT_ID: "demo-salespilot",
+      FIRESTORE_EMULATOR_HOST: "127.0.0.1:8085",
+    });
+    let message = "";
+    try {
+      getServerEnv();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("FIREBASE_AUTH_EMULATOR_HOST");
+    expect(message).not.toContain("127.0.0.1");
+    expect(isEmulator()).toBe(false);
+  });
+
+  it("throws naming FIRESTORE_EMULATOR_HOST when only the Auth host is set", () => {
     stubAll({
       FIREBASE_PROJECT_ID: "demo-salespilot",
       FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9199",
     });
+    let message = "";
+    try {
+      getServerEnv();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("FIRESTORE_EMULATOR_HOST");
+    expect(message).not.toContain("127.0.0.1");
+    expect(isEmulator()).toBe(false);
+  });
+
+  it("rejects emulator hosts in production, naming variables only", () => {
+    stubAll({
+      ...SERVER_VALUES,
+      NODE_ENV: "production",
+      FIRESTORE_EMULATOR_HOST: "127.0.0.1:8085",
+      FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9199",
+    });
+    let message = "";
+    try {
+      getServerEnv();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("FIRESTORE_EMULATOR_HOST");
+    expect(message).toContain("FIREBASE_AUTH_EMULATOR_HOST");
+    expect(message).not.toContain("127.0.0.1");
+    expect(isEmulator()).toBe(false);
+  });
+
+  it("accepts a production environment with credentials and no emulator hosts", () => {
+    stubAll({ ...SERVER_VALUES, NODE_ENV: "production" });
     expect(() => getServerEnv()).not.toThrow();
   });
 
@@ -197,12 +247,22 @@ describe("isConfigured", () => {
 });
 
 describe("isEmulator", () => {
-  it("is false when no emulator host is set and true when either is", () => {
+  it("is true only when both emulator hosts are set", () => {
     expect(isEmulator()).toBe(false);
     vi.stubEnv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8085");
-    expect(isEmulator()).toBe(true);
-    vi.stubEnv("FIRESTORE_EMULATOR_HOST", undefined);
+    expect(isEmulator()).toBe(false);
     vi.stubEnv("FIREBASE_AUTH_EMULATOR_HOST", "127.0.0.1:9199");
     expect(isEmulator()).toBe(true);
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", undefined);
+    expect(isEmulator()).toBe(false);
+  });
+
+  it("is false in production even with both hosts set", () => {
+    stubAll({
+      NODE_ENV: "production",
+      FIRESTORE_EMULATOR_HOST: "127.0.0.1:8085",
+      FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9199",
+    });
+    expect(isEmulator()).toBe(false);
   });
 });
