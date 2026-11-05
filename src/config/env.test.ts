@@ -1,22 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  __resetEnvCacheForTests,
-  getClientEnv,
-  getServerEnv,
-  isConfigured,
-  isEmulator,
-} from "./env";
+import { __resetEnvCacheForTests, getServerEnv, isConfigured, isEmulator } from "./env";
 
 const ALL_KEYS = [
-  "NEXT_PUBLIC_APP_URL",
-  "NEXT_PUBLIC_FIREBASE_API_KEY",
-  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
-  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
-  "NEXT_PUBLIC_FIREBASE_APP_ID",
-  "NEXT_PUBLIC_USE_EMULATORS",
   "FIREBASE_PROJECT_ID",
   "FIREBASE_CLIENT_EMAIL",
   "FIREBASE_PRIVATE_KEY",
@@ -27,15 +13,21 @@ const ALL_KEYS = [
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
   "WHATSAPP_PHONE_NUMBER_ID",
+  "WHATSAPP_BUSINESS_ACCOUNT_ID",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_VERIFY_TOKEN",
   "WHATSAPP_APP_SECRET",
+  "META_GRAPH_API_VERSION",
   "OPENAI_API_KEY",
+  "OPENAI_CHAT_MODEL",
+  "OPENAI_REALTIME_MODEL",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
+  "TWILIO_WEBHOOK_SECRET",
   "SSLCOMMERZ_STORE_ID",
   "SSLCOMMERZ_STORE_PASSWORD",
+  "SSLCOMMERZ_IS_LIVE",
   "N8N_WEBHOOK_URL",
   "N8N_WEBHOOK_SECRET",
   "ENCRYPTION_KEY",
@@ -45,16 +37,6 @@ const ALL_KEYS = [
 function stubAll(values: Record<string, string>): void {
   for (const [key, value] of Object.entries(values)) vi.stubEnv(key, value);
 }
-
-const CLIENT_VALUES = {
-  NEXT_PUBLIC_APP_URL: "http://localhost:3000",
-  NEXT_PUBLIC_FIREBASE_API_KEY: "public-api-key",
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "demo.firebaseapp.com",
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: "demo-salespilot",
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "demo.appspot.com",
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "123456",
-  NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456:web:abc",
-};
 
 const SERVER_VALUES = {
   FIREBASE_PROJECT_ID: "demo-salespilot",
@@ -211,45 +193,6 @@ describe("isConfigured", () => {
     vi.stubEnv(keys[keys.length - 1]!, "https://x.example");
     __resetEnvCacheForTests();
     expect(isConfigured(integration)).toBe(true);
-  });
-});
-
-describe("getClientEnv", () => {
-  it("returns validated public variables with USE_EMULATORS defaulting to false", () => {
-    stubAll(CLIENT_VALUES);
-    const env = getClientEnv();
-    expect(env.NEXT_PUBLIC_APP_URL).toBe("http://localhost:3000");
-    expect(env.NEXT_PUBLIC_FIREBASE_PROJECT_ID).toBe("demo-salespilot");
-    expect(env.NEXT_PUBLIC_USE_EMULATORS).toBe(false);
-  });
-
-  it("parses NEXT_PUBLIC_USE_EMULATORS=true", () => {
-    stubAll({ ...CLIENT_VALUES, NEXT_PUBLIC_USE_EMULATORS: "true" });
-    expect(getClientEnv().NEXT_PUBLIC_USE_EMULATORS).toBe(true);
-  });
-
-  it("throws naming missing or invalid public variables", () => {
-    stubAll({ ...CLIENT_VALUES, NEXT_PUBLIC_APP_URL: "not-a-url" });
-    vi.stubEnv("NEXT_PUBLIC_FIREBASE_API_KEY", undefined);
-    let message = "";
-    try {
-      getClientEnv();
-    } catch (error) {
-      message = (error as Error).message;
-    }
-    expect(message).toContain("NEXT_PUBLIC_APP_URL");
-    expect(message).toContain("NEXT_PUBLIC_FIREBASE_API_KEY");
-    expect(message).not.toContain("not-a-url");
-  });
-
-  it("contains only NEXT_PUBLIC_ keys, none from the server schema", () => {
-    stubAll({ ...CLIENT_VALUES, ...SERVER_VALUES, CRON_SECRET: "cron", ENCRYPTION_KEY: "enc" });
-    const clientKeys = Object.keys(getClientEnv());
-    const serverKeys = Object.keys(getServerEnv());
-    expect(clientKeys.every((key) => key.startsWith("NEXT_PUBLIC_"))).toBe(true);
-    expect(clientKeys.filter((key) => serverKeys.includes(key))).toEqual([]);
-    expect(clientKeys).not.toContain("FIREBASE_PRIVATE_KEY");
-    expect(clientKeys).not.toContain("CRON_SECRET");
   });
 });
 

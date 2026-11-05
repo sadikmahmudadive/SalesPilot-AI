@@ -1,78 +1,17 @@
 /**
- * Validated environment access. This is the ONLY module that reads `process.env`.
+ * Validated SERVER environment access. Server-only: importing this from client code
+ * fails the build. Public variables live in env.client.ts.
  *
- * Client half: `getClientEnv()` exposes NEXT_PUBLIC_* variables and is safe in any bundle.
- * Server half: `getServerEnv()`, `isConfigured()`, `isEmulator()` must only run on the server.
- * They are guarded at runtime (a browser call throws) rather than via the `server-only`
- * package, because that package would make the whole file unimportable from client code.
- *
+ * `process.env` is read only in this file and env.client.ts.
  * Validation errors list variable NAMES only, never values.
  */
+import "server-only";
 import { z } from "zod";
 
-type RawEnv = Record<string, string | undefined>;
-
-/** Treat empty strings (as left in a copied .env.example) the same as unset. */
-function blankToUndefined(raw: RawEnv): RawEnv {
-  const out: RawEnv = {};
-  for (const [key, value] of Object.entries(raw)) {
-    out[key] = value === undefined || value === "" ? undefined : value;
-  }
-  return out;
-}
-
-function failWithNames(scope: string, error: z.ZodError): never {
-  const names = new Set<string>();
-  for (const issue of error.issues) {
-    names.add(issue.path.length > 0 ? issue.path.join(".") : "(unknown)");
-  }
-  throw new Error(`Invalid ${scope} environment variables: ${[...names].join(", ")}`);
-}
+import { blankToUndefined, failWithNames, type RawEnv } from "./env.shared";
 
 const required = z.string().min(1);
 const optional = z.string().min(1).optional();
-
-// ------------------------------------------------------------------ client
-
-const clientSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.url(),
-  NEXT_PUBLIC_FIREBASE_API_KEY: required,
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: required,
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: required,
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: required,
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: required,
-  NEXT_PUBLIC_FIREBASE_APP_ID: required,
-  NEXT_PUBLIC_USE_EMULATORS: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
-});
-
-export type ClientEnv = z.infer<typeof clientSchema>;
-
-let clientCache: ClientEnv | undefined;
-
-export function getClientEnv(): ClientEnv {
-  if (clientCache) return clientCache;
-  // Each NEXT_PUBLIC_* variable must be referenced literally so Next.js can inline it
-  // into the client bundle; dynamic `process.env[key]` access is not replaced.
-  const raw = blankToUndefined({
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    NEXT_PUBLIC_USE_EMULATORS: process.env.NEXT_PUBLIC_USE_EMULATORS,
-  });
-  const result = clientSchema.safeParse(raw);
-  if (!result.success) failWithNames("client", result.error);
-  clientCache = result.data;
-  return clientCache;
-}
-
-// ------------------------------------------------------------------ server
 
 const serverShape = {
   FIREBASE_PROJECT_ID: required,
@@ -151,9 +90,6 @@ const INTEGRATION_KEYS: Record<Integration, readonly (keyof ServerEnv)[]> = {
 let serverCache: ServerEnv | undefined;
 
 export function getServerEnv(): ServerEnv {
-  if (typeof window !== "undefined") {
-    throw new Error("getServerEnv() must not be called in the browser");
-  }
   if (serverCache) return serverCache;
   const raw: RawEnv = {};
   for (const key of Object.keys(serverShape)) raw[key] = process.env[key];
@@ -174,8 +110,7 @@ export function isConfigured(integration: Integration): boolean {
   return INTEGRATION_KEYS[integration].every((key) => Boolean(env[key]));
 }
 
-/** Clears memoized results. Test use only. */
+/** Clears the memoized result. Test use only. */
 export function __resetEnvCacheForTests(): void {
-  clientCache = undefined;
   serverCache = undefined;
 }
