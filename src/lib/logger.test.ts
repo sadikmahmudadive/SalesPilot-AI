@@ -45,6 +45,52 @@ describe('redact', () => {
     expect(out.note).toBe('0912345678');
   });
 
+  it('masks number values and mobile/msisdn/whatsapp keys, including inside arrays', () => {
+    const out = redact({
+      phone: 912345678,
+      mobile: '0912 345 678',
+      msisdn: '84912345678',
+      whatsappNumber: '+84912345678',
+      contacts: [{ phone: '0987654321' }],
+      note: '0912345678',
+    }) as Rec;
+    expect(out.phone).toBe('******678');
+    expect(out.mobile).toBe('**** *** 678');
+    expect(out.msisdn).toBe('********678');
+    expect(out.whatsappNumber).toBe('+********678');
+    expect(out.contacts[0].phone).toBe('*******321');
+    expect(out.note).toBe('0912345678');
+  });
+
+  it('turns a throwing getter into [Unreadable] and keeps the rest', () => {
+    const obj: Record<string, unknown> = { ok: 1 };
+    Object.defineProperty(obj, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    const out = redact(obj) as Rec;
+    expect(out.ok).toBe(1);
+    expect(out.boom).toBe('[Unreadable]');
+  });
+
+  it('turns a throwing Proxy into [Unreadable]', () => {
+    const trap = () => {
+      throw new Error('proxy exploded');
+    };
+    const proxy = new Proxy({}, { ownKeys: trap, get: trap, getPrototypeOf: trap, has: trap });
+    const out = redact({ ok: 1, proxy, list: [proxy] }) as Rec;
+    expect(out.ok).toBe(1);
+    expect(out.proxy).toBe('[Unreadable]');
+    expect(out.list[0]).toBe('[Unreadable]');
+    expect(redact(proxy)).toBe('[Unreadable]');
+  });
+
+  it('stringifies BigInt values', () => {
+    expect(redact({ n: BigInt(10) })).toEqual({ n: '10' });
+  });
+
   it('handles circular references without throwing', () => {
     const a: Record<string, unknown> = { name: 'a' };
     a.self = a;
@@ -99,5 +145,41 @@ describe('logger', () => {
     const parsed = JSON.parse(String(error.mock.calls[0]![0]));
     expect(parsed.level).toBe('error');
     expect(parsed.err.message).toBe('bad');
+  });
+});
+
+describe('logger resilience', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('never throws on a throwing getter, throwing Proxy or BigInt context', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad: Record<string, unknown> = { big: BigInt(5) };
+    Object.defineProperty(bad, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    const trap = () => {
+      throw new Error('proxy exploded');
+    };
+    const proxy = new Proxy({}, { ownKeys: trap, get: trap, getPrototypeOf: trap });
+
+    expect(() => logger.error('m', bad)).not.toThrow();
+    expect(() => logger.error('m2', proxy)).not.toThrow();
+    const first = JSON.parse(String(error.mock.calls[0]![0]));
+    expect(first).toMatchObject({ level: 'error', msg: 'm', big: '5', boom: '[Unreadable]' });
+    const second = JSON.parse(String(error.mock.calls[1]![0]));
+    expect(second).toMatchObject({ level: 'error', msg: 'm2', ctx: '[Unreadable]' });
+  });
+
+  it('emits a fallback line if serialization fails', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(JSON, 'stringify').mockImplementationOnce(() => {
+      throw new Error('stringify exploded');
+    });
+    expect(() => logger.error('m', { a: 1 })).not.toThrow();
+    const parsed = JSON.parse(String(error.mock.calls[0]![0]));
+    expect(parsed).toMatchObject({ level: 'error', msg: 'm', ctx: '[unserializable context]' });
   });
 });

@@ -63,6 +63,76 @@ describe('toErrorResponse', () => {
     expect(logged.err.message).toBe('secret sk-123');
   });
 
+  it.each([
+    [Number.NaN, '1'],
+    [Number.POSITIVE_INFINITY, '1'],
+    [-5, '1'],
+    [2.2, '3'],
+  ])('Retry-After for RateLimitedError(%s) is %s', (input, expected) => {
+    expect(toErrorResponse(new RateLimitedError(input), 'r').headers.get('Retry-After')).toBe(expected);
+  });
+
+  it('maps a branded duck-typed error that is not an AppError instance', async () => {
+    const duck = {
+      [Symbol.for('salespilot.appError')]: true,
+      status: 418,
+      code: 'TEAPOT',
+      message: 'short and stout',
+    };
+    const res = toErrorResponse(duck, 'r');
+    expect(res.status).toBe(418);
+    expect(await res.json()).toEqual({ error: { code: 'TEAPOT', message: 'short and stout', requestId: 'r' } });
+  });
+
+  it('duck-typed rate limit / validation errors keep their headers and details', async () => {
+    const brand = Symbol.for('salespilot.appError');
+    const limited = toErrorResponse(
+      { [brand]: true, status: 429, code: 'RATE_LIMITED', message: 'slow', retryAfterSec: 7 },
+      'r',
+    );
+    expect(limited.headers.get('Retry-After')).toBe('7');
+    const details = [{ path: 'a', message: 'b' }];
+    const invalid = toErrorResponse(
+      { [brand]: true, status: 400, code: 'VALIDATION_ERROR', message: 'bad', details },
+      'r',
+    );
+    expect((await invalid.json()).error.details).toEqual(details);
+  });
+
+  it('an unbranded object with status and code is still a generic 500', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = toErrorResponse({ status: 418, code: 'TEAPOT', message: 'leaky secret' }, 'r');
+    expect(res.status).toBe(500);
+    const text = await res.text();
+    expect(text).not.toContain('leaky');
+    expect(JSON.parse(text).error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('a branded object with an invalid HTTP status is a generic 500', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = toErrorResponse({ [Symbol.for('salespilot.appError')]: true, status: 99999, code: 'X', message: 'm' }, 'r');
+    expect(res.status).toBe(500);
+  });
+
+  it('still returns 500 when the logged context has a throwing getter', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad: Record<string, unknown> = {};
+    Object.defineProperty(bad, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    const trap = () => {
+      throw new Error('proxy exploded');
+    };
+    for (const thrown of [bad, new Proxy({}, { ownKeys: trap, get: trap, getPrototypeOf: trap })]) {
+      const res = toErrorResponse(thrown, 'r');
+      expect(res.status).toBe(500);
+      expect((await res.json()).error.code).toBe('INTERNAL_ERROR');
+    }
+  });
+
   it('handles non-Error throwables', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = toErrorResponse('oops', 'r');

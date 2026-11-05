@@ -42,6 +42,22 @@ describe('errors', () => {
     expect(new RateLimitedError(12).retryAfterSec).toBe(12);
   });
 
+  it.each([
+    [Number.NaN, 1],
+    [Number.POSITIVE_INFINITY, 1],
+    [-5, 1],
+    [2.2, 3],
+    [30, 30],
+  ])('RateLimitedError(%s) normalises retryAfterSec to %i', (input, expected) => {
+    const err = new RateLimitedError(input);
+    expect(err.retryAfterSec).toBe(expected);
+    expect(Number.isInteger(err.retryAfterSec)).toBe(true);
+  });
+
+  it('AppError instances carry the shared brand', () => {
+    expect((new NotFoundError() as unknown as Record<symbol, unknown>)[Symbol.for('salespilot.appError')]).toBe(true);
+  });
+
   it('IntegrationNotConfiguredError carries integration name', () => {
     const err = new IntegrationNotConfiguredError('zalo');
     expect(err.integration).toBe('zalo');

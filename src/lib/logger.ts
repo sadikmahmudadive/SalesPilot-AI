@@ -1,14 +1,16 @@
 /**
  * Redacting JSON logger. Dependency-free (no env / server-only imports).
  * Every log line is one-line JSON with `redact()` applied to the context.
+ * Logging must never throw: it is used from inside error handlers.
  */
 
 const MASK = '[REDACTED]';
+const UNREADABLE = '[Unreadable]';
 const SENSITIVE_KEY = /key|token|secret|password|authorization|cookie|private/i;
-const PHONE_KEY = /phone/i;
+const PHONE_KEY = /phone|mobile|msisdn|whatsapp/i;
 const MAX_DEPTH = 8;
 
-/** Keep the last 3 digits of a phone-like string, mask every other digit. */
+/** Keep the last 3 digits of a phone-like value, mask every other digit. */
 function maskPhone(value: string): string {
   const total = (value.match(/\d/g) ?? []).length;
   let seen = 0;
@@ -18,7 +20,9 @@ function maskPhone(value: string): string {
 function walk(value: unknown, key: string | undefined, ancestors: object[], depth: number): unknown {
   if (key !== undefined) {
     if (SENSITIVE_KEY.test(key)) return MASK;
-    if (PHONE_KEY.test(key) && typeof value === 'string') return maskPhone(value);
+    if (PHONE_KEY.test(key) && (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')) {
+      return maskPhone(String(value));
+    }
   }
 
   if (typeof value === 'bigint') return value.toString();
@@ -28,35 +32,66 @@ function walk(value: unknown, key: string | undefined, ancestors: object[], dept
   if (ancestors.includes(value)) return '[Circular]';
   if (depth >= MAX_DEPTH) return '[Truncated]';
 
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  // Any trap / getter on a hostile object may throw; one bad value must not sink the log line.
+  try {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
 
-  // Errors: name/message/stack only (never own enumerable props, which may hold secrets).
-  if (value instanceof Error) {
-    return { name: value.name, message: value.message, stack: value.stack };
+    // Errors: name/message/stack only (never own enumerable props, which may hold secrets).
+    if (value instanceof Error) {
+      return { name: String(value.name), message: String(value.message), stack: value.stack };
+    }
+
+    const next = [...ancestors, value];
+    if (Array.isArray(value)) return value.map((_, i) => walkChild(value, i, undefined, next, depth));
+
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value)) out[k] = walkChild(value, k, k, next, depth);
+    return out;
+  } catch {
+    return UNREADABLE;
   }
-
-  const next = [...ancestors, value];
-  if (Array.isArray(value)) return value.map((item) => walk(item, undefined, next, depth + 1));
-
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) out[k] = walk(v, k, next, depth + 1);
-  return out;
 }
 
-/** Returns a deep, redacted copy of `obj`. Never mutates the input and never throws on cycles. */
+/** Reads one property (may invoke a getter) and walks it; failures become "[Unreadable]". */
+function walkChild(
+  parent: object,
+  prop: string | number,
+  key: string | undefined,
+  ancestors: object[],
+  depth: number,
+): unknown {
+  try {
+    return walk((parent as Record<string | number, unknown>)[prop], key, ancestors, depth + 1);
+  } catch {
+    return UNREADABLE;
+  }
+}
+
+/** Returns a deep, redacted copy of `obj`. Never mutates the input; never throws. */
 export function redact(obj: unknown): unknown {
-  return walk(obj, undefined, [], 0);
+  try {
+    return walk(obj, undefined, [], 0);
+  } catch {
+    return UNREADABLE;
+  }
 }
 
 type Level = 'info' | 'warn' | 'error';
 
 function emit(level: Level, msg: string, ctx?: object): void {
-  const safe = ctx === undefined ? {} : (redact(ctx) as Record<string, unknown>);
+  const time = new Date().toISOString();
   let line: string;
   try {
-    line = JSON.stringify({ ...safe, level, msg, time: new Date().toISOString() });
+    const safe = ctx === undefined ? {} : redact(ctx);
+    const fields =
+      typeof safe === 'object' && safe !== null && !Array.isArray(safe) ? (safe as Record<string, unknown>) : { ctx: safe };
+    line = JSON.stringify({ ...fields, level, msg, time });
   } catch {
-    line = JSON.stringify({ level, msg, time: new Date().toISOString(), logError: 'unserializable context' });
+    try {
+      line = JSON.stringify({ level, msg, time, ctx: '[unserializable context]' });
+    } catch {
+      line = '{"level":"' + level + '","ctx":"[unserializable context]"}';
+    }
   }
   if (level === 'error') console.error(line);
   else if (level === 'warn') console.warn(line);
