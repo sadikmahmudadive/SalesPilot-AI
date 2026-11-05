@@ -20,8 +20,16 @@
  * callers). Browsers always send them on cross-site requests, and a cross-site HTML form can only send
  * text/plain, urlencoded or multipart bodies, which the content-type rule rejects.
  *
- * Why this exists: `SameSite=Lax` cookies ARE attached to cross-site top-level form POSTs, so without
- * these checks an attacker page could log a victim into the attacker's account (login CSRF).
+ * Why this exists: `SameSite=Lax` cookies are NOT sent on cross-site POSTs, so this is not about a forged
+ * request riding the victim's session. The real risk is login CSRF: an attacker page POSTs the attacker's
+ * own credentials (or a cross-site top-level navigation whose response sets a Lax cookie), logging the
+ * victim into the attacker's account. These checks also stop cross-site form posts from reaching
+ * state-changing routes at all.
+ *
+ * "Carries a body" is decided from the request headers, not from `req.body`: Next exposes a non-null
+ * `req.body` stream for every non-GET request, even empty ones. A body is assumed when `Content-Length`
+ * is greater than 0, `Transfer-Encoding` is present, or a `Content-Type` is declared. (Browsers always
+ * send a Content-Type with a cross-site form body, so this stays fail-closed for them.)
  */
 import { ForbiddenError, UnsupportedMediaTypeError } from "@/lib/errors";
 
@@ -42,7 +50,10 @@ function allowedOrigins(req: Request): Set<string> {
   allowed.add(new URL(req.url).origin);
   const host = firstValue(req.headers.get("x-forwarded-host"));
   if (host) {
-    const proto = firstValue(req.headers.get("x-forwarded-proto"))?.toLowerCase() ?? new URL(req.url).protocol.slice(0, -1);
+    const forwardedProto = firstValue(req.headers.get("x-forwarded-proto"))?.toLowerCase();
+    // Only http/https are meaningful for an Origin; anything else is ignored rather than trusted.
+    const proto =
+      forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : new URL(req.url).protocol.slice(0, -1);
     try {
       allowed.add(new URL(`${proto}://${host}`).origin);
     } catch {
@@ -53,9 +64,14 @@ function allowedOrigins(req: Request): Set<string> {
 }
 
 function carriesBody(req: Request): boolean {
-  if (req.body !== null) return true;
-  const length = Number(req.headers.get("content-length"));
-  return Number.isFinite(length) && length > 0;
+  if (req.headers.has("transfer-encoding")) return true;
+  const contentLength = req.headers.get("content-length");
+  if (contentLength !== null) {
+    const length = Number(contentLength);
+    // A malformed length is treated as "has a body" (fail closed).
+    if (!Number.isFinite(length) || length > 0) return true;
+  }
+  return req.headers.has("content-type");
 }
 
 function isJsonContentType(value: string | null): boolean {

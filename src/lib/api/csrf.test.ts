@@ -6,8 +6,17 @@ import { assertJsonSameOrigin } from "./csrf";
 
 const URL_ = "https://app.example.com/api/thing";
 
+/**
+ * Builds a request the way a real server sees one: an incoming HTTP request carries a
+ * `content-length` header when it has a body (a constructed `Request` does not add one itself).
+ */
 function req(method: string, headers: Record<string, string> = {}, body: BodyInit | null = "{}", url = URL_): Request {
-  return new Request(url, { method, headers, body: method === "GET" || method === "HEAD" ? null : body });
+  const h = new Headers(headers);
+  const sendsBody = method !== "GET" && method !== "HEAD" && body !== null;
+  if (sendsBody && typeof body === "string" && !h.has("content-length")) {
+    h.set("content-length", String(new TextEncoder().encode(body).byteLength));
+  }
+  return new Request(url, { method, headers: h, body: sendsBody ? body : null });
 }
 const json = { "content-type": "application/json" };
 
@@ -55,6 +64,39 @@ describe("assertJsonSameOrigin: content type", () => {
 
   it("a body-less mutating request needs no content type", () => {
     expect(() => assertJsonSameOrigin(req("POST", {}, null))).not.toThrow();
+  });
+
+  it("a body-less request with content-length: 0 needs no content type", () => {
+    const r = new Request(URL_, { method: "POST", headers: { "content-length": "0" } });
+    expect(() => assertJsonSameOrigin(r)).not.toThrow();
+  });
+
+  it("a Uint8Array body with no Content-Type is rejected (null content-type path)", () => {
+    const r = req("POST", { "content-length": "2" }, new Uint8Array([123, 125]));
+    expect(r.headers.get("content-type")).toBeNull();
+    expect(() => assertJsonSameOrigin(r)).toThrow(UnsupportedMediaTypeError);
+  });
+
+  it("a streamed body with no Content-Type (transfer-encoding: chunked) is rejected", () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new Uint8Array([123, 125]));
+        c.close();
+      },
+    });
+    const r = new Request(URL_, {
+      method: "POST",
+      headers: { "transfer-encoding": "chunked" },
+      body: stream,
+      duplex: "half",
+    } as RequestInit);
+    expect(r.headers.get("content-type")).toBeNull();
+    expect(() => assertJsonSameOrigin(r)).toThrow(UnsupportedMediaTypeError);
+  });
+
+  it("a declared non-JSON Content-Type is rejected even if no length header is visible", () => {
+    const r = new Request(URL_, { method: "POST", headers: { "content-type": "text/plain" } });
+    expect(() => assertJsonSameOrigin(r)).toThrow(UnsupportedMediaTypeError);
   });
 
   it("requireJson: false skips only the content-type check", () => {
@@ -120,6 +162,27 @@ describe("assertJsonSameOrigin: Origin", () => {
     const r = req(
       "POST",
       { ...json, origin: "https://public.example.org", "x-forwarded-host": "public.example.org, internal", "x-forwarded-proto": "https, http" },
+      "{}",
+      "http://localhost:3000/api/thing",
+    );
+    expect(() => assertJsonSameOrigin(r)).not.toThrow();
+  });
+
+  it.each(["javascript", "ftp", "https://evil.com#", ""])(
+    "ignores a non-http(s) x-forwarded-proto %j (falls back to the request URL scheme)",
+    (proto) => {
+      const base = { ...json, "x-forwarded-host": "public.example.org", "x-forwarded-proto": proto };
+      const url = "http://localhost:3000/api/thing";
+      // A usable Origin must be built from the request URL's scheme, never the bogus proto value.
+      expect(() => assertJsonSameOrigin(req("POST", { ...base, origin: "http://public.example.org" }, "{}", url))).not.toThrow();
+      expect(() => assertJsonSameOrigin(req("POST", { ...base, origin: `${proto}://public.example.org` }, "{}", url))).toThrow(ForbiddenError);
+    },
+  );
+
+  it("accepts an uppercase x-forwarded-proto of HTTPS", () => {
+    const r = req(
+      "POST",
+      { ...json, origin: "https://public.example.org", "x-forwarded-host": "public.example.org", "x-forwarded-proto": "HTTPS" },
       "{}",
       "http://localhost:3000/api/thing",
     );
