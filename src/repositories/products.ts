@@ -22,7 +22,7 @@ import type { DocumentReference } from "firebase-admin/firestore";
 import { ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { isValidIdSegment } from "@/lib/ids";
-import type { Product } from "@/schemas/product";
+import { DEFAULT_VARIANT_ID, VARIANT_ID_PATTERN, type Product } from "@/schemas/product";
 
 import { OrgRepository, type OrgCreateInput } from "./base";
 
@@ -95,7 +95,10 @@ export function trySlugLockRef(orgId: string, slug: unknown): DocumentReference 
 
 /** Inventory document of one stock-keeping unit of a product. */
 export function inventoryRef(productId: string, variantId: string): DocumentReference {
-  if (!isValidIdSegment(productId) || !/^(default|[a-z0-9-]{1,40})$/.test(variantId)) {
+  if (
+    !isValidIdSegment(productId) ||
+    !(variantId === DEFAULT_VARIANT_ID || VARIANT_ID_PATTERN.test(variantId))
+  ) {
     throw new ValidationError([{ path: "variantId", message: "Invalid variant" }]);
   }
   return adminDb().collection(INVENTORY).doc(`${productId}__${variantId}`);

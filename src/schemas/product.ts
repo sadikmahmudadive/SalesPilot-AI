@@ -85,6 +85,7 @@ const categoryIdCore = z
 
 const IMAGE_MESSAGE = "Use an image uploaded through the product image uploader";
 const PUBLIC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_\-/]*$/;
+const CLOUD_PATH_CLOUD = /^\/([A-Za-z0-9_-]+)\/image\/upload\//;
 const CLOUD_PATH = /^\/[A-Za-z0-9_-]+\/image\/upload\/(?:v\d+\/)?(.+)$/;
 const EXTENSION = /^[A-Za-z0-9]{1,8}$/;
 
@@ -94,6 +95,17 @@ function parseImageUrl(raw: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The Cloudinary cloud name of a delivery URL (first path segment), or null when `raw` is not an
+ * `https://res.cloudinary.com/{cloud}/image/upload/...` URL. The schema cannot bind the cloud to
+ * this deployment (it is imported by client code); the service does, see `normalizeImages`.
+ */
+export function imageCloudName(raw: string): string | null {
+  const url = parseImageUrl(raw);
+  if (!url || url.protocol !== "https:" || url.hostname !== IMAGE_HOST) return null;
+  return CLOUD_PATH_CLOUD.exec(url.pathname)?.[1] ?? null;
 }
 
 /** Does `url` point at the Cloudinary asset `publicId` (no transformations, https, no extras)? */
@@ -136,7 +148,8 @@ export type ProductImage = z.output<typeof imageSchema>;
 
 // ---- variants --------------------------------------------------------------------------------
 
-const VARIANT_ID_PATTERN = /^[a-z0-9-]{1,40}$/;
+/** Variant ids: lower-case letters, digits and dashes, 1-40 characters (also used for inventory ids). */
+export const VARIANT_ID_PATTERN = /^[a-z0-9-]{1,40}$/;
 const variantAttr = z.string().trim().max(40, "Use 40 characters or fewer");
 
 const variantSchema = z
@@ -249,7 +262,10 @@ const sharedFields = {
   categoryId: categoryIdCore,
   images: z
     .array(imageSchema, { error: "Images must be a list" })
-    .max(MAX_IMAGES, `Use at most ${MAX_IMAGES} images`),
+    .max(MAX_IMAGES, `Use at most ${MAX_IMAGES} images`)
+    .refine((list) => new Set(list.map((i) => i.publicId)).size === list.length, {
+      error: "Each image can be attached only once",
+    }),
   variants: variantsSchema,
   regularPriceMinor: price,
   availability: availabilitySchema,

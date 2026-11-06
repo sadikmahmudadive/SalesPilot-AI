@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_SLUG_LENGTH, baseSlug, slugCandidates, slugify } from "./slug";
+import { MAX_SLUG_LENGTH, baseSlug, randomSlug, slugCandidates, slugify } from "./slug";
 
 const cp = (...codes: number[]) => String.fromCodePoint(...codes);
 // Bangla word with vowel signs (combining marks) that must survive.
@@ -45,14 +45,26 @@ describe("baseSlug", () => {
 });
 
 describe("slugCandidates", () => {
-  it("returns base, base-2 ... base-20", () => {
+  it("returns base, base-2 ... base-5", () => {
     const c = slugCandidates("shirt");
-    expect(c).toHaveLength(20);
-    expect(c.slice(0, 3)).toEqual(["shirt", "shirt-2", "shirt-3"]);
-    expect(c[19]).toBe("shirt-20");
+    expect(c).toEqual(["shirt", "shirt-2", "shirt-3", "shirt-4", "shirt-5"]);
   });
   it("keeps every candidate within 80 characters", () => {
     for (const c of slugCandidates("a".repeat(80)))
       expect(c.length).toBeLessThanOrEqual(MAX_SLUG_LENGTH);
+  });
+});
+
+describe("randomSlug", () => {
+  it("appends 6 random hex characters and varies", () => {
+    const a = randomSlug("shirt");
+    expect(a).toMatch(/^shirt-[0-9a-f]{6}$/);
+    const many = new Set(Array.from({ length: 50 }, () => randomSlug("shirt")));
+    expect(many.size).toBeGreaterThan(40);
+  });
+  it("keeps long bases within 80 characters", () => {
+    const s = randomSlug("a".repeat(80));
+    expect(s.length).toBeLessThanOrEqual(MAX_SLUG_LENGTH);
+    expect(s).toMatch(/-[0-9a-f]{6}$/);
   });
 });

@@ -3,7 +3,13 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { categoryInputSchema, productInputSchema, productPatchSchema } from "./product";
+import {
+  VARIANT_ID_PATTERN,
+  categoryInputSchema,
+  imageCloudName,
+  productInputSchema,
+  productPatchSchema,
+} from "./product";
 
 // Non-ASCII text is built from code points so this file stays ASCII.
 const cp = (...codes: number[]) => String.fromCodePoint(...codes);
@@ -192,6 +198,15 @@ describe("productInputSchema: images", () => {
     const url = `https://res.cloudinary.com/demo/image/upload/${publicId}.jpg`;
     expect(bad({ images: [img({ publicId, url })] }).success).toBe(false);
   });
+  it("rejects the same publicId twice in one product", () => {
+    expect(bad({ images: [img(), img()] }).success).toBe(false);
+  });
+  it("extracts the cloud name of a delivery URL", () => {
+    expect(imageCloudName(img().url)).toBe("demo");
+    expect(imageCloudName("https://example.com/demo/image/upload/a")).toBeNull();
+    expect(imageCloudName("http://res.cloudinary.com/demo/image/upload/a")).toBeNull();
+    expect(imageCloudName("nope")).toBeNull();
+  });
   it("accepts a url without a version or extension", () => {
     const url = "https://res.cloudinary.com/demo/image/upload/organizations/org1/products/a1";
     expect(bad({ images: [img({ url })] }).success).toBe(true);
@@ -200,6 +215,14 @@ describe("productInputSchema: images", () => {
     for (const bd of [{ width: 0 }, { height: -1 }, { width: 1.5 }, { width: "8" }]) {
       expect(bad({ images: [img(bd)] }).success).toBe(false);
     }
+  });
+});
+
+describe("VARIANT_ID_PATTERN", () => {
+  it("is the single source for variant id syntax", () => {
+    expect(VARIANT_ID_PATTERN.test("v-abc123")).toBe(true);
+    expect(VARIANT_ID_PATTERN.test("V-1")).toBe(false);
+    expect(VARIANT_ID_PATTERN.test("a".repeat(41))).toBe(false);
   });
 });
 

@@ -10,8 +10,10 @@
  */
 
 export const MAX_SLUG_LENGTH = 80;
-/** Collision suffixes tried per slug: "slug", "slug-2", ... "slug-20". */
-export const MAX_SLUG_ATTEMPTS = 20;
+/** Sequential candidates probed per slug: "slug", "slug-2" ... "slug-5". */
+export const MAX_SLUG_ATTEMPTS = 5;
+/** Random suffix length (hex characters) of the fallback slug. */
+const RANDOM_SUFFIX_LENGTH = 6;
 
 /** Slugs are cut by code point (never in the middle of a surrogate pair), then re-trimmed. */
 function clip(slug: string, max: number): string {
@@ -36,8 +38,8 @@ export function baseSlug(name: string, sku: string): string {
 }
 
 /**
- * Candidate slugs in probe order: `base`, `base-2`, ... `base-20`. The base is shortened so
- * that every candidate (suffix included) stays within 80 characters.
+ * Candidate slugs in probe order: `base`, `base-2` ... `base-5`. The base is shortened so that
+ * every candidate (suffix included) stays within 80 characters.
  */
 export function slugCandidates(base: string): string[] {
   const out = [base];
@@ -46,4 +48,16 @@ export function slugCandidates(base: string): string[] {
     out.push(`${clip(base, MAX_SLUG_LENGTH - suffix.length)}${suffix}`);
   }
   return out;
+}
+
+/**
+ * Fallback slug `base-xxxxxx` (6 random hex characters), used when the sequential candidates are
+ * taken or a slug race was lost, so that a create can never fail for slug reasons. Still at most
+ * 80 characters.
+ */
+export function randomSlug(base: string): string {
+  const bytes = new Uint8Array(RANDOM_SUFFIX_LENGTH / 2);
+  globalThis.crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${clip(base, MAX_SLUG_LENGTH - RANDOM_SUFFIX_LENGTH - 1)}-${hex}`;
 }

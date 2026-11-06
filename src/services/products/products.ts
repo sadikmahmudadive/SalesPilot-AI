@@ -16,11 +16,12 @@
  * orders and shared links keep pointing at the product.
  *   - create issues no transactional reads for the locks: it uses `tx.create` so concurrent
  *     creates do not contend on read locks and exactly one commit wins (ALREADY_EXISTS for the
- *     rest). Slug candidates (`slug`, `slug-2` ... `slug-20`) and the SKU are probed with one
+ *     rest). Slug candidates (`slug`, `slug-2` ... `slug-5`) and the SKU are probed with one
  *     plain batch read just before the transaction; if the commit still loses a race (an
  *     ALREADY_EXISTS the probe could not see), the whole attempt is repeated, so the next probe
- *     reports the real winner: a taken SKU becomes a ConflictError, a taken slug moves on to the
- *     next suffix. The commit-time existence check is what guarantees uniqueness; the probe only
+ *     reports a real SKU conflict as a ConflictError, while a slug race (or five taken
+ *     suffixes) falls back to `slug-xxxxxx` with 6 random hex characters, so a create never fails
+ *     for slug reasons. The commit-time existence check is what guarantees uniqueness; the probe only
  *     chooses the slug and gives a clean error.
  *   - SLUGS ARE STABLE. A slug is derived from the name once, when the product is created, and
  *     never changes (renaming a product does not touch it) because URLs and links must not
@@ -49,12 +50,16 @@ import { randomUUID } from "node:crypto";
 
 import { FieldValue, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
 
+import { getServerEnv, isConfigured } from "@/config/env";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { isAlreadyExists } from "@/lib/firestore-errors";
 import { isValidIdSegment } from "@/lib/ids";
+import { newLockData as newLock, ownsLock as ownsLockOf } from "@/lib/locks";
+import { assertEntityId, assertOrgCtx } from "@/lib/org-context";
+import { stableJson } from "@/lib/stable-json";
 import { writeAuditInTransaction } from "@/lib/security/audit";
-import { baseSlug, slugCandidates } from "@/lib/slug";
+import { baseSlug, randomSlug, slugCandidates } from "@/lib/slug";
 import { invalid } from "@/lib/validation-error";
 import { categoryRepo } from "@/repositories/categories";
 import {
@@ -71,6 +76,8 @@ import {
 import {
   DEFAULT_VARIANT_ID,
   MAX_PRICE_MINOR,
+  VARIANT_ID_PATTERN,
+  imageCloudName,
   productImagePrefix,
   urlMatchesPublicId,
   type Product,
@@ -94,7 +101,6 @@ export interface ProductPage {
 }
 
 const DUPLICATE_SKU_MESSAGE = "A product with this SKU already exists";
-const SLUG_EXHAUSTED_MESSAGE = "Could not generate a unique URL for this product; change the name";
 const BUSY_MESSAGE =
   "The product could not be saved because of a concurrent change; please try again";
 const VARIANT_STOCK_MESSAGE =
@@ -127,20 +133,7 @@ const CLEARABLE = new Set<string>([
 type Fields = Record<string, unknown>;
 
 export function assertCtx(ctx: ProductCtx): void {
-  // Fail closed: a missing organization must never reach a query.
-  if (
-    !ctx ||
-    !isValidIdSegment(ctx.organizationId) ||
-    typeof ctx.uid !== "string" ||
-    ctx.uid.trim() === ""
-  ) {
-    throw new Error("Product service requires an organization and user context");
-  }
-}
-
-/** Invalid ids get the same NotFound as missing ones, so ids cannot be probed. */
-function assertProductId(id: unknown): asserts id is string {
-  if (!isValidIdSegment(id)) throw new NotFoundError();
+  assertOrgCtx(ctx, "Product");
 }
 
 /** Public shape: the stored document minus the service-internal keys. */
@@ -169,17 +162,6 @@ function auditValues(fields: Fields): Fields {
   return out;
 }
 
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Fields)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
 // ---- input normalisation -----------------------------------------------------------------
 
 function newVariantId(): string {
@@ -203,7 +185,7 @@ function normalizeVariants(raw: unknown): ProductVariant[] {
       while (used.has(id as string));
       used.add(id as string);
     }
-    if (!/^[a-z0-9-]{1,40}$/.test(id as string) || id === DEFAULT_VARIANT_ID) {
+    if (!VARIANT_ID_PATTERN.test(id as string) || id === DEFAULT_VARIANT_ID) {
       throw invalid("variants", "Invalid variant id");
     }
     const out: ProductVariant = { id: id as string };
@@ -214,10 +196,19 @@ function normalizeVariants(raw: unknown): ProductVariant[] {
   });
 }
 
-/** Image ownership: only the caller's own organization folder, and only exact Cloudinary URLs. */
+/**
+ * Image ownership: only the caller's own organization folder, only exact Cloudinary URLs of that
+ * publicId, each publicId at most once, and (when Cloudinary is configured) only THIS
+ * deployment's cloud. The cloud binding lives here, not in the schema, because the schema is
+ * imported by client code and the cloud name comes from server env. When Cloudinary is not
+ * configured (local development, tests) only the URL shape is checked: a foreign cloud cannot
+ * be told apart without the expected cloud name.
+ */
 function normalizeImages(orgId: string, raw: unknown): Fields[] {
   if (!Array.isArray(raw)) throw invalid("images", "Images must be a list");
   const prefix = productImagePrefix(orgId);
+  const cloudName = isConfigured("cloudinary") ? getServerEnv().CLOUDINARY_CLOUD_NAME : undefined;
+  const seen = new Set<string>();
   return (raw as Fields[]).map((img) => {
     const { url, publicId, width, height } = img ?? {};
     if (
@@ -226,10 +217,13 @@ function normalizeImages(orgId: string, raw: unknown): Fields[] {
       !publicId.startsWith(prefix) ||
       publicId.length === prefix.length ||
       /(^|\/)\.{1,2}(\/|$)|\/\//.test(publicId) ||
-      !urlMatchesPublicId(url, publicId)
+      !urlMatchesPublicId(url, publicId) ||
+      (cloudName !== undefined && imageCloudName(url) !== cloudName)
     ) {
       throw invalid("images", "Image does not belong to this organization");
     }
+    if (seen.has(publicId)) throw invalid("images", "Each image can be attached only once");
+    seen.add(publicId);
     return { url, publicId, width, height };
   });
 }
@@ -320,16 +314,12 @@ function patchFields(orgId: string, patch: ProductPatch): Fields {
 // ---- locks ---------------------------------------------------------------------------------
 
 function newLockData(organizationId: string, productId: string) {
-  return { organizationId, productId, createdAt: FieldValue.serverTimestamp() };
+  return newLock(organizationId, "productId", productId);
 }
 
 /** True when the lock document exists and belongs to this product in this organization. */
 function ownsLock(snap: DocumentSnapshot, organizationId: string, productId: string): boolean {
-  return (
-    snap.exists &&
-    snap.get("organizationId") === organizationId &&
-    snap.get("productId") === productId
-  );
+  return ownsLockOf(snap, organizationId, "productId", productId);
 }
 
 /** The category must exist in the caller's organization (same NotFound-style answer as missing). */
@@ -348,16 +338,20 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
   const variants = fields.variants as ProductVariant[];
   const unitIds = variants.length > 0 ? variants.map((v) => v.id) : [DEFAULT_VARIANT_ID];
   const skuRef = skuLockRef(orgId, sku);
-  const candidates = slugCandidates(baseSlug(fields.name as string, sku));
-  const slugRefs = candidates.map((c) => slugLockRef(orgId, c));
+  const base = baseSlug(fields.name as string, sku);
+  const candidates = slugCandidates(base);
+  const candidateRefs = candidates.map((c) => slugLockRef(orgId, c));
 
+  // After a lost race the sequential candidates are skipped: every loser would otherwise
+  // re-probe the same next suffix and lose again.
+  let useRandomSlug = false;
   for (let attempt = 1; attempt <= CREATE_ATTEMPTS; attempt++) {
-    // Probe (see UNIQUENESS above): picks the first free slug and reports a taken SKU early.
-    const probe = await adminDb().getAll(skuRef, ...slugRefs);
+    // Probe (see UNIQUENESS above): picks the slug and reports a taken SKU early.
+    const probe = await adminDb().getAll(skuRef, ...(useRandomSlug ? [] : candidateRefs));
     if (probe[0]!.exists) throw new ConflictError(DUPLICATE_SKU_MESSAGE);
-    const free = probe.slice(1).findIndex((s) => !s.exists);
-    if (free < 0) throw new ConflictError(SLUG_EXHAUSTED_MESSAGE);
-    const slug = candidates[free]!;
+    const free = useRandomSlug ? -1 : probe.slice(1).findIndex((s) => !s.exists);
+    const slug = free >= 0 ? candidates[free]! : randomSlug(base);
+    const slugRef = free >= 0 ? candidateRefs[free]! : slugLockRef(orgId, slug);
 
     let id = "";
     try {
@@ -369,7 +363,7 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
         const { ref, data } = buildProduct(orgId, { ...fields, slug });
         id = ref.id;
         tx.create(skuRef, newLockData(orgId, ref.id));
-        tx.create(slugRefs[free]!, newLockData(orgId, ref.id));
+        tx.create(slugRef, newLockData(orgId, ref.id));
         tx.create(ref, data);
         for (const variantId of unitIds) {
           tx.create(
@@ -390,8 +384,12 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
         });
       });
     } catch (err) {
-      // Lost a race for the SKU or the slug: probe again and report the real cause.
-      if (isAlreadyExists(err)) continue;
+      // Lost a race for the SKU or the slug: the next probe reports a real SKU conflict as
+      // such; a slug race is resolved with a random suffix, so it cannot fail again.
+      if (isAlreadyExists(err)) {
+        useRandomSlug = true;
+        continue;
+      }
       throw err;
     }
     return getProduct(ctx, id);
@@ -403,7 +401,7 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
 
 export async function getProduct(ctx: ProductCtx, id: string): Promise<Product> {
   assertCtx(ctx);
-  assertProductId(id);
+  assertEntityId(id);
   const doc = await productRepo.get(ctx.organizationId, id);
   if (!doc) throw new NotFoundError();
   return toProduct(doc);
@@ -429,7 +427,7 @@ export async function updateProduct(
   patch: ProductPatch,
 ): Promise<Product> {
   assertCtx(ctx);
-  assertProductId(id);
+  assertEntityId(id);
   const orgId = ctx.organizationId;
   const next = patchFields(orgId, patch);
 
@@ -554,7 +552,7 @@ export async function updateProduct(
  */
 export async function archiveProduct(ctx: ProductCtx, id: string): Promise<Product> {
   assertCtx(ctx);
-  assertProductId(id);
+  assertEntityId(id);
   await adminDb().runTransaction(async (tx: Transaction) => {
     const ref = productRepo.docRef(id);
     const current = productRepo.fromSnapshot(await tx.get(ref), ctx.organizationId);

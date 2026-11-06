@@ -36,7 +36,9 @@ import { FieldValue, type DocumentSnapshot, type Transaction } from "firebase-ad
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { isAlreadyExists } from "@/lib/firestore-errors";
-import { isValidIdSegment } from "@/lib/ids";
+import { assertEntityId as assertCustomerId, assertOrgCtx } from "@/lib/org-context";
+import { newLockData as newLock, ownsLock as ownsLockOf } from "@/lib/locks";
+import { stableJson } from "@/lib/stable-json";
 import { normalizePhone } from "@/lib/phone";
 import { writeAuditInTransaction } from "@/lib/security/audit";
 import { invalid } from "@/lib/validation-error";
@@ -86,20 +88,7 @@ const CLEARABLE = new Set<string>(["email", "whatsappNumber", "address", "leadSo
 type Fields = Record<string, unknown>;
 
 function assertCtx(ctx: CustomerCtx): void {
-  // Fail closed: a missing organization must never reach a query.
-  if (
-    !ctx ||
-    !isValidIdSegment(ctx.organizationId) ||
-    typeof ctx.uid !== "string" ||
-    ctx.uid.trim() === ""
-  ) {
-    throw new Error("Customer service requires an organization and user context");
-  }
-}
-
-/** Invalid ids get the same NotFound as missing ones, so ids cannot be probed. */
-function assertCustomerId(id: unknown): asserts id is string {
-  if (!isValidIdSegment(id)) throw new NotFoundError();
+  assertOrgCtx(ctx, "Customer");
 }
 
 /** Public shape: the stored document minus the service-internal keys. */
@@ -127,17 +116,6 @@ function auditValues(fields: Fields): Fields {
   const consent = fields.consent as { status?: unknown } | undefined;
   if (consent?.status !== undefined) out.consentStatus = consent.status;
   return out;
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Fields)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
 }
 
 /** Consent timestamp is stored as an ISO-8601 string (same type the API accepts). */
@@ -221,16 +199,12 @@ function patchFields(patch: CustomerPatch, current: CustomerDoc): Fields {
 }
 
 function newLockData(organizationId: string, customerId: string, phoneE164: string) {
-  return { organizationId, customerId, phoneE164, createdAt: FieldValue.serverTimestamp() };
+  return newLock(organizationId, "customerId", customerId, { phoneE164 });
 }
 
 /** True when the lock document exists and belongs to this customer in this organization. */
 function ownsLock(snap: DocumentSnapshot, organizationId: string, customerId: string): boolean {
-  return (
-    snap.exists &&
-    snap.get("organizationId") === organizationId &&
-    snap.get("customerId") === customerId
-  );
+  return ownsLockOf(snap, organizationId, "customerId", customerId);
 }
 
 /** Reads the customer inside the transaction; NotFound when missing or in another organization. */

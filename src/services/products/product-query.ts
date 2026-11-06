@@ -15,16 +15,22 @@
  */
 import { z } from "zod";
 
-import { ValidationError, type ValidationDetail } from "@/lib/errors";
 import { isValidIdSegment } from "@/lib/ids";
+import {
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+  MAX_SEARCH_LENGTH,
+  cursorParam,
+  limitParam,
+  optionalParam,
+  parseQueryParams,
+  staticInvalid as invalid,
+} from "@/lib/list-params";
 import { PREFIX_END, hasLoneSurrogate, sortKey } from "@/lib/text";
-import { invalid as fieldError } from "@/lib/validation-error";
 import type { WhereClause } from "@/repositories/base";
 import { AVAILABILITIES, type Availability } from "@/schemas/product";
 
-export const DEFAULT_LIMIT = 25;
-export const MAX_LIMIT = 50;
-export const MAX_SEARCH_LENGTH = 64;
+export { DEFAULT_LIMIT, MAX_LIMIT, MAX_SEARCH_LENGTH };
 
 export type SortName = "createdAt" | "name" | "updatedAt";
 export type SortDir = "asc" | "desc";
@@ -65,11 +71,6 @@ export interface ListPlan {
   limit: number;
   cursor?: string;
   shape: QueryShape;
-}
-
-/** Static messages only (never echo caller input); the message is also the envelope summary. */
-function invalid(path: string, message: string): ValidationError {
-  return fieldError(path, message, message);
 }
 
 /** The stored name sort/search key (see `sortKey`); queries go through the same function. */
@@ -162,28 +163,17 @@ export function buildListPlan(q: ProductListQuery): ListPlan {
 
 // ---- HTTP query-string parsing ---------------------------------------------------------
 
-const optional = <T extends z.ZodType>(schema: T) =>
-  z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
-
 const listParamsSchema = z.object({
-  q: optional(z.string().max(MAX_SEARCH_LENGTH)),
-  sku: optional(z.string().max(MAX_SEARCH_LENGTH)),
-  availability: optional(z.enum(AVAILABILITIES)),
-  categoryId: optional(z.string().refine((v) => isValidIdSegment(v))),
-  archived: optional(z.enum(["true", "false"])),
-  sort: optional(z.enum(["createdAt", "name", "updatedAt"])),
-  dir: optional(z.enum(["asc", "desc"])),
-  limit: optional(
-    z
-      .string()
-      .regex(/^\d{1,3}$/)
-      .transform(Number)
-      .pipe(z.number().int().min(1).max(MAX_LIMIT)),
-  ),
-  cursor: optional(z.string().max(1024)),
+  q: optionalParam(z.string().max(MAX_SEARCH_LENGTH)),
+  sku: optionalParam(z.string().max(MAX_SEARCH_LENGTH)),
+  availability: optionalParam(z.enum(AVAILABILITIES)),
+  categoryId: optionalParam(z.string().refine((v) => isValidIdSegment(v))),
+  archived: optionalParam(z.enum(["true", "false"])),
+  sort: optionalParam(z.enum(["createdAt", "name", "updatedAt"])),
+  dir: optionalParam(z.enum(["asc", "desc"])),
+  limit: limitParam(MAX_LIMIT),
+  cursor: cursorParam(),
 });
-
-const PARAM_KEYS = Object.keys(listParamsSchema.shape);
 
 /**
  * Parses `?q&sku&availability&categoryId&archived&sort&dir&limit&cursor`. Unknown params are
@@ -191,25 +181,7 @@ const PARAM_KEYS = Object.keys(listParamsSchema.shape);
  * and static messages. Empty values count as absent.
  */
 export function parseListParams(params: URLSearchParams): ProductListQuery {
-  const raw: Record<string, string> = {};
-  const details: ValidationDetail[] = [];
-  for (const key of PARAM_KEYS) {
-    const values = params.getAll(key);
-    if (values.length > 1) details.push({ path: key, message: "Provide only one value" });
-    else if (values.length === 1) raw[key] = values[0]!;
-  }
-  if (details.length > 0) throw new ValidationError(details);
-
-  const parsed = listParamsSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new ValidationError(
-      parsed.error.issues.map((i) => ({
-        path: String(i.path[0] ?? "query"),
-        message: "Invalid value",
-      })),
-    );
-  }
-  const p = parsed.data;
+  const p = parseQueryParams(params, listParamsSchema);
   const sort = p.sort ?? "createdAt";
   const out: ProductListQuery = { sort, dir: p.dir ?? (sort === "name" ? "asc" : "desc") };
   if (p.q !== undefined) out.q = p.q;

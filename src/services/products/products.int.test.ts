@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { __resetEnvCacheForTests } from "@/config/env";
 import { adminDb } from "@/lib/firebase/admin";
 import { categoryInputSchema, productInputSchema, productPatchSchema } from "@/schemas/product";
 
@@ -79,21 +80,24 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  for (const org of orgs) {
-    for (const col of [
-      "products",
-      "productSkus",
-      "productSlugs",
-      "inventory",
-      "categories",
-      "categoryNames",
-      "auditLogs",
-    ]) {
-      const docs = await docsOf(col, org);
-      await Promise.all(docs.map((d) => db().recursiveDelete(d.ref)));
-    }
-  }
-});
+  const collections = [
+    "products",
+    "productSkus",
+    "productSlugs",
+    "inventory",
+    "categories",
+    "categoryNames",
+    "auditLogs",
+  ];
+  await Promise.all(
+    orgs.flatMap((org) =>
+      collections.map(async (col) => {
+        const docs = await docsOf(col, org);
+        await Promise.all(docs.map((d) => db().recursiveDelete(d.ref)));
+      }),
+    ),
+  );
+}, 60_000);
 
 describe("createProduct", () => {
   it("stores managed fields, locks, a default inventory doc and one audit entry", async () => {
@@ -253,7 +257,7 @@ describe("createProduct", () => {
     );
     const slugs = created.map((p) => p.slug);
     expect(new Set(slugs).size).toBe(5);
-    expect(slugs.every((s) => s === "blue-shirt" || /^blue-shirt-\d+$/.test(s))).toBe(true);
+    expect(slugs.every((s) => /^blue-shirt(-\d|-[0-9a-f]{6})?$/.test(s))).toBe(true);
     expect(await countAll(ctx)).toEqual({
       products: 5,
       skus: 5,
@@ -273,20 +277,71 @@ describe("createProduct", () => {
     expect(nothing.slug).toBe("product");
   });
 
-  it("fails with a ConflictError after 20 colliding slugs", async () => {
+  it("10 truly concurrent same-name creates with distinct SKUs all succeed with distinct slugs", async () => {
     const ctx = newCtx();
-    const seeds = Array.from({ length: 20 }, (_, i) => (i === 0 ? "full" : `full-${i + 1}`));
-    await Promise.all(
-      seeds.map((s) =>
-        slugLock(ctx.organizationId, s).set({
-          organizationId: ctx.organizationId,
-          productId: "x",
-          createdAt: new Date(),
-        }),
+    const created = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        createProduct(ctx, make({ name: "Hot Shirt", sku: `hot-${i}` })),
       ),
     );
-    const err = await rejection(createProduct(ctx, make({ name: "Full" })));
-    expect(err).toBeInstanceOf(ConflictError);
+    const slugs = created.map((p) => p.slug);
+    expect(new Set(slugs).size).toBe(10);
+    expect(slugs.every((s) => /^hot-shirt(-\d|-[0-9a-f]{6})?$/.test(s))).toBe(true);
+    expect(await countAll(ctx)).toEqual({
+      products: 10,
+      skus: 10,
+      slugs: 10,
+      inventory: 10,
+      audits: 10,
+    });
+  });
+
+  it("more than 20 same-name products created one after another all succeed", async () => {
+    const ctx = newCtx();
+    const slugs: string[] = [];
+    for (let i = 0; i < 24; i++) {
+      slugs.push((await createProduct(ctx, make({ name: "Same Name", sku: `same-${i}` }))).slug);
+    }
+    expect(slugs.slice(0, 5)).toEqual([
+      "same-name",
+      "same-name-2",
+      "same-name-3",
+      "same-name-4",
+      "same-name-5",
+    ]);
+    expect(slugs.slice(5).every((s) => /^same-name-[0-9a-f]{6}$/.test(s))).toBe(true);
+    expect(new Set(slugs).size).toBe(24);
+    expect((await countAll(ctx)).slugs).toBe(24);
+  });
+
+  it("a taken SKU is still a ConflictError when it is lost together with a slug race", async () => {
+    const ctx = newCtx();
+    const results = await Promise.allSettled([
+      createProduct(ctx, make({ name: "Dup Race", sku: "dr-1" })),
+      createProduct(ctx, make({ name: "Dup Race", sku: "dr-1" })),
+      createProduct(ctx, make({ name: "Dup Race", sku: "dr-2" })),
+    ]);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
+    expect((await countAll(ctx)).products).toBe(2);
+  });
+
+  it("gives up with a static ConflictError when every commit keeps hitting ALREADY_EXISTS", async () => {
+    const ctx = newCtx();
+    const spy = vi
+      .spyOn(adminDb(), "runTransaction")
+      .mockRejectedValue(Object.assign(new Error("exists"), { code: 6 }));
+    try {
+      const err = await rejection(createProduct(ctx, make()));
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as Error).message).toBe(
+        "The product could not be saved because of a concurrent change; please try again",
+      );
+      expect(spy).toHaveBeenCalledTimes(5);
+    } finally {
+      spy.mockRestore();
+    }
     expect((await countAll(ctx)).products).toBe(0);
   });
 
@@ -355,6 +410,64 @@ describe("createProduct", () => {
     expect(
       await rejection(createProduct(ctx, { ...make(), images: [foreignUrl] } as never)),
     ).toBeInstanceOf(ValidationError);
+  });
+
+  it("rejects the same image attached twice, on create and on update", async () => {
+    const ctx = newCtx();
+    const dup = [image(ctx.organizationId, 1), image(ctx.organizationId, 1)];
+    const raw = { ...make(), images: dup };
+    expect(await rejection(createProduct(ctx, raw as never))).toBeInstanceOf(ValidationError);
+    const p = await createProduct(ctx, make());
+    const sneaky = { images: dup } as never;
+    expect(await rejection(updateProduct(ctx, p.id, sneaky))).toBeInstanceOf(ValidationError);
+  });
+
+  describe("Cloudinary cloud binding", () => {
+    const stubCloud = (name: string) => {
+      vi.stubEnv("CLOUDINARY_CLOUD_NAME", name);
+      vi.stubEnv("CLOUDINARY_API_KEY", "key");
+      vi.stubEnv("CLOUDINARY_API_SECRET", "secret");
+      __resetEnvCacheForTests();
+    };
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      __resetEnvCacheForTests();
+    });
+
+    it("accepts an image of the configured cloud", async () => {
+      const ctx = newCtx();
+      stubCloud("demo");
+      const p = await createProduct(ctx, make({ images: [image(ctx.organizationId)] }));
+      expect(p.images).toHaveLength(1);
+    });
+
+    it("rejects an image of a foreign cloud, even under the callers own folder", async () => {
+      const ctx = newCtx();
+      stubCloud("mine");
+      const foreign = image(ctx.organizationId); // cloud "demo" is not "mine"
+      expect(await rejection(createProduct(ctx, make({ images: [foreign] })))).toBeInstanceOf(
+        ValidationError,
+      );
+      const p = await createProduct(ctx, make());
+      expect(
+        await rejection(updateProduct(ctx, p.id, patch({ images: [foreign] }))),
+      ).toBeInstanceOf(ValidationError);
+      expect((await countAll(ctx)).products).toBe(1);
+    });
+
+    it("unconfigured keeps the shape check only (any cloud name passes)", async () => {
+      const ctx = newCtx();
+      for (const key of ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"]) {
+        vi.stubEnv(key, "");
+      }
+      __resetEnvCacheForTests();
+      const other = image(ctx.organizationId).url.replace("/demo/", "/anything/");
+      const p = await createProduct(
+        ctx,
+        make({ images: [{ ...image(ctx.organizationId), url: other }] }),
+      );
+      expect(p.images).toHaveLength(1);
+    });
   });
 
   it("requires the category to exist in the same organization", async () => {
@@ -484,6 +597,27 @@ describe("updateProduct", () => {
     expect(after).toMatchObject({ sku: "A-1" });
     expect(after.name).not.toBe("Renamed");
     expect((await skuLock(ctx.organizationId, "A-1").get()).exists).toBe(true);
+  });
+
+  it("two concurrent PATCHes moving different products to one new SKU: one wins, one conflicts", async () => {
+    const ctx = newCtx();
+    const a = await createProduct(ctx, make({ sku: "pa-1" }));
+    const b = await createProduct(ctx, make({ sku: "pb-1" }));
+    const results = await Promise.allSettled([
+      updateProduct(ctx, a.id, patch({ sku: "target-1" })),
+      updateProduct(ctx, b.id, patch({ sku: "target-1" })),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(lost.reason).toBeInstanceOf(ConflictError);
+    expect((lost.reason as Error).message).toBe("A product with this SKU already exists");
+
+    const winner = results[0]!.status === "fulfilled" ? a : b;
+    const loser = winner === a ? b : a;
+    expect((await skuLock(ctx.organizationId, "TARGET-1").get()).get("productId")).toBe(winner.id);
+    expect((await getProduct(ctx, loser.id)).sku).toBe(loser.sku);
+    expect((await skuLock(ctx.organizationId, loser.sku).get()).get("productId")).toBe(loser.id);
+    expect((await skuLock(ctx.organizationId, winner.sku).get()).exists).toBe(false);
   });
 
   it("setting the same SKU again is a no-op for the locks", async () => {
