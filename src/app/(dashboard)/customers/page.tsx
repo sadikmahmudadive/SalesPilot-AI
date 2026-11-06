@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
-import { Users } from "lucide-react";
 
-import { PageHeader } from "@/components/dashboard/page-header";
-import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
+import { CustomerList } from "@/components/customers/customer-list";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
 
 export const metadata: Metadata = { title: "Customers" };
 
-// TEMPORARY stub: replaced by the real customers page in Task 16.
-export default function Page() {
-  return (
-    <div>
-      <PageHeader title="Customers" />
-      <PlaceholderCard icon={Users}>Customer records, contact details and conversation history will be listed here. This page is being built.</PlaceholderCard>
-    </div>
-  );
+export default async function CustomersPage() {
+  // The layout guard only runs on hard loads, so data pages verify the session themselves.
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  return <CustomerList role={ctx.role} />;
 }
