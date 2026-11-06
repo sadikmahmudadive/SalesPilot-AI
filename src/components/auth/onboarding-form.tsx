@@ -117,8 +117,8 @@ export function OnboardingForm() {
         title="Set up your organization"
         description="One last step. Name your workspace to get started."
       />
+      <FormAlert message={formError} />
       <div className="space-y-5">
-        <FormAlert message={formError} />
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <TextField
             label="Your name"

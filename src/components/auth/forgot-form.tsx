@@ -8,6 +8,7 @@ import { MailCheck } from "lucide-react";
 import { useForm } from "react-hook-form";
 
 import { AuthCardHeader } from "@/components/auth/auth-card-header";
+import { AuthLink } from "@/components/auth/auth-link";
 import { FormAlert } from "@/components/auth/form-alert";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { TextField } from "@/components/auth/text-field";
@@ -16,9 +17,6 @@ import { authErrorCode, mapAuthError } from "@/lib/auth/client-flow";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { cn } from "@/lib/utils";
 import { forgotSchema, type ForgotValues } from "@/schemas/auth";
-
-const LINK_CLASS =
-  "rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50";
 
 export function ForgotForm() {
   const [sent, setSent] = useState(false);
@@ -44,7 +42,7 @@ export function ForgotForm() {
         setSent(true);
         return;
       }
-      setFormError(mapAuthError(code) || null);
+      setFormError(mapAuthError(code));
     }
   }
 
@@ -73,8 +71,8 @@ export function ForgotForm() {
         title="Reset your password"
         description="Enter your email and we will send you a link to choose a new one."
       />
+      <FormAlert message={formError} />
       <div className="space-y-5">
-        <FormAlert message={formError} />
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <TextField
             label="Email"
@@ -89,9 +87,9 @@ export function ForgotForm() {
         </form>
         <p className="text-center text-sm text-muted-foreground">
           Remembered it?{" "}
-          <Link href="/login" className={`${LINK_CLASS} font-medium text-foreground`}>
+          <AuthLink href="/login" className="font-medium text-foreground">
             Back to sign in
-          </Link>
+          </AuthLink>
         </p>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { authErrorCode, isSilentAuthError, mapAuthError } from "@/lib/auth/client-flow";
+import { authErrorCode, mapAuthError } from "@/lib/auth/client-flow";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 
 function GoogleMark() {
@@ -17,8 +17,8 @@ function GoogleMark() {
 
 /**
  * Opens the Google popup and hands the fresh ID token to `onToken` (which returns an error
- * message, or null when it is navigating away). `onStart` clears the parent's error and marks it
- * pending; `onFail` is called only on failure (message null = failed silently, e.g. popup closed)
+ * message, or null when it is navigating away). `onStart` takes the parent's submit lock;
+ * `onFail` is called only on failure (message null = failed silently, e.g. popup closed)
  * so the parent can show the banner and re-enable the form. On success nothing more is called.
  */
 export function GoogleButton({
@@ -30,19 +30,20 @@ export function GoogleButton({
 }: {
   loading: boolean;
   disabled: boolean;
-  onStart: () => void;
+  /** Returns false when another action is already running; the click is then ignored. */
+  onStart: () => boolean;
   onToken: (idToken: string) => Promise<string | null>;
   onFail: (message: string | null) => void;
 }) {
   async function handleClick() {
-    onStart();
+    if (!onStart()) return;
     try {
       const credential = await signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider());
       const message = await onToken(await credential.user.getIdToken());
       if (message) onFail(message);
     } catch (error) {
       const code = authErrorCode(error);
-      onFail(isSilentAuthError(code) ? null : mapAuthError(code));
+      onFail(mapAuthError(code));
     }
   }
 

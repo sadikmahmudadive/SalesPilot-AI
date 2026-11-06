@@ -4,8 +4,8 @@ import {
   endSession,
   exchangeSession,
   fetchMe,
-  isSilentAuthError,
   mapAuthError,
+  registerAccount,
   registerOrganizationRequest,
   resolvePostSignIn,
 } from "./client-flow";
@@ -160,37 +160,180 @@ describe("endSession", () => {
 
 describe("mapAuthError", () => {
   const GENERIC_CREDS = "Incorrect email or password.";
+  const GENERIC = "Something went wrong. Please try again.";
 
-  it.each(["auth/wrong-password", "auth/user-not-found", "auth/invalid-credential", "auth/invalid-login-credentials"])(
-    "maps %s to the same generic credentials message",
-    (code) => {
-      expect(mapAuthError(code)).toBe(GENERIC_CREDS);
-    },
-  );
+  // Exhaustive: every code the mapper knows about, with its exact outcome.
+  const TABLE: Array<[string, string | null]> = [
+    ["auth/wrong-password", GENERIC_CREDS],
+    ["auth/user-not-found", GENERIC_CREDS],
+    ["auth/invalid-credential", GENERIC_CREDS],
+    ["auth/invalid-login-credentials", GENERIC_CREDS],
+    ["auth/user-disabled", GENERIC_CREDS],
+    ["auth/email-already-in-use", "An account with this email already exists. Try signing in instead."],
+    [
+      "auth/account-exists-with-different-credential",
+      "This email is already linked to a different sign-in method. Use the method you originally signed up with.",
+    ],
+    ["auth/weak-password", "Choose a stronger password with at least 10 characters."],
+    ["auth/too-many-requests", "Too many attempts. Please wait a few minutes and try again."],
+    ["auth/network-request-failed", "Network problem. Check your connection and try again."],
+    ["auth/popup-blocked", "Your browser blocked the sign-in popup. Allow popups and try again."],
+    ["auth/popup-closed-by-user", null],
+    ["auth/cancelled-popup-request", null],
+  ];
+
+  it.each(TABLE)("maps %s", (code, expected) => {
+    expect(mapAuthError(code)).toBe(expected);
+  });
 
   it("accepts codes without the auth/ prefix", () => {
     expect(mapAuthError("wrong-password")).toBe(GENERIC_CREDS);
+    expect(mapAuthError("popup-closed-by-user")).toBeNull();
   });
 
-  it("covers the other listed codes with friendly messages", () => {
-    expect(mapAuthError("auth/email-already-in-use")).toMatch(/already/i);
-    expect(mapAuthError("auth/weak-password")).toMatch(/password/i);
-    expect(mapAuthError("auth/too-many-requests")).toMatch(/too many|try again/i);
-    expect(mapAuthError("auth/network-request-failed")).toMatch(/network|connection/i);
-  });
-
-  it("shows nothing when the user closes the popup", () => {
-    expect(mapAuthError("auth/popup-closed-by-user")).toBe("");
-    expect(isSilentAuthError("auth/popup-closed-by-user")).toBe(true);
-    expect(isSilentAuthError("auth/cancelled-popup-request")).toBe(true);
-    expect(isSilentAuthError("auth/wrong-password")).toBe(false);
+  it("never reveals account existence through the credential errors", () => {
+    const codes = ["wrong-password", "user-not-found", "invalid-credential", "invalid-login-credentials", "user-disabled"];
+    expect(new Set(codes.map((c) => mapAuthError(`auth/${c}`))).size).toBe(1);
   });
 
   it("falls back to a generic message for unknown codes and never echoes raw text", () => {
-    const raw = "auth/some-new-code <b>x</b> secret@example.com";
-    const message = mapAuthError(raw);
-    expect(message).toBe("Something went wrong. Please try again.");
+    const message = mapAuthError("auth/some-new-code <b>x</b> secret@example.com");
+    expect(message).toBe(GENERIC);
     expect(message).not.toContain("secret");
-    expect(mapAuthError("")).toBe("Something went wrong. Please try again.");
+    expect(mapAuthError("")).toBe(GENERIC);
+  });
+});
+
+describe("registerAccount", () => {
+  const input = {
+    displayName: "Ada",
+    organizationName: "Acme",
+    email: "ada@example.com",
+    password: "correct-horse-battery",
+    next: "/orders",
+  };
+
+  interface FakeUser {
+    uid: string;
+  }
+
+  function makeDeps(
+    overrides: { create?: () => Promise<void>; profile?: () => Promise<void>; token?: () => Promise<string> } = {},
+  ) {
+    const calls: string[] = [];
+    const user: FakeUser = { uid: "u1" };
+    const deps = {
+      createUser: vi.fn(async () => {
+        calls.push("createUser");
+        await overrides.create?.();
+        return user;
+      }),
+      updateProfile: vi.fn(async () => {
+        calls.push("updateProfile");
+        await overrides.profile?.();
+      }),
+      getIdToken: vi.fn(async () => {
+        calls.push("getIdToken");
+        return overrides.token ? overrides.token() : "id-token";
+      }),
+    };
+    return { calls, user, deps };
+  }
+
+  function fetchSequence(...responses: Array<Response | Error>) {
+    const fn = vi.fn();
+    for (const r of responses) {
+      if (r instanceof Error) fn.mockRejectedValueOnce(r);
+      else fn.mockResolvedValueOnce(r);
+    }
+    return fn;
+  }
+
+  it("succeeds in the documented order and returns the safe next path", async () => {
+    const { deps, calls, user } = makeDeps();
+    const inner = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
+    const tracked = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push(url);
+      return inner(url, init);
+    });
+    const result = await registerAccount({ ...deps, fetch: asFetch(tracked) }, input);
+    expect(result).toEqual({ outcome: "success", path: "/orders" });
+    expect(calls).toEqual(["createUser", "updateProfile", "getIdToken", "/api/auth/session", "/api/organizations/register"]);
+    expect(deps.createUser).toHaveBeenCalledWith("ada@example.com", "correct-horse-battery");
+    expect(deps.updateProfile).toHaveBeenCalledWith(user, "Ada");
+    expect(deps.getIdToken).toHaveBeenCalledWith(user);
+    expect(JSON.parse(inner.mock.calls[0]![1].body)).toEqual({ idToken: "id-token" });
+    expect(JSON.parse(inner.mock.calls[1]![1].body)).toEqual({ organizationName: "Acme", displayName: "Ada" });
+  });
+
+  it.each(["//evil.com", "https://evil.com/x", "/\\evil.com", undefined])(
+    "falls back to /dashboard for hostile or missing next (%s)",
+    async (next) => {
+      const { deps } = makeDeps();
+      const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
+      const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, { ...input, next });
+      expect(result).toEqual({ outcome: "success", path: "/dashboard" });
+    },
+  );
+
+  it("treats an already-existing organization (200) as success", async () => {
+    const { deps } = makeDeps();
+    const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: false }, 200));
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("success");
+  });
+
+  it("returns auth-failed with the mapped message when creating the user fails, and does nothing else", async () => {
+    const { deps } = makeDeps({ create: () => Promise.reject({ code: "auth/email-already-in-use" }) });
+    const fetchFn = vi.fn();
+    const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input);
+    expect(result).toEqual({
+      outcome: "auth-failed",
+      message: "An account with this email already exists. Try signing in instead.",
+    });
+    expect(deps.updateProfile).not.toHaveBeenCalled();
+    expect(deps.getIdToken).not.toHaveBeenCalled();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("keeps going when updateProfile fails (cosmetic)", async () => {
+    const { deps } = makeDeps({ profile: () => Promise.reject(new Error("profile down")) });
+    const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("success");
+  });
+
+  it("returns session-failed (account exists, never re-register) when the session exchange fails", async () => {
+    const { deps } = makeDeps();
+    const fetchFn = fetchSequence(envelope("RATE_LIMITED", "x", 429));
+    const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input);
+    expect(result.outcome).toBe("session-failed");
+    expect(JSON.stringify(result)).toMatch(/account was created/i);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns session-failed when the ID token cannot be read after creation", async () => {
+    const { deps } = makeDeps({ token: () => Promise.reject(new Error("token")) });
+    const fetchFn = vi.fn();
+    const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input);
+    expect(result.outcome).toBe("session-failed");
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["server error", () => envelope("INTERNAL", "boom", 500)],
+    ["validation", () => envelope("VALIDATION_ERROR", "x", 400)],
+    ["unauthenticated", () => envelope("UNAUTHENTICATED", "x", 401)],
+    ["rate limit", () => envelope("RATE_LIMITED", "x", 429)],
+  ])("returns onboarding when organization registration fails (%s)", async (_name, make) => {
+    const { deps } = makeDeps();
+    const fetchFn = fetchSequence(json({ ok: true }), make());
+    const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input);
+    expect(result.outcome).toBe("onboarding");
+    expect(JSON.stringify(result)).not.toContain("boom");
+  });
+
+  it("returns onboarding when organization registration hits a network failure", async () => {
+    const { deps } = makeDeps();
+    const fetchFn = fetchSequence(json({ ok: true }), new TypeError("Failed to fetch"));
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("onboarding");
   });
 });

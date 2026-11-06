@@ -46,7 +46,7 @@ export function TextField({ label, error, labelAction, type, className, ...props
             variant="ghost"
             size="icon-sm"
             className="absolute top-1/2 right-0.5 -translate-y-1/2 text-muted-foreground"
-            aria-label={revealed ? "Hide password" : "Show password"}
+            aria-label="Show password"
             aria-pressed={revealed}
             onClick={() => setRevealed((v) => !v)}
           >

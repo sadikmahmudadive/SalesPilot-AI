@@ -7,11 +7,14 @@
  * echoed to the user.
  */
 
+import { safeNextPath } from "@/lib/auth/redirect";
+
 export type FetchFn = typeof fetch;
 
 export const GENERIC_ERROR = "Something went wrong. Please try again.";
 const NETWORK_ERROR = "Network problem. Check your connection and try again.";
 const RATE_LIMITED = "Too many attempts. Please wait a minute and try again.";
+export const SESSION_EXPIRED = "Your session has expired. Please sign in again.";
 const SESSION_ERROR = "We could not start your session. Please try again.";
 
 export interface MeResponse {
@@ -91,7 +94,7 @@ export async function fetchMe(fetchFn: FetchFn): Promise<MeResult> {
   if (raw.status === 200) {
     return isMe(raw.body) ? { status: "ok", me: raw.body } : { status: "error", message: GENERIC_ERROR };
   }
-  if (raw.status === 401) return { status: "unauthenticated", message: "Your session has expired. Please sign in again." };
+  if (raw.status === 401) return { status: "unauthenticated", message: SESSION_EXPIRED };
   if (raw.status === 403) return { status: "no_organization", message: "No organization found for this account." };
   if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
   return { status: "error", message: GENERIC_ERROR };
@@ -111,7 +114,7 @@ export async function registerOrganizationRequest(
     }
     return { status: "error", message: GENERIC_ERROR };
   }
-  if (raw.status === 401) return { status: "unauthenticated", message: "Your session has expired. Please sign in again." };
+  if (raw.status === 401) return { status: "unauthenticated", message: SESSION_EXPIRED };
   if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
   if (raw.status === 400) return { status: "invalid", message: "Please check the details you entered and try again." };
   return { status: "error", message: "We could not create your organization. Please try again." };
@@ -130,35 +133,38 @@ export async function resolvePostSignIn(idToken: string, fetchFn: FetchFn): Prom
   return { to: "error", message: me.message };
 }
 
+/**
+ * Wrong password, unknown user, invalid credential and a disabled account all share one
+ * message so the UI never reveals whether an account exists. `user-disabled` is mapped here
+ * deliberately: a distinct "this account is disabled" message would confirm the account exists.
+ */
 const CREDENTIAL_ERRORS = new Set([
   "wrong-password",
   "user-not-found",
   "invalid-credential",
   "invalid-login-credentials",
+  "user-disabled",
 ]);
+/** The user simply closed or superseded the Google popup: show nothing. */
 const SILENT_ERRORS = new Set(["popup-closed-by-user", "cancelled-popup-request"]);
 
 function normaliseCode(code: string): string {
   return code.startsWith("auth/") ? code.slice(5) : code;
 }
 
-/** True for errors that must not be shown (the user simply closed the Google popup). */
-export function isSilentAuthError(code: string): boolean {
-  return SILENT_ERRORS.has(normaliseCode(code));
-}
-
 /**
- * Maps a Firebase auth error code to a friendly fixed message. Wrong password, unknown
- * user and invalid credential share one message so the UI never reveals whether an
- * account exists. Returns "" for silent errors. Unknown codes get the generic message.
+ * Maps a Firebase auth error code to a friendly fixed message, or null when nothing should be
+ * shown (popup closed). Unknown codes get the generic message; raw text is never echoed.
  */
-export function mapAuthError(code: string): string {
+export function mapAuthError(code: string): string | null {
   const c = normaliseCode(code);
-  if (SILENT_ERRORS.has(c)) return "";
+  if (SILENT_ERRORS.has(c)) return null;
   if (CREDENTIAL_ERRORS.has(c)) return "Incorrect email or password.";
   switch (c) {
     case "email-already-in-use":
       return "An account with this email already exists. Try signing in instead.";
+    case "account-exists-with-different-credential":
+      return "This email is already linked to a different sign-in method. Use the method you originally signed up with.";
     case "weak-password":
       return "Choose a stronger password with at least 10 characters.";
     case "too-many-requests":
@@ -179,4 +185,77 @@ export function authErrorCode(error: unknown): string {
     if (typeof code === "string") return code;
   }
   return "";
+}
+
+export interface RegisterAccountDeps<U> {
+  createUser(email: string, password: string): Promise<U>;
+  updateProfile(user: U, displayName: string): Promise<void>;
+  getIdToken(user: U): Promise<string>;
+  fetch: FetchFn;
+}
+
+export interface RegisterAccountInput {
+  displayName: string;
+  organizationName: string;
+  email: string;
+  password: string;
+  /** Raw `next` query value; validated with safeNextPath before it is returned. */
+  next?: string | null;
+}
+
+export type RegisterAccountResult =
+  /** Fully registered; navigate to `path` (already validated). */
+  | { outcome: "success"; path: string }
+  /** Account and session exist but the organization was not created: send to onboarding to retry. */
+  | { outcome: "onboarding"; message: string }
+  /** The account exists but no session was started. Offer sign-in; never invite re-registering. */
+  | { outcome: "session-failed"; message: string }
+  /** The Firebase user was not created. `message` is null when nothing should be shown. */
+  | { outcome: "auth-failed"; message: string | null };
+
+const ACCOUNT_CREATED_SIGN_IN_FAILED = "Your account was created, but we could not sign you in.";
+const ONBOARDING_MESSAGE =
+  "Your account was created, but we could not set up your organization. Please finish setup to continue.";
+
+/**
+ * Email registration: create the Firebase user, set the display name (best effort), start the
+ * session, then create the organization. Never throws; the caller only does UI and navigation.
+ */
+export async function registerAccount<U>(
+  deps: RegisterAccountDeps<U>,
+  input: RegisterAccountInput,
+): Promise<RegisterAccountResult> {
+  let user: U;
+  try {
+    user = await deps.createUser(input.email, input.password);
+  } catch (error) {
+    return { outcome: "auth-failed", message: mapAuthError(authErrorCode(error)) };
+  }
+
+  try {
+    await deps.updateProfile(user, input.displayName);
+  } catch {
+    // Cosmetic only; the display name is also sent with the organization registration.
+  }
+
+  let idToken: string;
+  try {
+    idToken = await deps.getIdToken(user);
+  } catch {
+    return { outcome: "session-failed", message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${SESSION_ERROR}` };
+  }
+
+  const session = await exchangeSession(idToken, deps.fetch);
+  if (session.status !== "ok") {
+    return { outcome: "session-failed", message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${session.message}` };
+  }
+
+  const org = await registerOrganizationRequest(
+    { organizationName: input.organizationName, displayName: input.displayName },
+    deps.fetch,
+  );
+  if (org.status === "created" || org.status === "exists") {
+    return { outcome: "success", path: safeNextPath(input.next) };
+  }
+  return { outcome: "onboarding", message: ONBOARDING_MESSAGE };
 }
