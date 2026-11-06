@@ -32,15 +32,34 @@ export function securityHeaders(isDev: boolean): SecurityHeader[] {
   ];
   if (isDev) {
     // Firebase emulators and Next.js HMR websocket.
-    connectSrc.push("http://127.0.0.1:*", "http://localhost:*", "ws://localhost:*", "ws://127.0.0.1:*");
+    connectSrc.push(
+      "http://127.0.0.1:*",
+      "http://localhost:*",
+      "ws://localhost:*",
+      "ws://127.0.0.1:*",
+    );
   }
 
   const csp = buildCsp({
     "default-src": ["'self'"],
     // React uses eval in dev for enhanced debugging; production needs no eval.
-    "script-src": ["'self'", "'unsafe-inline'", ...(isDev ? ["'unsafe-eval'"] : [])],
+    // apis.google.com: @firebase/auth loads https://apis.google.com/js/api.js (gapi) for
+    // signInWithPopup/signInWithRedirect.
+    "script-src": [
+      "'self'",
+      "'unsafe-inline'",
+      "https://apis.google.com",
+      ...(isDev ? ["'unsafe-eval'"] : []),
+    ],
     "style-src": ["'self'", "'unsafe-inline'"],
-    "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+    // lh3.googleusercontent.com: Google account profile photos.
+    "img-src": [
+      "'self'",
+      "data:",
+      "blob:",
+      "https://res.cloudinary.com",
+      "https://lh3.googleusercontent.com",
+    ],
     "font-src": ["'self'", "data:"],
     "connect-src": connectSrc,
     // Firebase Auth popup/iframe handlers.

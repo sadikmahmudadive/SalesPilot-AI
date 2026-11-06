@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import nextConfig from "../../next.config";
 import { securityHeaders } from "./security-headers";
 
 function toMap(isDev: boolean): Map<string, string> {
@@ -62,8 +63,18 @@ describe("securityHeaders", () => {
     expect(cspOf(true).has("upgrade-insecure-requests")).toBe(false);
   });
 
-  it("allows Cloudinary images", () => {
-    expect(cspOf(false).get("img-src")).toContain("https://res.cloudinary.com");
+  it("allows Cloudinary images and Google profile photos", () => {
+    for (const dev of [true, false]) {
+      const img = cspOf(dev).get("img-src")!;
+      expect(img).toContain("https://res.cloudinary.com");
+      expect(img).toContain("https://lh3.googleusercontent.com");
+    }
+  });
+
+  it("allows the Google gapi script needed by Firebase popup/redirect sign-in", () => {
+    for (const dev of [true, false]) {
+      expect(cspOf(dev).get("script-src")).toContain("https://apis.google.com");
+    }
   });
 
   it("allows Firebase Auth/Firestore and Cloudinary upload hosts in connect-src", () => {
@@ -76,7 +87,10 @@ describe("securityHeaders", () => {
     ]) {
       expect(connect).toContain(host);
     }
+    expect(connect).not.toContain("http://127.0.0.1:*");
     expect(connect).not.toContain("http://localhost:*");
+    expect(connect.filter((v) => v.startsWith("ws://") || v.startsWith("wss://"))).toEqual([]);
+    expect(connect.filter((v) => v.startsWith("http://"))).toEqual([]);
   });
 
   it("allows emulator and HMR connections only in dev", () => {
@@ -96,7 +110,8 @@ describe("securityHeaders", () => {
       const csp = cspOf(dev);
       expect(csp.get("default-src")).toEqual(["'self'"]);
       const script = csp.get("script-src")!;
-      expect(script).not.toContain("*");
+      expect(script.filter((v) => v.includes("*"))).toEqual([]);
+      expect(csp.get("default-src")!.filter((v) => v.includes("*"))).toEqual([]);
       expect(script).not.toContain("data:");
       expect(script).not.toContain("blob:");
       expect(csp.get("object-src")).toEqual(["'none'"]);
@@ -121,5 +136,34 @@ describe("securityHeaders", () => {
       expect(cspOf(dev).get("frame-ancestors")).toEqual(["'none'"]);
       expect(toMap(dev).get("X-Frame-Options")).toBe("DENY");
     }
+  });
+});
+
+describe("next.config headers()", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function configured() {
+    const rules = await nextConfig.headers!();
+    expect(rules).toHaveLength(1);
+    return rules[0]!;
+  }
+
+  it("disables the X-Powered-By header", () => {
+    expect(nextConfig.poweredByHeader).toBe(false);
+  });
+
+  it.each([
+    ["development", true],
+    ["production", false],
+    ["test", false],
+    ["", false],
+    ["staging", false],
+  ])("applies securityHeaders for NODE_ENV=%j (isDev=%s)", async (env, isDev) => {
+    vi.stubEnv("NODE_ENV", env);
+    const rule = await configured();
+    expect(rule.source).toBe("/(.*)");
+    expect(rule.headers).toEqual(securityHeaders(isDev));
   });
 });
