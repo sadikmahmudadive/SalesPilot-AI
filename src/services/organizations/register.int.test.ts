@@ -4,6 +4,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { writeAuditInTransaction } from "@/lib/security/audit";
 import { getMembership } from "@/repositories/organizations";
 
 import { registerOrganization } from "./register";
@@ -17,6 +18,10 @@ function newUid(): string {
   return uid;
 }
 const input = (uid: string) => ({ uid, email: `${uid}@example.com`, displayName: "Jo Owner", organizationName: "Acme" });
+
+async function auditRowsBy(uid: string) {
+  return adminDb().collection("auditLogs").where("actorUid", "==", uid).get();
+}
 
 async function orgsOwnedBy(uid: string) {
   return adminDb().collection("organizations").where("ownerUid", "==", uid).get();
@@ -113,10 +118,11 @@ describe("registerOrganization", () => {
     let attempted = 0;
     await expect(
       registerOrganization(input(uid), {
-        writeAudit: (_tx, entry) => {
+        writeAudit: (tx, entry) => {
           attempted++;
           // The user, organization and member writes are already buffered in the transaction here.
           expect(entry.organizationId).toBeTruthy();
+          writeAuditInTransaction(tx, entry); // the audit row is buffered too, then the failure hits
           throw new Error("injected failure");
         },
       }),
@@ -126,6 +132,7 @@ describe("registerOrganization", () => {
     expect((await orgsOwnedBy(uid)).empty).toBe(true);
     const members = await db.collection("organizationMembers").where("uid", "==", uid).get();
     expect(members.empty).toBe(true);
+    expect((await auditRowsBy(uid)).empty).toBe(true);
     expect(await getMembership(uid)).toBeNull();
   });
 
@@ -135,14 +142,17 @@ describe("registerOrganization", () => {
     await expect(
       registerOrganization(input(uid), {
         // Buffers a write Firestore refuses at commit time (document exceeds the 1 MiB limit).
-        writeAudit: (tx) => {
+        writeAudit: (tx, entry) => {
+          writeAuditInTransaction(tx, entry); // a valid audit row is buffered before the oversized write
           tx.set(db.collection("rollbackProbe").doc(uid), { blob: "x".repeat(1_100_000) });
         },
       }),
-    ).rejects.toBeDefined();
+    ).rejects.toThrow(/INVALID_ARGUMENT.*longer than/);
     expect((await db.collection("users").doc(uid).get()).exists).toBe(false);
     expect((await orgsOwnedBy(uid)).empty).toBe(true);
     expect((await db.collection("rollbackProbe").doc(uid).get()).exists).toBe(false);
+    expect((await auditRowsBy(uid)).empty).toBe(true);
+    expect((await db.collection("organizationMembers").where("uid", "==", uid).get()).empty).toBe(true);
   });
 
   it("rejects invalid input without writing", async () => {

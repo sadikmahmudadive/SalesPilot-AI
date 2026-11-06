@@ -50,7 +50,11 @@ interface BaseOptions<S extends ZodType | undefined> {
 }
 
 export interface ApiOptions<S extends ZodType | undefined = undefined> extends BaseOptions<S> {
-  permission?: Permission;
+  /**
+   * REQUIRED so a route can never be left unguarded by omission. `"any-member"` is the explicit
+   * opt-out: membership alone suffices. An unknown string at runtime still denies (`can()` fails closed).
+   */
+  permission: Permission | "any-member";
 }
 export type AuthOnlyApiOptions<S extends ZodType | undefined = undefined> = BaseOptions<S>;
 
@@ -120,13 +124,42 @@ function finalize(res: Response, requestId: string): Response {
 }
 
 interface Pipeline<S extends ZodType | undefined, C> {
-  opts: BaseOptions<S> & { permission?: Permission };
+  opts: BaseOptions<S> & { permission?: Permission | "any-member" };
   withMembership: boolean;
   fn: (ctx: C) => Promise<HandlerResult>;
 }
 
+/** Validated once when the route is defined, so a bad spec fails at module load, not per request. */
+export function assertValidRateLimitSpec(spec: RateLimitSpec): void {
+  const { name, limit, windowSec } = spec;
+  if (typeof name !== "string" || name.length === 0 || name.includes(":")) {
+    throw new Error("withApi: rateLimit.name must be a non-empty string without ':'");
+  }
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("withApi: rateLimit.limit must be a positive integer");
+  if (!Number.isFinite(windowSec) || Math.floor(windowSec * 1000) < 1) {
+    throw new Error("withApi: rateLimit.windowSec must be finite and at least 1 millisecond");
+  }
+}
+
+/**
+ * Next.js control-flow errors (`redirect()`, `notFound()`, `forbidden()`, `unauthorized()`, ...) are
+ * thrown errors carrying a string `digest` starting with `NEXT_`; they must reach the framework.
+ * `DYNAMIC_SERVER_USAGE` (thrown by `cookies()` / `headers()` during static rendering) is a
+ * dynamic-rendering signal of the same kind. A thrown `Response` is deliberately NOT control flow.
+ */
+export function isNextControlFlowError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || err instanceof Response) return false;
+  try {
+    const digest = (err as { digest?: unknown }).digest;
+    return typeof digest === "string" && (digest.startsWith("NEXT_") || digest === "DYNAMIC_SERVER_USAGE");
+  } catch {
+    return false;
+  }
+}
+
 function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S>>>(p: Pipeline<S, C>): RouteHandler {
   const { opts, withMembership, fn } = p;
+  if (opts.rateLimit) assertValidRateLimitSpec(opts.rateLimit);
   return async (req, routeCtx) => {
     const requestId = newRequestId();
     try {
@@ -135,7 +168,9 @@ function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S
       const user = await requireUser();
       const org = withMembership ? await requireMembership(user) : undefined;
 
-      if (org && opts.permission && !can(org.role, opts.permission)) throw new ForbiddenError();
+      if (org && opts.permission !== "any-member" && !can(org.role, opts.permission as Permission)) {
+        throw new ForbiddenError();
+      }
 
       if (opts.rateLimit) {
         const { name, limit, windowSec } = opts.rateLimit;
@@ -150,6 +185,7 @@ function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S
       const result = await fn(ctx);
       return finalize(result instanceof Response ? result : Response.json(result), requestId);
     } catch (err) {
+      if (isNextControlFlowError(err)) throw err;
       return finalize(toErrorResponse(err, requestId), requestId);
     }
   };
