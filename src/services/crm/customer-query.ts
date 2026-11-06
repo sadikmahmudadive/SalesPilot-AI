@@ -1,0 +1,282 @@
+/**
+ * Pure helpers that turn a customer list request into a repository query. No I/O, no
+ * server-only imports, so every rule here is unit tested without Firestore.
+ *
+ * Rules (enforced in `buildListPlan`):
+ *  - at most ONE of {segment, customerType, tag, assignedAgentId} per request, because each
+ *    combination needs its own composite index (see customer-indexes.ts);
+ *  - `search` cannot be combined with a filter and forces its own order (prefix range on the
+ *    sorted field, ascending), ignoring `sort` / `dir`;
+ *  - search is a phone prefix search when the query is only digits/phone punctuation with at
+ *    least 3 digits, otherwise a name prefix search on `fullNameLower`;
+ *  - limit defaults to 25, maximum 50.
+ *
+ * Source hygiene: this file must stay free of literal non-ASCII characters and `\uXXXX`
+ * escapes (the editing tools decode escapes into raw characters), so code points are built
+ * with String.fromCharCode / fromCodePoint.
+ */
+import { z } from "zod";
+
+import { ValidationError, type ValidationDetail } from "@/lib/errors";
+import { isValidIdSegment } from "@/lib/ids";
+import type { WhereClause } from "@/repositories/base";
+import {
+  CUSTOMER_SEGMENTS,
+  CUSTOMER_TYPES,
+  type CustomerSegment,
+  type CustomerType,
+} from "@/schemas/customer";
+
+export const DEFAULT_LIMIT = 25;
+export const MAX_LIMIT = 50;
+export const MAX_SEARCH_LENGTH = 64;
+const MIN_PHONE_DIGITS = 3;
+const MAX_SORT_KEY_LENGTH = 256;
+
+/**
+ * Exclusive upper bound suffix for a prefix range. Firestore compares strings by UTF-8 bytes
+ * (= code point order), and U+10FFFF is the largest code point, so `prefix + PREFIX_END` is
+ * above every string that starts with `prefix`. (The common U+F8FF suffix would miss values
+ * whose next character is above U+F8FF, e.g. emoji.)
+ */
+export const PREFIX_END = String.fromCodePoint(0x10ffff);
+
+export type SortName = "createdAt" | "fullName" | "lastInteractionAt";
+export type SortDir = "asc" | "desc";
+export type OrderField = "createdAt" | "fullNameLower" | "lastInteractionAt" | "phoneE164";
+export type FilterField = "segment" | "customerType" | "assignedAgentId" | "tags";
+
+export const SORT_FIELDS: Readonly<Record<SortName, OrderField>> = {
+  createdAt: "createdAt",
+  fullName: "fullNameLower",
+  lastInteractionAt: "lastInteractionAt",
+};
+
+export interface CustomerListQuery {
+  search?: string;
+  segment?: CustomerSegment;
+  customerType?: CustomerType;
+  tag?: string;
+  assignedAgentId?: string;
+  sort: SortName;
+  dir: SortDir;
+  limit?: number;
+  cursor?: string;
+}
+
+/** The index-relevant shape of a query: which filter (if any) and which order. */
+export interface QueryShape {
+  filterField?: string;
+  orderField: string;
+  direction: SortDir;
+}
+
+export interface ListPlan {
+  where: WhereClause[];
+  orderBy: [field: OrderField, dir: SortDir];
+  limit: number;
+  cursor?: string;
+  shape: QueryShape;
+}
+
+function invalid(path: string, message: string): ValidationError {
+  // Static messages only: never echo caller-supplied values (they may be PII).
+  return new ValidationError([{ path, message }], message);
+}
+
+/** Whether `s` contains an unpaired surrogate (round-tripping through UTF-8 replaces it). */
+function hasLoneSurrogate(s: string): boolean {
+  return Buffer.from(s, "utf8").toString("utf8") !== s;
+}
+
+function truncateUnits(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let end = max;
+  const last = s.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // do not split a surrogate pair
+  return s.slice(0, end);
+}
+
+/**
+ * The stored sort/search key for a name: NFKC, lower-cased (locale-independent), whitespace
+ * runs collapsed to one space, trimmed, at most 256 UTF-16 units. The search query goes
+ * through the same function so both sides always agree.
+ */
+export function fullNameLowerKey(fullName: string): string {
+  return truncateUnits(
+    fullName.normalize("NFKC").toLocaleLowerCase("en-US").replace(/\s+/g, " ").trim(),
+    MAX_SORT_KEY_LENGTH,
+  );
+}
+
+// Same cleaning as normalizePhone (src/lib/phone.ts): invisible format characters, separators,
+// then Arabic-Indic / Extended Arabic-Indic / Bangla digits to ASCII.
+const IGNORED = /[\p{Cf}\p{Z}\s\-.()]/gu;
+const c = (code: number) => String.fromCharCode(code);
+const NON_ASCII_DIGITS = new RegExp(
+  `[${c(0x660)}-${c(0x669)}${c(0x6f0)}-${c(0x6f9)}${c(0x9e6)}-${c(0x9ef)}]`,
+  "g",
+);
+
+function toAsciiDigit(ch: string): string {
+  const code = ch.charCodeAt(0);
+  if (code >= 0x09e6) return String(code - 0x09e6);
+  if (code >= 0x06f0) return String(code - 0x06f0);
+  return String(code - 0x0660);
+}
+
+export type SearchPlan =
+  | { kind: "phone"; field: "phoneE164"; start: string; end: string }
+  | { kind: "name"; field: "fullNameLower"; start: string; end: string };
+
+/** Normalised E.164-style prefix for digits typed so far. Leading 0 means Bangladesh. */
+function phonePrefix(cleaned: string): string {
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
+  if (cleaned.startsWith("0")) return `+880${cleaned.slice(1)}`;
+  return `+${cleaned}`; // e.g. 8801712...: country code typed without the plus
+}
+
+/** Decides phone-vs-name prefix search and computes the half-open range `[start, end)`. */
+export function planSearch(raw: string): SearchPlan {
+  const query = raw.trim();
+  if (query.length > MAX_SEARCH_LENGTH)
+    throw invalid("q", `Search must be ${MAX_SEARCH_LENGTH} characters or fewer`);
+  if (hasLoneSurrogate(query)) throw invalid("q", "Invalid search text");
+
+  const cleaned = query
+    .normalize("NFKC")
+    .replace(IGNORED, "")
+    .replace(NON_ASCII_DIGITS, toAsciiDigit);
+  if (/^\+?\d+$/.test(cleaned) && cleaned.replace(/\D/g, "").length >= MIN_PHONE_DIGITS) {
+    const start = phonePrefix(cleaned);
+    return { kind: "phone", field: "phoneE164", start, end: start + PREFIX_END };
+  }
+  const start = fullNameLowerKey(query);
+  return { kind: "name", field: "fullNameLower", start, end: start + PREFIX_END };
+}
+
+const enumHas = <T extends string>(list: readonly T[], v: unknown): v is T =>
+  typeof v === "string" && list.includes(v as T);
+
+/** Validates a list request and produces the repository query plus its index shape. */
+export function buildListPlan(q: CustomerListQuery): ListPlan {
+  const limit = q.limit ?? DEFAULT_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+    throw invalid("limit", `Limit must be an integer between 1 and ${MAX_LIMIT}`);
+  }
+  if (!Object.hasOwn(SORT_FIELDS, q.sort)) throw invalid("sort", "Invalid sort");
+  if (q.dir !== "asc" && q.dir !== "desc")
+    throw invalid("dir", "Sort direction must be asc or desc");
+  if (q.segment !== undefined && !enumHas(CUSTOMER_SEGMENTS, q.segment))
+    throw invalid("segment", "Invalid segment");
+  if (q.customerType !== undefined && !enumHas(CUSTOMER_TYPES, q.customerType)) {
+    throw invalid("customerType", "Invalid customer type");
+  }
+  if (
+    q.tag !== undefined &&
+    (typeof q.tag !== "string" || q.tag.length === 0 || q.tag.length > 40)
+  ) {
+    throw invalid("tag", "Invalid tag");
+  }
+  if (q.assignedAgentId !== undefined && !isValidIdSegment(q.assignedAgentId)) {
+    throw invalid("assignedAgentId", "Invalid agent");
+  }
+
+  const filters: WhereClause[] = [];
+  if (q.segment !== undefined) filters.push(["segment", "==", q.segment]);
+  if (q.customerType !== undefined) filters.push(["customerType", "==", q.customerType]);
+  if (q.assignedAgentId !== undefined) filters.push(["assignedAgentId", "==", q.assignedAgentId]);
+  if (q.tag !== undefined) filters.push(["tags", "array-contains", q.tag]);
+  if (filters.length > 1) throw invalid("filter", "Use only one filter at a time");
+
+  const search = typeof q.search === "string" ? q.search.trim() : "";
+  if (q.search !== undefined && typeof q.search !== "string")
+    throw invalid("q", "Invalid search text");
+  if (search.length > 0) {
+    if (filters.length > 0) throw invalid("q", "Search cannot be combined with a filter");
+    const plan = planSearch(search);
+    return {
+      where: [
+        [plan.field, ">=", plan.start],
+        [plan.field, "<", plan.end],
+      ],
+      orderBy: [plan.field, "asc"],
+      limit,
+      cursor: q.cursor,
+      shape: { orderField: plan.field, direction: "asc" },
+    };
+  }
+
+  const orderField = SORT_FIELDS[q.sort];
+  const filter = filters[0];
+  return {
+    where: filters,
+    orderBy: [orderField, q.dir],
+    limit,
+    cursor: q.cursor,
+    shape: { filterField: filter?.[0], orderField, direction: q.dir },
+  };
+}
+
+// ---- HTTP query-string parsing ---------------------------------------------------------
+
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+
+const listParamsSchema = z.object({
+  q: optional(z.string().max(MAX_SEARCH_LENGTH)),
+  segment: optional(z.enum(CUSTOMER_SEGMENTS)),
+  customerType: optional(z.enum(CUSTOMER_TYPES)),
+  tag: optional(z.string().min(1).max(40)),
+  assignedAgentId: optional(z.string().refine((v) => isValidIdSegment(v))),
+  sort: optional(z.enum(["createdAt", "fullName", "lastInteractionAt"])),
+  dir: optional(z.enum(["asc", "desc"])),
+  limit: optional(
+    z
+      .string()
+      .regex(/^\d{1,3}$/)
+      .transform(Number)
+      .pipe(z.number().int().min(1).max(MAX_LIMIT)),
+  ),
+  cursor: optional(z.string().max(1024)),
+});
+
+const PARAM_KEYS = Object.keys(listParamsSchema.shape);
+
+/**
+ * Parses `?q&segment&customerType&tag&assignedAgentId&sort&dir&limit&cursor`. Unknown params
+ * are ignored; repeated params and invalid values are a ValidationError carrying only param
+ * names and static messages. Empty values count as absent.
+ */
+export function parseListParams(params: URLSearchParams): CustomerListQuery {
+  const raw: Record<string, string> = {};
+  const details: ValidationDetail[] = [];
+  for (const key of PARAM_KEYS) {
+    const values = params.getAll(key);
+    if (values.length > 1) details.push({ path: key, message: "Provide only one value" });
+    else if (values.length === 1) raw[key] = values[0]!;
+  }
+  if (details.length > 0) throw new ValidationError(details);
+
+  const parsed = listParamsSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ValidationError(
+      parsed.error.issues.map((i) => ({
+        path: String(i.path[0] ?? "query"),
+        message: "Invalid value",
+      })),
+    );
+  }
+  const p = parsed.data;
+  const sort = p.sort ?? "createdAt";
+  const out: CustomerListQuery = { sort, dir: p.dir ?? (sort === "fullName" ? "asc" : "desc") };
+  if (p.q !== undefined) out.search = p.q;
+  if (p.segment !== undefined) out.segment = p.segment;
+  if (p.customerType !== undefined) out.customerType = p.customerType;
+  if (p.tag !== undefined) out.tag = p.tag;
+  if (p.assignedAgentId !== undefined) out.assignedAgentId = p.assignedAgentId;
+  if (p.limit !== undefined) out.limit = p.limit;
+  if (p.cursor !== undefined) out.cursor = p.cursor;
+  return out;
+}
