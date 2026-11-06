@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { normalizePhone } from "./phone";
+import { cleanPhoneInput, normalizePhone } from "./phone";
 
 describe("source hygiene", () => {
   // Invisible, bidi, full-width and Bangla/Arabic digit characters must be written as escapes
@@ -142,5 +142,21 @@ describe("normalizePhone", () => {
   it("returns null for a default country it does not support rather than guessing", () => {
     expect(normalizePhone("01712345678", "US")).toBeNull();
     expect(normalizePhone("+14155552671", "US")).toBe("+14155552671");
+  });
+});
+
+describe("cleanPhoneInput", () => {
+  it("strips separators, maps Bangla digits and keeps a leading plus", () => {
+    expect(cleanPhoneInput("+880 (171)-234.5678")).toBe("+8801712345678");
+    expect(cleanPhoneInput(String.fromCodePoint(0x09e6, 0x09e7, 0x09ed))).toBe("017");
+    expect(cleanPhoneInput(String.fromCodePoint(0x200b, 0xff10, 0xff11))).toBe("01");
+  });
+  it("is bounded and total: over-long or non-string input gives an empty string", () => {
+    expect(cleanPhoneInput("1".repeat(65))).toBe("");
+    expect(cleanPhoneInput("1".repeat(64))).toHaveLength(64);
+    expect(cleanPhoneInput(undefined as never)).toBe("");
+  });
+  it("does not validate: letters survive", () => {
+    expect(cleanPhoneInput("ab 12")).toBe("ab12");
   });
 });

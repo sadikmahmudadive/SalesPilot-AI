@@ -218,6 +218,8 @@ describe("GET /api/customers", () => {
     await post(valid({ segment: "inactive" }));
     expect((await json(await list("segment=converted"))).items).toHaveLength(1);
     expect((await json(await list("tag=vip"))).items).toHaveLength(1);
+    expect((await json(await list("tag=VIP%20"))).items).toHaveLength(1);
+    expect((await list("tag=%20")).status).toBe(400);
     expect((await json(await list("customerType=wholesale"))).items).toHaveLength(1);
     expect((await json(await list("customerType=retail"))).items).toHaveLength(1);
   });

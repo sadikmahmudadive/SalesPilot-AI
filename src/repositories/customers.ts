@@ -23,15 +23,22 @@ import type { Customer } from "@/schemas/customer";
 
 import { OrgRepository, type OrgCreateInput } from "./base";
 
-/** Stored customer: the public shape plus the service-computed name sort/search key. */
-export type CustomerDoc = Customer & { fullNameLower: string };
+/** Stored customer: the public shape plus service-computed keys (name sort/search, case-insensitive tags). */
+export type CustomerDoc = Customer & { fullNameLower: string; tagsLower: string[] };
 
 export const CUSTOMERS = "customers";
 export const CUSTOMER_PHONES = "customerPhones";
 
 export const customerRepo = new OrgRepository<CustomerDoc>(CUSTOMERS, {
   // Equality / array-contains filters, plus the two fields that carry prefix-search ranges.
-  filterable: ["segment", "customerType", "tags", "assignedAgentId", "fullNameLower", "phoneE164"],
+  filterable: [
+    "segment",
+    "customerType",
+    "tagsLower",
+    "assignedAgentId",
+    "fullNameLower",
+    "phoneE164",
+  ],
   sortable: ["createdAt", "fullNameLower", "lastInteractionAt", "phoneE164"],
 });
 
@@ -50,4 +57,10 @@ export function phoneLockRef(orgId: string, phoneE164: string): DocumentReferenc
     throw new ValidationError([{ path: "phone", message: "Invalid phone number" }]);
   }
   return adminDb().collection(CUSTOMER_PHONES).doc(`${orgId}_${phoneE164}`);
+}
+
+/** Like `phoneLockRef`, but null when the stored number is missing or malformed (corrupt row). */
+export function tryPhoneLockRef(orgId: string, phoneE164: unknown): DocumentReference | null {
+  if (typeof phoneE164 !== "string" || !/^\+\d{8,15}$/.test(phoneE164)) return null;
+  return phoneLockRef(orgId, phoneE164);
 }

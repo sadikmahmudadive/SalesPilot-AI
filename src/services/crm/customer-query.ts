@@ -19,6 +19,8 @@ import { z } from "zod";
 
 import { ValidationError, type ValidationDetail } from "@/lib/errors";
 import { isValidIdSegment } from "@/lib/ids";
+import { cleanPhoneInput } from "@/lib/phone";
+import { invalid as fieldError } from "@/lib/validation-error";
 import type { WhereClause } from "@/repositories/base";
 import {
   CUSTOMER_SEGMENTS,
@@ -31,6 +33,7 @@ export const DEFAULT_LIMIT = 25;
 export const MAX_LIMIT = 50;
 export const MAX_SEARCH_LENGTH = 64;
 const MIN_PHONE_DIGITS = 3;
+const MAX_TAG_FILTER_LENGTH = 80;
 const MAX_SORT_KEY_LENGTH = 256;
 
 /**
@@ -44,7 +47,7 @@ export const PREFIX_END = String.fromCodePoint(0x10ffff);
 export type SortName = "createdAt" | "fullName" | "lastInteractionAt";
 export type SortDir = "asc" | "desc";
 export type OrderField = "createdAt" | "fullNameLower" | "lastInteractionAt" | "phoneE164";
-export type FilterField = "segment" | "customerType" | "assignedAgentId" | "tags";
+export type FilterField = "segment" | "customerType" | "assignedAgentId" | "tagsLower";
 
 export const SORT_FIELDS: Readonly<Record<SortName, OrderField>> = {
   createdAt: "createdAt",
@@ -79,9 +82,21 @@ export interface ListPlan {
   shape: QueryShape;
 }
 
+/** Static messages only (never echo caller input); the message is also the envelope summary. */
 function invalid(path: string, message: string): ValidationError {
-  // Static messages only: never echo caller-supplied values (they may be PII).
-  return new ValidationError([{ path, message }], message);
+  return fieldError(path, message, message);
+}
+
+/**
+ * Case-insensitive tag key: NFKC, trimmed, lower-cased. Stored (de-duplicated) in `tagsLower`
+ * and used, normalised the same way, for the tag filter, so `VIP`, `vip` and ` vip ` all match.
+ */
+export function tagKey(tag: string): string {
+  return tag.normalize("NFKC").trim().toLocaleLowerCase("en-US");
+}
+
+export function tagKeys(tags: readonly string[]): string[] {
+  return [...new Set(tags.map(tagKey).filter((t) => t.length > 0))];
 }
 
 /** Whether `s` contains an unpaired surrogate (round-tripping through UTF-8 replaces it). */
@@ -109,22 +124,6 @@ export function fullNameLowerKey(fullName: string): string {
   );
 }
 
-// Same cleaning as normalizePhone (src/lib/phone.ts): invisible format characters, separators,
-// then Arabic-Indic / Extended Arabic-Indic / Bangla digits to ASCII.
-const IGNORED = /[\p{Cf}\p{Z}\s\-.()]/gu;
-const c = (code: number) => String.fromCharCode(code);
-const NON_ASCII_DIGITS = new RegExp(
-  `[${c(0x660)}-${c(0x669)}${c(0x6f0)}-${c(0x6f9)}${c(0x9e6)}-${c(0x9ef)}]`,
-  "g",
-);
-
-function toAsciiDigit(ch: string): string {
-  const code = ch.charCodeAt(0);
-  if (code >= 0x09e6) return String(code - 0x09e6);
-  if (code >= 0x06f0) return String(code - 0x06f0);
-  return String(code - 0x0660);
-}
-
 export type SearchPlan =
   | { kind: "phone"; field: "phoneE164"; start: string; end: string }
   | { kind: "name"; field: "fullNameLower"; start: string; end: string };
@@ -144,10 +143,7 @@ export function planSearch(raw: string): SearchPlan {
     throw invalid("q", `Search must be ${MAX_SEARCH_LENGTH} characters or fewer`);
   if (hasLoneSurrogate(query)) throw invalid("q", "Invalid search text");
 
-  const cleaned = query
-    .normalize("NFKC")
-    .replace(IGNORED, "")
-    .replace(NON_ASCII_DIGITS, toAsciiDigit);
+  const cleaned = cleanPhoneInput(query); // same cleaning as normalizePhone
   if (/^\+?\d+$/.test(cleaned) && cleaned.replace(/\D/g, "").length >= MIN_PHONE_DIGITS) {
     const start = phonePrefix(cleaned);
     return { kind: "phone", field: "phoneE164", start, end: start + PREFIX_END };
@@ -173,9 +169,14 @@ export function buildListPlan(q: CustomerListQuery): ListPlan {
   if (q.customerType !== undefined && !enumHas(CUSTOMER_TYPES, q.customerType)) {
     throw invalid("customerType", "Invalid customer type");
   }
+  // Tags are at most 40 characters once trimmed; allow padding around them in the filter.
+  const tag = q.tag === undefined ? undefined : typeof q.tag === "string" ? tagKey(q.tag) : "";
   if (
     q.tag !== undefined &&
-    (typeof q.tag !== "string" || q.tag.length === 0 || q.tag.length > 40)
+    (typeof q.tag !== "string" ||
+      q.tag.length > MAX_TAG_FILTER_LENGTH ||
+      hasLoneSurrogate(q.tag) ||
+      !tag)
   ) {
     throw invalid("tag", "Invalid tag");
   }
@@ -187,7 +188,7 @@ export function buildListPlan(q: CustomerListQuery): ListPlan {
   if (q.segment !== undefined) filters.push(["segment", "==", q.segment]);
   if (q.customerType !== undefined) filters.push(["customerType", "==", q.customerType]);
   if (q.assignedAgentId !== undefined) filters.push(["assignedAgentId", "==", q.assignedAgentId]);
-  if (q.tag !== undefined) filters.push(["tags", "array-contains", q.tag]);
+  if (tag) filters.push(["tagsLower", "array-contains", tag]);
   if (filters.length > 1) throw invalid("filter", "Use only one filter at a time");
 
   const search = typeof q.search === "string" ? q.search.trim() : "";
@@ -228,7 +229,7 @@ const listParamsSchema = z.object({
   q: optional(z.string().max(MAX_SEARCH_LENGTH)),
   segment: optional(z.enum(CUSTOMER_SEGMENTS)),
   customerType: optional(z.enum(CUSTOMER_TYPES)),
-  tag: optional(z.string().min(1).max(40)),
+  tag: optional(z.string().min(1).max(MAX_TAG_FILTER_LENGTH)),
   assignedAgentId: optional(z.string().refine((v) => isValidIdSegment(v))),
   sort: optional(z.enum(["createdAt", "fullName", "lastInteractionAt"])),
   dir: optional(z.enum(["asc", "desc"])),

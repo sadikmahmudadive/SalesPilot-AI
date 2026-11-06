@@ -9,6 +9,8 @@ import {
   fullNameLowerKey,
   parseListParams,
   planSearch,
+  tagKey,
+  tagKeys,
 } from "./customer-query";
 
 /** ASCII digits to Bangla digits, built from code points so the source stays ASCII. */
@@ -29,6 +31,14 @@ describe("fullNameLowerKey", () => {
     const emoji = String.fromCodePoint(0x1f600);
     expect(fullNameLowerKey("a".repeat(255) + emoji)).toBe("a".repeat(255));
     expect(fullNameLowerKey("a".repeat(300))).toHaveLength(256);
+  });
+});
+
+describe("tagKey / tagKeys", () => {
+  it("lower-cases, trims, applies NFKC and de-duplicates", () => {
+    expect(tagKey("  VIP ")).toBe("vip");
+    expect(tagKeys(["VIP", "vip", " Vip ", "Dhaka"])).toEqual(["vip", "dhaka"]);
+    expect(tagKeys([])).toEqual([]);
   });
 });
 
@@ -95,26 +105,54 @@ describe("buildListPlan", () => {
       limit: 25,
       shape: { orderField: "fullNameLower", direction: "asc" },
     });
-    expect(buildListPlan({ ...base, sort: "lastInteractionAt" }).orderBy).toEqual(["lastInteractionAt", "desc"]);
+    expect(buildListPlan({ ...base, sort: "lastInteractionAt" }).orderBy).toEqual([
+      "lastInteractionAt",
+      "desc",
+    ]);
     expect(buildListPlan(base).orderBy).toEqual(["createdAt", "desc"]);
   });
 
   it("builds a single equality / array-contains filter", () => {
-    expect(buildListPlan({ ...base, segment: "converted" }).where).toEqual([["segment", "==", "converted"]]);
-    expect(buildListPlan({ ...base, customerType: "wholesale" }).where).toEqual([["customerType", "==", "wholesale"]]);
-    expect(buildListPlan({ ...base, assignedAgentId: "a1" }).where).toEqual([["assignedAgentId", "==", "a1"]]);
+    expect(buildListPlan({ ...base, segment: "converted" }).where).toEqual([
+      ["segment", "==", "converted"],
+    ]);
+    expect(buildListPlan({ ...base, customerType: "wholesale" }).where).toEqual([
+      ["customerType", "==", "wholesale"],
+    ]);
+    expect(buildListPlan({ ...base, assignedAgentId: "a1" }).where).toEqual([
+      ["assignedAgentId", "==", "a1"],
+    ]);
     const tag = buildListPlan({ ...base, tag: "vip" });
-    expect(tag.where).toEqual([["tags", "array-contains", "vip"]]);
-    expect(tag.shape.filterField).toBe("tags");
+    expect(tag.where).toEqual([["tagsLower", "array-contains", "vip"]]);
+    expect(tag.shape.filterField).toBe("tagsLower");
+  });
+
+  it("normalises the tag filter: trimmed, NFKC, case-insensitive; blank or oversized tags are rejected", () => {
+    const where = (tag: string) => buildListPlan({ ...base, tag }).where;
+    expect(where("  VIP ")).toEqual([["tagsLower", "array-contains", "vip"]]);
+    expect(where(String.fromCodePoint(0xff36, 0xff29, 0xff30))).toEqual([
+      ["tagsLower", "array-contains", "vip"],
+    ]);
+    expect(() => buildListPlan({ ...base, tag: "   " })).toThrow(ValidationError);
+    expect(() => buildListPlan({ ...base, tag: "x".repeat(81) })).toThrow(ValidationError);
+    expect(() => buildListPlan({ ...base, tag: "a" + String.fromCharCode(0xd800) })).toThrow(
+      ValidationError,
+    );
   });
 
   it("rejects two or more filters", () => {
-    expect(() => buildListPlan({ ...base, segment: "converted", tag: "vip" })).toThrow(/one filter/);
-    expect(() => buildListPlan({ ...base, customerType: "retail", assignedAgentId: "a" })).toThrow(ValidationError);
+    expect(() => buildListPlan({ ...base, segment: "converted", tag: "vip" })).toThrow(
+      /one filter/,
+    );
+    expect(() => buildListPlan({ ...base, customerType: "retail", assignedAgentId: "a" })).toThrow(
+      ValidationError,
+    );
   });
 
   it("rejects search combined with any filter", () => {
-    expect(() => buildListPlan({ ...base, search: "jo", segment: "converted" })).toThrow(ValidationError);
+    expect(() => buildListPlan({ ...base, search: "jo", segment: "converted" })).toThrow(
+      ValidationError,
+    );
     expect(() => buildListPlan({ ...base, search: "jo", tag: "x" })).toThrow(ValidationError);
   });
 
@@ -145,7 +183,9 @@ describe("buildListPlan", () => {
     expect(() => buildListPlan({ sort: "phone" as never, dir: "asc" })).toThrow(ValidationError);
     expect(() => buildListPlan({ sort: "createdAt", dir: "up" as never })).toThrow(ValidationError);
     expect(() => buildListPlan({ ...base, segment: "nope" as never })).toThrow(ValidationError);
-    expect(() => buildListPlan({ ...base, customerType: "nope" as never })).toThrow(ValidationError);
+    expect(() => buildListPlan({ ...base, customerType: "nope" as never })).toThrow(
+      ValidationError,
+    );
   });
 });
 
@@ -158,7 +198,11 @@ describe("parseListParams", () => {
     expect(p("sort=fullName&dir=desc")).toMatchObject({ dir: "desc" });
   });
   it("parses every supported param and ignores unknown ones", () => {
-    expect(p("q=jo&segment=converted&customerType=retail&tag=vip&assignedAgentId=a1&limit=10&cursor=abc&zzz=1")).toEqual({
+    expect(
+      p(
+        "q=jo&segment=converted&customerType=retail&tag=vip&assignedAgentId=a1&limit=10&cursor=abc&zzz=1",
+      ),
+    ).toEqual({
       search: "jo",
       segment: "converted",
       customerType: "retail",
@@ -178,7 +222,17 @@ describe("parseListParams", () => {
     expect(() => p("q=a&q=b")).toThrow(ValidationError);
   });
   it("rejects bad values with a ValidationError that never echoes them", () => {
-    const bad = ["limit=0", "limit=51", "limit=abc", "limit=1e1", "sort=phone", "dir=up", "segment=nope", "assignedAgentId=a%2Fb", "q=" + "a".repeat(65)];
+    const bad = [
+      "limit=0",
+      "limit=51",
+      "limit=abc",
+      "limit=1e1",
+      "sort=phone",
+      "dir=up",
+      "segment=nope",
+      "assignedAgentId=a%2Fb",
+      "q=" + "a".repeat(65),
+    ];
     for (const qs of bad) {
       expect(() => p(qs), qs).toThrow(ValidationError);
     }

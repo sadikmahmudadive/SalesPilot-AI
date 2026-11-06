@@ -1,6 +1,7 @@
 /**
  * GET    /api/customers/[id]  -> 200 Customer
  * PATCH  /api/customers/[id]  customerPatchSchema -> 200 Customer (null clears email / whatsappNumber / address / leadSource)
+ *   Patched fields replace the stored value; a patched `preferences` or `consent` replaces the WHOLE map (no merge).
  * DELETE /api/customers/[id]  -> 204 (no body)
  *
  * An unknown id, an invalid id (e.g. containing "/") and another organization's id are all the

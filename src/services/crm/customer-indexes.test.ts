@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { CUSTOMER_SEGMENTS, CUSTOMER_TYPES } from "@/schemas/customer";
 
-import { CUSTOMER_LIST_INDEXES, indexServing, toFirestoreIndex, type CustomerIndexSpec } from "./customer-indexes";
+import {
+  CUSTOMER_LIST_INDEXES,
+  indexServing,
+  toFirestoreIndex,
+  type CustomerIndexSpec,
+} from "./customer-indexes";
 import { buildListPlan } from "./customer-query";
 
 interface IndexJson {
@@ -13,16 +18,19 @@ interface IndexJson {
   queryScope: string;
   fields: Array<{ fieldPath: string; order?: string; arrayConfig?: string }>;
 }
-const file = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../../../firestore.indexes.json"), "utf8")) as {
+const file = JSON.parse(
+  readFileSync(path.resolve(import.meta.dirname, "../../../firestore.indexes.json"), "utf8"),
+) as {
   indexes: IndexJson[];
 };
 const customerIndexes = file.indexes.filter((i) => i.collectionGroup === "customers");
 const canon = (i: unknown) => JSON.stringify(i);
 
 describe("CUSTOMER_LIST_INDEXES table", () => {
-  it("has no duplicate entries (nor two that differ only by direction)", () => {
+  it("has no duplicate entries", () => {
     const keys = CUSTOMER_LIST_INDEXES.map(
-      (s) => `${s.equalityField ?? ""}|${s.arrayContainsField ?? ""}|${s.orderField}`,
+      (s) =>
+        `${s.equalityField ?? ""}|${s.arrayContainsField ?? ""}|${s.orderField}|${s.direction}`,
     );
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -50,10 +58,34 @@ describe("CUSTOMER_LIST_INDEXES table", () => {
   });
 
   it("array-contains uses arrayConfig CONTAINS", () => {
-    const tags = CUSTOMER_LIST_INDEXES.filter((s) => s.arrayContainsField === "tags");
+    const tags = CUSTOMER_LIST_INDEXES.filter((s) => s.arrayContainsField === "tagsLower");
     expect(tags.length).toBeGreaterThan(0);
     for (const spec of tags) {
-      expect(toFirestoreIndex(spec).fields).toContainEqual({ fieldPath: "tags", arrayConfig: "CONTAINS" });
+      expect(toFirestoreIndex(spec).fields).toContainEqual({
+        fieldPath: "tagsLower",
+        arrayConfig: "CONTAINS",
+      });
+    }
+  });
+
+  it("every (filter, order field) pair has both directions, except the ascending-only phone search", () => {
+    const pairs = new Map<string, Set<string>>();
+    for (const s of CUSTOMER_LIST_INDEXES) {
+      const key = `${s.equalityField ?? ""}|${s.arrayContainsField ?? ""}|${s.orderField}`;
+      pairs.set(key, (pairs.get(key) ?? new Set()).add(s.direction));
+    }
+    for (const [key, dirs] of pairs) {
+      if (key === "||phoneE164") expect([...dirs]).toEqual(["ASCENDING"]);
+      else expect([...dirs].sort(), key).toEqual(["ASCENDING", "DESCENDING"]);
+    }
+    expect(CUSTOMER_LIST_INDEXES).toHaveLength(31);
+  });
+
+  it("__name__ always follows the order field in the same direction", () => {
+    for (const spec of CUSTOMER_LIST_INDEXES) {
+      const { fields } = toFirestoreIndex(spec);
+      expect(fields.at(-1)).toEqual({ fieldPath: "__name__", order: spec.direction });
+      expect(fields.at(-2)).toEqual({ fieldPath: spec.orderField, order: spec.direction });
     }
   });
 
@@ -71,7 +103,10 @@ describe("CUSTOMER_LIST_INDEXES table", () => {
         );
       }
     }
-    shapes.push({ sort: "createdAt", dir: "desc", search: "jo" }, { sort: "createdAt", dir: "desc", search: "0171" });
+    shapes.push(
+      { sort: "createdAt", dir: "desc", search: "jo" },
+      { sort: "createdAt", dir: "desc", search: "0171" },
+    );
     for (const q of shapes) {
       const plan = buildListPlan(q);
       const spec: CustomerIndexSpec | undefined = indexServing(plan.shape);
@@ -79,8 +114,15 @@ describe("CUSTOMER_LIST_INDEXES table", () => {
     }
   });
 
+  it("indexServing needs the matching direction (no reverse-scan assumption)", () => {
+    expect(indexServing({ orderField: "phoneE164", direction: "asc" })).toBeDefined();
+    expect(indexServing({ orderField: "phoneE164", direction: "desc" })).toBeUndefined();
+  });
+
   it("indexServing does not claim an index for a shape that is not in the table", () => {
-    expect(indexServing({ filterField: "email", orderField: "createdAt", direction: "desc" })).toBeUndefined();
+    expect(
+      indexServing({ filterField: "email", orderField: "createdAt", direction: "desc" }),
+    ).toBeUndefined();
     expect(indexServing({ orderField: "email", direction: "asc" })).toBeUndefined();
   });
 });

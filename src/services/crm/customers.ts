@@ -19,28 +19,37 @@
  * but the service still copies only known fields and re-derives `phoneE164` / `whatsappE164`
  * itself, so a smuggled `organizationId`, `totalSpendMinor`, `phoneE164`, ... is never stored.
  *
- * PII. Errors and logs here carry no customer data. Audit rows store before/after snapshots
- * through the shared redactor (phone-like keys are masked to their last 3 digits; name, email
- * and address are stored as entered).
+ * PATCH SEMANTICS. Each patched top-level field replaces the stored value. In particular a
+ * patched `preferences` or `consent` object replaces the WHOLE map (it is not merged): omitted
+ * sub-fields are dropped, except that a `consent` whose status did not change keeps its
+ * original `at`. `null` clears email / whatsappNumber / address / leadSource.
+ *
+ * PII. Errors and logs here carry no customer data, and audit rows hold none either: they
+ * store the customer id, the NAMES of the fields that changed and a few non-personal values
+ * (segment, customerType, tags, consent status, assignedAgentId, leadSource). Never name,
+ * email, phone, address, notes or preferences.
  */
 import "server-only";
 
 import { FieldValue, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
 
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
+import { isAlreadyExists } from "@/lib/firestore-errors";
 import { isValidIdSegment } from "@/lib/ids";
 import { normalizePhone } from "@/lib/phone";
 import { writeAuditInTransaction } from "@/lib/security/audit";
+import { invalid } from "@/lib/validation-error";
 import {
   buildCustomer,
   customerRepo,
   phoneLockRef,
+  tryPhoneLockRef,
   type CustomerDoc,
 } from "@/repositories/customers";
 import type { Customer, CustomerInput, CustomerPatch } from "@/schemas/customer";
 
-import { buildListPlan, fullNameLowerKey, type CustomerListQuery } from "./customer-query";
+import { buildListPlan, fullNameLowerKey, tagKeys, type CustomerListQuery } from "./customer-query";
 
 export type { CustomerListQuery } from "./customer-query";
 
@@ -54,7 +63,6 @@ export interface CustomerPage {
   nextCursor: string | null;
 }
 
-const GRPC_ALREADY_EXISTS = 6;
 const DUPLICATE_PHONE_MESSAGE = "A customer with this phone number already exists";
 
 /** Fields copied from client input (everything else is dropped). */
@@ -94,20 +102,31 @@ function assertCustomerId(id: unknown): asserts id is string {
   if (!isValidIdSegment(id)) throw new NotFoundError();
 }
 
-function invalid(path: string, message: string): ValidationError {
-  return new ValidationError([{ path, message }]);
-}
-
-function isAlreadyExists(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  return code === GRPC_ALREADY_EXISTS || code === "already-exists";
-}
-
-/** Public shape: the stored document minus the service-internal sort key. */
+/** Public shape: the stored document minus the service-internal keys. */
 function toCustomer(doc: CustomerDoc): Customer {
   const copy: Partial<CustomerDoc> = { ...doc };
   delete copy.fullNameLower;
+  delete copy.tagsLower;
   return copy as Customer;
+}
+
+const AUDIT_VALUE_KEYS = [
+  "segment",
+  "customerType",
+  "tags",
+  "assignedAgentId",
+  "leadSource",
+] as const;
+
+/** The only customer values an audit row may carry (no personal data). */
+function auditValues(fields: Fields): Fields {
+  const out: Fields = {};
+  for (const key of AUDIT_VALUE_KEYS) {
+    if (fields[key] !== undefined) out[key] = fields[key];
+  }
+  const consent = fields.consent as { status?: unknown } | undefined;
+  if (consent?.status !== undefined) out.consentStatus = consent.status;
+  return out;
 }
 
 function stableJson(value: unknown): string {
@@ -168,6 +187,7 @@ function createFields(input: CustomerInput): Fields {
   out.customerType ??= "retail";
   out.segment ??= "new_lead";
   out.tags ??= [];
+  out.tagsLower = tagKeys(out.tags as string[]);
   out.consent = normalizeConsent(out.consent);
   const preferences = normalizePreferences(out.preferences);
   if (preferences) out.preferences = preferences;
@@ -189,6 +209,7 @@ function patchFields(patch: CustomerPatch, current: CustomerDoc): Fields {
   if (out.whatsappNumber === null) out.whatsappE164 = null;
   else if (out.whatsappNumber !== undefined)
     out.whatsappE164 = e164Of(out.whatsappNumber, "whatsappNumber");
+  if (out.tags !== undefined) out.tagsLower = tagKeys(out.tags as string[]);
   if (out.consent !== undefined) out.consent = normalizeConsent(out.consent, current.consent);
   if (out.preferences !== undefined) {
     const preferences = normalizePreferences(out.preferences);
@@ -248,7 +269,10 @@ export async function createCustomer(ctx: CustomerCtx, input: CustomerInput): Pr
         action: "customer.create",
         resource: "customer",
         resourceId: ref.id,
-        after: fields,
+        after: {
+          changedFields: INPUT_KEYS.filter((k) => fields[k] !== undefined),
+          ...auditValues(fields),
+        },
       });
     });
   } catch (err) {
@@ -283,24 +307,34 @@ export async function updateCustomer(
       const newE164 = next.phoneE164 as string | undefined;
       if (newE164 !== undefined && newE164 !== current.phoneE164) {
         const newLock = phoneLockRef(ctx.organizationId, newE164);
-        const oldLock = phoneLockRef(ctx.organizationId, current.phoneE164);
-        const [newSnap, oldSnap] = await Promise.all([tx.get(newLock), tx.get(oldLock)]);
+        // A missing or malformed stored number (corrupt row) has no lock to move.
+        const oldLock = tryPhoneLockRef(ctx.organizationId, current.phoneE164);
+        const [newSnap, oldSnap] = await Promise.all([
+          tx.get(newLock),
+          oldLock ? tx.get(oldLock) : Promise.resolve(null),
+        ]);
         if (newSnap.exists && !ownsLock(newSnap, ctx.organizationId, id))
           throw new ConflictError(DUPLICATE_PHONE_MESSAGE);
         if (!newSnap.exists) tx.create(newLock, newLockData(ctx.organizationId, id, newE164));
-        if (ownsLock(oldSnap, ctx.organizationId, id)) tx.delete(oldLock);
+        if (oldLock && oldSnap && ownsLock(oldSnap, ctx.organizationId, id)) tx.delete(oldLock);
       }
 
       const write: Fields = {};
-      const before: Fields = {};
-      const after: Fields = {};
       for (const [key, value] of Object.entries(next)) {
         write[key] = value === null ? FieldValue.delete() : value;
-        const old = (current as unknown as Fields)[key];
-        if (stableJson(old ?? null) !== stableJson(value ?? null)) {
-          if (old !== undefined) before[key] = old;
-          after[key] = value;
-        }
+      }
+      // Audit: names of the fields that really changed, plus non-personal before/after values.
+      const currentFields = current as unknown as Fields;
+      const changed = INPUT_KEYS.filter(
+        (key) =>
+          next[key] !== undefined &&
+          stableJson(currentFields[key] ?? null) !== stableJson(next[key] ?? null),
+      );
+      const beforeValues: Fields = {};
+      const afterValues: Fields = {};
+      for (const key of changed) {
+        beforeValues[key] = currentFields[key];
+        afterValues[key] = next[key];
       }
       if (typeof next.fullName === "string") write.fullNameLower = fullNameLowerKey(next.fullName);
       write.updatedAt = FieldValue.serverTimestamp();
@@ -312,8 +346,8 @@ export async function updateCustomer(
         action: "customer.update",
         resource: "customer",
         resourceId: id,
-        before,
-        after,
+        before: auditValues(beforeValues),
+        after: { changedFields: changed, ...auditValues(afterValues) },
       });
     });
   } catch (err) {
@@ -332,20 +366,20 @@ export async function deleteCustomer(ctx: CustomerCtx, id: string): Promise<void
   await adminDb().runTransaction(async (tx) => {
     const ref = customerRepo.docRef(id);
     const current = await readOwned(tx, ctx, id);
-    const lock = phoneLockRef(ctx.organizationId, current.phoneE164);
-    const lockSnap = await tx.get(lock);
+    // A missing or malformed stored number (corrupt row) has no lock: the row stays deletable.
+    const lock = tryPhoneLockRef(ctx.organizationId, current.phoneE164);
+    const lockSnap = lock ? await tx.get(lock) : null;
 
     tx.delete(ref);
-    if (ownsLock(lockSnap, ctx.organizationId, id)) tx.delete(lock);
+    if (lock && lockSnap && ownsLock(lockSnap, ctx.organizationId, id)) tx.delete(lock);
 
-    const snapshot = toCustomer(current) as unknown as Fields;
     writeAuditInTransaction(tx, {
       organizationId: ctx.organizationId,
       actorUid: ctx.uid,
       action: "customer.delete",
       resource: "customer",
       resourceId: id,
-      before: snapshot,
+      before: { segment: current.segment, customerType: current.customerType },
     });
   });
 }

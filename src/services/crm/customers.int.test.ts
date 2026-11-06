@@ -6,7 +6,13 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { customerPatchSchema, customerInputSchema } from "@/schemas/customer";
 
-import { createCustomer, deleteCustomer, getCustomer, listCustomers, updateCustomer } from "./customers";
+import {
+  createCustomer,
+  deleteCustomer,
+  getCustomer,
+  listCustomers,
+  updateCustomer,
+} from "./customers";
 
 // Failure seam: lets a test make the in-transaction audit write throw, to prove that nothing
 // else in the same transaction (customer, phone lock) survives.
@@ -38,17 +44,25 @@ let counter = 0;
 const phone = () => `01712${String(1000000 + ++counter).slice(1)}`; // 01712 + 6 digits
 
 function make(over: Record<string, unknown> = {}) {
-  return customerInputSchema.parse({ fullName: `Customer ${counter + 1}`, phone: phone(), ...over });
+  return customerInputSchema.parse({
+    fullName: `Customer ${counter + 1}`,
+    phone: phone(),
+    ...over,
+  });
 }
 const patch = (p: Record<string, unknown>) => customerPatchSchema.parse(p);
 
 const db = () => adminDb();
 async function docsOf(collection: string, organizationId: string) {
-  return (await db().collection(collection).where("organizationId", "==", organizationId).get()).docs;
+  return (await db().collection(collection).where("organizationId", "==", organizationId).get())
+    .docs;
 }
-const lockRef = (org: string, e164: string) => db().collection("customerPhones").doc(`${org}_${e164}`);
-const listAll = (ctx: ReturnType<typeof newCtx>, q: Partial<Parameters<typeof listCustomers>[1]> = {}) =>
-  listCustomers(ctx, { sort: "createdAt", dir: "desc", ...q });
+const lockRef = (org: string, e164: string) =>
+  db().collection("customerPhones").doc(`${org}_${e164}`);
+const listAll = (
+  ctx: ReturnType<typeof newCtx>,
+  q: Partial<Parameters<typeof listCustomers>[1]> = {},
+) => listCustomers(ctx, { sort: "createdAt", dir: "desc", ...q });
 
 beforeEach(() => {
   audit.fail = false;
@@ -66,7 +80,10 @@ afterAll(async () => {
 describe("createCustomer", () => {
   it("normalizes the phone, stores managed fields and writes one audit entry", async () => {
     const ctx = newCtx();
-    const c = await createCustomer(ctx, make({ fullName: "Md. Rahim", phone: "01712-345678", email: "A@B.com" }));
+    const c = await createCustomer(
+      ctx,
+      make({ fullName: "Md. Rahim", phone: "01712-345678", email: "A@B.com" }),
+    );
 
     expect(c).toMatchObject({
       fullName: "Md. Rahim",
@@ -90,7 +107,11 @@ describe("createCustomer", () => {
     expect(raw.lastInteractionAt).toBeDefined();
 
     const lock = (await lockRef(ctx.organizationId, "+8801712345678").get()).data()!;
-    expect(lock).toMatchObject({ organizationId: ctx.organizationId, customerId: c.id, phoneE164: "+8801712345678" });
+    expect(lock).toMatchObject({
+      organizationId: ctx.organizationId,
+      customerId: c.id,
+      phoneE164: "+8801712345678",
+    });
     expect(lock.createdAt).toBeDefined();
 
     const logs = await docsOf("auditLogs", ctx.organizationId);
@@ -104,10 +125,26 @@ describe("createCustomer", () => {
       organizationId: ctx.organizationId,
     });
     expect(log.before).toBeUndefined();
-    expect(log.after.fullName).toBe("Md. Rahim");
-    // Phone keys are masked by the shared redactor; the raw number never reaches the audit row.
-    expect(JSON.stringify(log)).not.toContain("1712345678");
-    expect(JSON.stringify(log)).not.toContain("01712-345678");
+    expect(log.after).toEqual({
+      changedFields: expect.arrayContaining([
+        "fullName",
+        "phone",
+        "email",
+        "customerType",
+        "segment",
+        "tags",
+        "consent",
+      ]),
+      segment: "new_lead",
+      customerType: "retail",
+      tags: [],
+      consentStatus: "unknown",
+    });
+    // No personal data anywhere in the stored row.
+    const stored = JSON.stringify(log);
+    for (const pii of ["Md. Rahim", "md. rahim", "a@b.com", "1712345678", "712-345678", "01712"]) {
+      expect(stored, pii).not.toContain(pii);
+    }
   });
 
   it("uses a server-generated id, never a client-chosen one", async () => {
@@ -119,7 +156,10 @@ describe("createCustomer", () => {
 
   it("sets consent.at to the server time for granted/denied when missing, keeps an explicit one", async () => {
     const ctx = newCtx();
-    const granted = await createCustomer(ctx, make({ consent: { status: "granted", source: "form" } }));
+    const granted = await createCustomer(
+      ctx,
+      make({ consent: { status: "granted", source: "form" } }),
+    );
     const denied = await createCustomer(ctx, make({ consent: { status: "denied" } }));
     const unknown = await createCustomer(ctx, make());
     const explicit = await createCustomer(
@@ -143,6 +183,7 @@ describe("createCustomer", () => {
       fullNameLower: "evil",
       phoneE164: "+8801999999999",
       isAdmin: true,
+      tagsLower: ["evil"],
       createdAt: "2000-01-01T00:00:00.000Z",
     };
     const c = await createCustomer(ctx, evil as never);
@@ -152,6 +193,7 @@ describe("createCustomer", () => {
     expect(raw.phoneE164).toBe("+8801712000111");
     expect(raw.fullNameLower).not.toBe("evil");
     expect(raw).not.toHaveProperty("isAdmin");
+    expect(raw.tagsLower).toEqual([]);
     expect(c.createdAt.startsWith("2000")).toBe(false);
     expect(c.lastInteractionAt!.startsWith("2000")).toBe(false);
     expect((await lockRef(ctx.organizationId, "+8801999999999").get()).exists).toBe(false);
@@ -159,7 +201,9 @@ describe("createCustomer", () => {
 
   it("rejects an input whose phone cannot be normalized (no writes)", async () => {
     const ctx = newCtx();
-    await expect(createCustomer(ctx, { ...make(), phone: "12" } as never)).rejects.toBeInstanceOf(ValidationError);
+    await expect(createCustomer(ctx, { ...make(), phone: "12" } as never)).rejects.toBeInstanceOf(
+      ValidationError,
+    );
     expect(await docsOf("customers", ctx.organizationId)).toHaveLength(0);
   });
 });
@@ -179,8 +223,13 @@ describe("phone uniqueness", () => {
 
   it("the conflict message reveals nothing about the other customer", async () => {
     const ctx = newCtx();
-    const first = await createCustomer(ctx, make({ fullName: "Secret Person", phone: "01712345679" }));
-    const err = (await createCustomer(ctx, make({ phone: "01712345679" })).catch((e: unknown) => e)) as ConflictError;
+    const first = await createCustomer(
+      ctx,
+      make({ fullName: "Secret Person", phone: "01712345679" }),
+    );
+    const err = (await createCustomer(ctx, make({ phone: "01712345679" })).catch(
+      (e: unknown) => e,
+    )) as ConflictError;
     expect(err).toBeInstanceOf(ConflictError);
     expect(err.message).toBe("A customer with this phone number already exists");
     expect(err.message).not.toContain(first.id);
@@ -201,7 +250,9 @@ describe("phone uniqueness", () => {
     const ctx = newCtx();
     const p = "01712555000";
     const results = await Promise.allSettled(
-      Array.from({ length: 10 }, (_, i) => createCustomer(ctx, make({ fullName: `Racer ${i}`, phone: p }))),
+      Array.from({ length: 10 }, (_, i) =>
+        createCustomer(ctx, make({ fullName: `Racer ${i}`, phone: p })),
+      ),
     );
     const ok = results.filter((r) => r.status === "fulfilled");
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -225,7 +276,9 @@ describe("updateCustomer", () => {
     expect(lock.customerId).toBe(c.id);
     expect(await docsOf("customerPhones", ctx.organizationId)).toHaveLength(1);
 
-    await expect(createCustomer(ctx, make({ phone: "01712000002" }))).rejects.toBeInstanceOf(ConflictError);
+    await expect(createCustomer(ctx, make({ phone: "01712000002" }))).rejects.toBeInstanceOf(
+      ConflictError,
+    );
     await expect(createCustomer(ctx, make({ phone: "01712000001" }))).resolves.toBeDefined();
   });
 
@@ -242,16 +295,22 @@ describe("updateCustomer", () => {
     const ctx = newCtx();
     const a = await createCustomer(ctx, make({ fullName: "A", phone: "01712000011" }));
     const b = await createCustomer(ctx, make({ fullName: "B", phone: "01712000012" }));
-    const err = await updateCustomer(ctx, a.id, patch({ phone: "01712000012", fullName: "A renamed" })).catch(
-      (e: unknown) => e,
-    );
+    const err = await updateCustomer(
+      ctx,
+      a.id,
+      patch({ phone: "01712000012", fullName: "A renamed" }),
+    ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictError);
 
     const rawA = (await db().collection("customers").doc(a.id).get()).data()!;
     expect(rawA.fullName).toBe("A");
     expect(rawA.phoneE164).toBe("+8801712000011");
-    expect((await lockRef(ctx.organizationId, "+8801712000011").get()).data()!.customerId).toBe(a.id);
-    expect((await lockRef(ctx.organizationId, "+8801712000012").get()).data()!.customerId).toBe(b.id);
+    expect((await lockRef(ctx.organizationId, "+8801712000011").get()).data()!.customerId).toBe(
+      a.id,
+    );
+    expect((await lockRef(ctx.organizationId, "+8801712000012").get()).data()!.customerId).toBe(
+      b.id,
+    );
     expect(await docsOf("customerPhones", ctx.organizationId)).toHaveLength(2);
     expect(await docsOf("auditLogs", ctx.organizationId)).toHaveLength(2); // two creates only
   });
@@ -267,10 +326,18 @@ describe("updateCustomer", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const lost = results.find((r): r is PromiseRejectedResult => r.status === "rejected")!;
     expect(lost.reason).toBeInstanceOf(ConflictError);
+
+    // The winner moved to the contested number; the loser still holds its original one.
+    const winnerIsA = results[0]!.status === "fulfilled";
+    const expected = new Map<string, string>([
+      [winnerIsA ? a.id : b.id, "+8801712000023"],
+      [winnerIsA ? b.id : a.id, winnerIsA ? "+8801712000022" : "+8801712000021"],
+    ]);
     const locks = await docsOf("customerPhones", ctx.organizationId);
     expect(locks).toHaveLength(2);
-    expect(locks.map((l) => l.data().phoneE164).sort()).toHaveLength(2);
-    expect(new Set(locks.map((l) => l.data().customerId)).size).toBe(2);
+    expect(
+      new Map(locks.map((l) => [l.data().customerId as string, l.data().phoneE164 as string])),
+    ).toEqual(expected);
   });
 
   it("PATCH null clears email/whatsapp (incl. whatsappE164)/address/leadSource, keeps consent, tags and segment", async () => {
@@ -333,27 +400,55 @@ describe("updateCustomer", () => {
     expect(u.organizationId).toBe(ctx.organizationId);
     expect(u.totalSpendMinor).toBe(0);
     expect(u.id).toBe(c.id);
-    expect((await db().collection("customers").doc(c.id).get()).data()!.fullNameLower).toBe(c.fullName.toLowerCase());
+    expect((await db().collection("customers").doc(c.id).get()).data()!.fullNameLower).toBe(
+      c.fullName.toLowerCase(),
+    );
   });
 
   it("writes an audit entry holding only the changed fields (before/after)", async () => {
     const ctx = newCtx();
-    const c = await createCustomer(ctx, make({ fullName: "Aud", segment: "interested", tags: ["a"] }));
-    await updateCustomer(ctx, c.id, patch({ segment: "converted", tags: ["a"], address: "Dhaka" }));
-    const logs = (await docsOf("auditLogs", ctx.organizationId)).map((d) => d.data()).filter((l) => l.action === "customer.update");
+    const c = await createCustomer(
+      ctx,
+      make({ fullName: "Aud", segment: "interested", tags: ["a"] }),
+    );
+    await updateCustomer(
+      ctx,
+      c.id,
+      patch({
+        segment: "converted",
+        tags: ["a"],
+        address: "Dhaka",
+        fullName: "Aud Renamed",
+        email: "p@q.com",
+      }),
+    );
+    const logs = (await docsOf("auditLogs", ctx.organizationId))
+      .map((d) => d.data())
+      .filter((l) => l.action === "customer.update");
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ resource: "customer", resourceId: c.id, actorUid: ctx.uid });
     expect(logs[0]!.before).toEqual({ segment: "interested" });
-    expect(logs[0]!.after).toEqual({ segment: "converted", address: "Dhaka" });
+    expect(logs[0]!.after).toEqual({
+      changedFields: ["fullName", "email", "address", "segment"],
+      segment: "converted",
+    });
+    const stored = JSON.stringify(logs[0]);
+    for (const pii of ["Aud", "p@q.com", "Dhaka"]) expect(stored, pii).not.toContain(pii);
   });
 
   it("NotFound for a missing id, an invalid id, and another organization's customer (nothing changes)", async () => {
     const a = newCtx();
     const b = newCtx();
     const c = await createCustomer(a, make({ fullName: "Mine" }));
-    await expect(updateCustomer(b, c.id, patch({ fullName: "Hacked" }))).rejects.toBeInstanceOf(NotFoundError);
-    await expect(updateCustomer(a, "does-not-exist", patch({ fullName: "x" }))).rejects.toBeInstanceOf(NotFoundError);
-    await expect(updateCustomer(a, "a/b", patch({ fullName: "x" }))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateCustomer(b, c.id, patch({ fullName: "Hacked" }))).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    await expect(
+      updateCustomer(a, "does-not-exist", patch({ fullName: "x" })),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateCustomer(a, "a/b", patch({ fullName: "x" }))).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
     expect((await db().collection("customers").doc(c.id).get()).data()!.fullName).toBe("Mine");
   });
 
@@ -361,9 +456,65 @@ describe("updateCustomer", () => {
     const a = newCtx();
     const b = newCtx();
     const c = await createCustomer(a, make({ phone: "01712000031" }));
-    await expect(updateCustomer(b, c.id, patch({ phone: "01712000032" }))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateCustomer(b, c.id, patch({ phone: "01712000032" }))).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
     expect((await lockRef(a.organizationId, "+8801712000031").get()).exists).toBe(true);
     expect((await lockRef(b.organizationId, "+8801712000032").get()).exists).toBe(false);
+  });
+});
+
+describe("missing locks and corrupt rows", () => {
+  it("update with the old lock missing still succeeds and creates the new lock", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ phone: "01712000061" }));
+    await lockRef(ctx.organizationId, "+8801712000061").delete();
+    const u = await updateCustomer(ctx, c.id, patch({ phone: "01712000062" }));
+    expect(u.phoneE164).toBe("+8801712000062");
+    const locks = await docsOf("customerPhones", ctx.organizationId);
+    expect(locks.map((l) => l.id)).toEqual([`${ctx.organizationId}_+8801712000062`]);
+    expect(locks[0]!.data().customerId).toBe(c.id);
+  });
+
+  it("delete with the lock missing still deletes the customer", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ phone: "01712000063" }));
+    await lockRef(ctx.organizationId, "+8801712000063").delete();
+    await expect(deleteCustomer(ctx, c.id)).resolves.toBeUndefined();
+    expect((await db().collection("customers").doc(c.id).get()).exists).toBe(false);
+  });
+
+  it("delete leaves a lock that belongs to someone else alone", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ phone: "01712000064" }));
+    await lockRef(ctx.organizationId, "+8801712000064").update({ customerId: "someone-else" });
+    await deleteCustomer(ctx, c.id);
+    expect((await lockRef(ctx.organizationId, "+8801712000064").get()).exists).toBe(true);
+  });
+
+  it.each([
+    ["a malformed phoneE164", { phoneE164: "not-a-phone" }],
+    ["a missing phoneE164", {}],
+    ["a non-string phoneE164", { phoneE164: 12345 }],
+  ])("a corrupt row with %s can still be deleted and updated", async (_label, extra) => {
+    const ctx = newCtx();
+    for (const op of ["delete", "update"] as const) {
+      const ref = db().collection("customers").doc();
+      await ref.set({
+        organizationId: ctx.organizationId,
+        fullName: "Corrupt",
+        segment: "new_lead",
+        customerType: "retail",
+        ...extra,
+      });
+      if (op === "delete") {
+        await deleteCustomer(ctx, ref.id);
+        expect((await ref.get()).exists).toBe(false);
+      } else {
+        await updateCustomer(ctx, ref.id, patch({ phone: "01712000065" }));
+        expect((await ref.get()).data()!.phoneE164).toBe("+8801712000065");
+      }
+    }
   });
 });
 
@@ -376,10 +527,15 @@ describe("deleteCustomer", () => {
     expect(await docsOf("customerPhones", ctx.organizationId)).toHaveLength(0);
     await expect(createCustomer(ctx, make({ phone: "01712000041" }))).resolves.toBeDefined();
 
-    const del = (await docsOf("auditLogs", ctx.organizationId)).map((d) => d.data()).find((l) => l.action === "customer.delete")!;
+    const del = (await docsOf("auditLogs", ctx.organizationId))
+      .map((d) => d.data())
+      .find((l) => l.action === "customer.delete")!;
     expect(del).toMatchObject({ resource: "customer", resourceId: c.id, actorUid: ctx.uid });
-    expect(del.before.fullName).toBe("Gone");
+    expect(del.before).toEqual({ segment: "new_lead", customerType: "retail" });
     expect(del.after).toBeUndefined();
+    const stored = JSON.stringify(del);
+    for (const pii of ["Gone", "gone", "1712000041", "01712"])
+      expect(stored, pii).not.toContain(pii);
   });
 
   it("NotFound for another organization's customer, a missing one and an invalid id; nothing is removed", async () => {
@@ -398,7 +554,9 @@ describe("failure atomicity (audit write fails inside the transaction)", () => {
   it("create: neither the customer nor the lock persists, and the phone stays usable", async () => {
     const ctx = newCtx();
     audit.fail = true;
-    await expect(createCustomer(ctx, make({ phone: "01712000051" }))).rejects.toThrow("audit unavailable");
+    await expect(createCustomer(ctx, make({ phone: "01712000051" }))).rejects.toThrow(
+      "audit unavailable",
+    );
     expect(await docsOf("customers", ctx.organizationId)).toHaveLength(0);
     expect(await docsOf("customerPhones", ctx.organizationId)).toHaveLength(0);
     audit.fail = false;
@@ -409,7 +567,9 @@ describe("failure atomicity (audit write fails inside the transaction)", () => {
     const ctx = newCtx();
     const c = await createCustomer(ctx, make({ fullName: "Keep", phone: "01712000052" }));
     audit.fail = true;
-    await expect(updateCustomer(ctx, c.id, patch({ fullName: "Changed", phone: "01712000053" }))).rejects.toThrow("audit unavailable");
+    await expect(
+      updateCustomer(ctx, c.id, patch({ fullName: "Changed", phone: "01712000053" })),
+    ).rejects.toThrow("audit unavailable");
     const raw = (await db().collection("customers").doc(c.id).get()).data()!;
     expect(raw.fullName).toBe("Keep");
     expect(raw.phoneE164).toBe("+8801712000052");
@@ -440,12 +600,77 @@ describe("getCustomer", () => {
   });
 });
 
+describe("tags (case-insensitive tagsLower)", () => {
+  const FULLWIDTH_VIP = String.fromCodePoint(0xff36, 0xff29, 0xff30);
+  const BANGLA_TAG = String.fromCodePoint(0x09ac, 0x09bf, 0x09b6, 0x09c7, 0x09b7);
+
+  it("stores a de-duplicated lower-cased key next to the tags as entered, and never exposes it", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ tags: ["VIP", "Dhaka", "vip"] }));
+    expect(c.tags).toEqual(["VIP", "Dhaka"]);
+    expect(c).not.toHaveProperty("tagsLower");
+    expect((await db().collection("customers").doc(c.id).get()).data()!.tagsLower).toEqual([
+      "vip",
+      "dhaka",
+    ]);
+  });
+
+  it("the tag filter is case-insensitive and ignores padding", async () => {
+    const ctx = newCtx();
+    const a = await createCustomer(ctx, make({ tags: ["VIP"] }));
+    const b = await createCustomer(ctx, make({ tags: ["vip", "Other"] }));
+    await createCustomer(ctx, make({ tags: ["nope"] }));
+    for (const tag of ["vip", "VIP", " Vip ", "vip  "]) {
+      const ids = (await listAll(ctx, { tag })).items.map((x) => x.id).sort();
+      expect(ids, tag).toEqual([a.id, b.id].sort());
+    }
+    expect((await listAll(ctx, { tag: "missing" })).items).toEqual([]);
+    await expect(listAll(ctx, { tag: "   " })).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("a PATCH that changes tags refreshes tagsLower; a patch that does not touch tags leaves it alone", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ tags: ["Old"] }));
+    await updateCustomer(ctx, c.id, patch({ tags: ["New", "VIP"] }));
+    const raw = async () => (await db().collection("customers").doc(c.id).get()).data()!;
+    expect((await raw()).tagsLower).toEqual(["new", "vip"]);
+    expect((await listAll(ctx, { tag: "old" })).items).toEqual([]);
+    expect((await listAll(ctx, { tag: "vip" })).items.map((x) => x.id)).toEqual([c.id]);
+
+    await updateCustomer(ctx, c.id, patch({ fullName: "Renamed" }));
+    expect((await raw()).tagsLower).toEqual(["new", "vip"]);
+    await updateCustomer(ctx, c.id, patch({ tags: [] }));
+    expect((await raw()).tagsLower).toEqual([]);
+  });
+
+  it("unicode tags: full-width letters fold (NFKC) and Bangla tags match", async () => {
+    const ctx = newCtx();
+    const c = await createCustomer(ctx, make({ tags: [FULLWIDTH_VIP, BANGLA_TAG] }));
+    expect((await listAll(ctx, { tag: "vip" })).items.map((x) => x.id)).toEqual([c.id]);
+    expect((await listAll(ctx, { tag: FULLWIDTH_VIP })).items.map((x) => x.id)).toEqual([c.id]);
+    expect((await listAll(ctx, { tag: BANGLA_TAG })).items.map((x) => x.id)).toEqual([c.id]);
+  });
+
+  it("is org-scoped", async () => {
+    const a = newCtx();
+    const b = newCtx();
+    await createCustomer(b, make({ tags: ["shared"] }));
+    expect((await listAll(a, { tag: "shared" })).items).toEqual([]);
+  });
+});
+
 describe("listCustomers: search", () => {
   it("finds by Bangla name prefix, Latin names case-insensitively, and by phone prefix; never across organizations", async () => {
     const ctx = newCtx();
     const other = newCtx();
-    const bangla = await createCustomer(ctx, make({ fullName: `${RAHIM} Uddin`, phone: "01712100001" }));
-    const alice = await createCustomer(ctx, make({ fullName: "Alice Cooper", phone: "01912100002" }));
+    const bangla = await createCustomer(
+      ctx,
+      make({ fullName: `${RAHIM} Uddin`, phone: "01712100001" }),
+    );
+    const alice = await createCustomer(
+      ctx,
+      make({ fullName: "Alice Cooper", phone: "01912100002" }),
+    );
     const alina = await createCustomer(ctx, make({ fullName: "ALINA Khan", phone: "01912100003" }));
     await createCustomer(ctx, make({ fullName: "Bob", phone: "01812100004" }));
     await createCustomer(other, make({ fullName: "Alice Foreign", phone: "01912100002" }));
@@ -460,8 +685,12 @@ describe("listCustomers: search", () => {
 
     const byPhone = await listAll(ctx, { search: "0191" });
     expect(byPhone.items.map((c) => c.id).sort()).toEqual([alice.id, alina.id].sort());
-    expect((await listAll(ctx, { search: "+88017121" })).items.map((c) => c.id)).toEqual([bangla.id]);
-    expect((await listAll(ctx, { search: bn("01712100") })).items.map((c) => c.id)).toEqual([bangla.id]);
+    expect((await listAll(ctx, { search: "+88017121" })).items.map((c) => c.id)).toEqual([
+      bangla.id,
+    ]);
+    expect((await listAll(ctx, { search: bn("01712100") })).items.map((c) => c.id)).toEqual([
+      bangla.id,
+    ]);
     expect((await listAll(ctx, { search: "01912-100" })).items).toHaveLength(2);
   });
 
@@ -473,8 +702,14 @@ describe("listCustomers: search", () => {
 
   it("search ignores sort/dir and is ordered by the searched field ascending; paginates without gaps", async () => {
     const ctx = newCtx();
-    for (const n of ["Sam E", "Sam B", "Sam D", "Sam A", "Sam C"]) await createCustomer(ctx, make({ fullName: n }));
-    const first = await listAll(ctx, { search: "sam", sort: "lastInteractionAt", dir: "desc", limit: 2 });
+    for (const n of ["Sam E", "Sam B", "Sam D", "Sam A", "Sam C"])
+      await createCustomer(ctx, make({ fullName: n }));
+    const first = await listAll(ctx, {
+      search: "sam",
+      sort: "lastInteractionAt",
+      dir: "desc",
+      limit: 2,
+    });
     expect(first.items.map((c) => c.fullName)).toEqual(["Sam A", "Sam B"]);
     const second = await listAll(ctx, { search: "sam", limit: 2, cursor: first.nextCursor! });
     expect(second.items.map((c) => c.fullName)).toEqual(["Sam C", "Sam D"]);
@@ -486,22 +721,38 @@ describe("listCustomers: search", () => {
   it("validates search: too long, combined with a filter", async () => {
     const ctx = newCtx();
     await expect(listAll(ctx, { search: "a".repeat(65) })).rejects.toBeInstanceOf(ValidationError);
-    await expect(listAll(ctx, { search: "jo", segment: "converted" })).rejects.toBeInstanceOf(ValidationError);
+    await expect(listAll(ctx, { search: "jo", segment: "converted" })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 });
 
 describe("listCustomers: filters, sorting, pagination", () => {
   it("filters by segment, tag, customer type and agent; two filters are rejected", async () => {
     const ctx = newCtx();
-    const a = await createCustomer(ctx, make({ segment: "converted", tags: ["vip", "dhaka"], customerType: "wholesale", assignedAgentId: "agent-1" }));
+    const a = await createCustomer(
+      ctx,
+      make({
+        segment: "converted",
+        tags: ["vip", "dhaka"],
+        customerType: "wholesale",
+        assignedAgentId: "agent-1",
+      }),
+    );
     const b = await createCustomer(ctx, make({ segment: "inactive", tags: ["dhaka"] }));
     await createCustomer(newCtx(), make({ segment: "converted", tags: ["vip"] }));
 
     expect((await listAll(ctx, { segment: "converted" })).items.map((c) => c.id)).toEqual([a.id]);
     expect((await listAll(ctx, { tag: "vip" })).items.map((c) => c.id)).toEqual([a.id]);
-    expect((await listAll(ctx, { tag: "dhaka" })).items.map((c) => c.id).sort()).toEqual([a.id, b.id].sort());
-    expect((await listAll(ctx, { customerType: "wholesale" })).items.map((c) => c.id)).toEqual([a.id]);
-    expect((await listAll(ctx, { assignedAgentId: "agent-1" })).items.map((c) => c.id)).toEqual([a.id]);
+    expect((await listAll(ctx, { tag: "dhaka" })).items.map((c) => c.id).sort()).toEqual(
+      [a.id, b.id].sort(),
+    );
+    expect((await listAll(ctx, { customerType: "wholesale" })).items.map((c) => c.id)).toEqual([
+      a.id,
+    ]);
+    expect((await listAll(ctx, { assignedAgentId: "agent-1" })).items.map((c) => c.id)).toEqual([
+      a.id,
+    ]);
     expect((await listAll(ctx, {})).items).toHaveLength(2);
 
     const err = await listAll(ctx, { segment: "converted", tag: "vip" }).catch((e: unknown) => e);
@@ -520,32 +771,44 @@ describe("listCustomers: filters, sorting, pagination", () => {
     ["createdAt", "desc"],
     ["lastInteractionAt", "asc"],
     ["lastInteractionAt", "desc"],
-  ] as const)("pages through > limit docs sorted by %s %s with no duplicates or gaps", async (sort, dir) => {
-    const ctx = newCtx();
-    const created: string[] = [];
-    for (const n of ["Echo", "alpha", "Delta", "charlie", "Bravo", "foxtrot", "Golf"]) {
-      created.push((await createCustomer(ctx, make({ fullName: `${n} ${sort}` }))).id);
-    }
-    const seen: Array<{ id: string; fullName: string; createdAt: string; lastInteractionAt: string | null }> = [];
-    let cursor: string | undefined;
-    let pages = 0;
-    do {
-      const page = await listCustomers(ctx, { sort, dir, limit: 3, cursor });
-      seen.push(...page.items);
-      cursor = page.nextCursor ?? undefined;
-      pages++;
-    } while (cursor && pages < 10);
+  ] as const)(
+    "pages through > limit docs sorted by %s %s with no duplicates or gaps",
+    async (sort, dir) => {
+      const ctx = newCtx();
+      const created: string[] = [];
+      for (const n of ["Echo", "alpha", "Delta", "charlie", "Bravo", "foxtrot", "Golf"]) {
+        created.push((await createCustomer(ctx, make({ fullName: `${n} ${sort}` }))).id);
+      }
+      const seen: Array<{
+        id: string;
+        fullName: string;
+        createdAt: string;
+        lastInteractionAt: string | null;
+      }> = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = await listCustomers(ctx, { sort, dir, limit: 3, cursor });
+        seen.push(...page.items);
+        cursor = page.nextCursor ?? undefined;
+        pages++;
+      } while (cursor && pages < 10);
 
-    expect(pages).toBe(3);
-    expect(seen.map((c) => c.id).sort()).toEqual([...created].sort());
-    expect(new Set(seen.map((c) => c.id)).size).toBe(7);
+      expect(pages).toBe(3);
+      expect(seen.map((c) => c.id).sort()).toEqual([...created].sort());
+      expect(new Set(seen.map((c) => c.id)).size).toBe(7);
 
-    const key = (c: (typeof seen)[number]) =>
-      sort === "fullName" ? c.fullName.toLowerCase() : sort === "createdAt" ? c.createdAt : (c.lastInteractionAt ?? "");
-    const keys = seen.map(key);
-    const sorted = [...keys].sort();
-    expect(keys).toEqual(dir === "asc" ? sorted : sorted.reverse());
-  });
+      const key = (c: (typeof seen)[number]) =>
+        sort === "fullName"
+          ? c.fullName.toLowerCase()
+          : sort === "createdAt"
+            ? c.createdAt
+            : (c.lastInteractionAt ?? "");
+      const keys = seen.map(key);
+      const sorted = [...keys].sort();
+      expect(keys).toEqual(dir === "asc" ? sorted : sorted.reverse());
+    },
+  );
 
   it("limit: default 25 and the maximum is enforced", async () => {
     const ctx = newCtx();

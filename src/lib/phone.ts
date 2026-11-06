@@ -40,13 +40,24 @@ function toAsciiDigit(ch: string): string {
   return String(code - 0x0660); // Arabic-Indic
 }
 
+/**
+ * The shared cleaning step: NFKC, then separators / whitespace / invisible format characters
+ * removed, then Bangla and Arabic-Indic digits mapped to ASCII. Returns "" for non-strings and
+ * for input longer than the raw-length cap, so the work is bounded. What is left may still be
+ * anything (letters, a leading "+"): it is not validated here.
+ */
+export function cleanPhoneInput(raw: string): string {
+  if (typeof raw !== "string" || raw.length > MAX_RAW_LENGTH) return "";
+  return raw.normalize("NFKC").replace(IGNORED, "").replace(NON_ASCII_DIGITS, toAsciiDigit);
+}
+
 /** Returns the E.164 form of a supported mobile number, or null when it cannot be normalized. */
 export function normalizePhone(raw: string, defaultCountry = "BD"): string | null {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_RAW_LENGTH) return null;
 
   // NFKC folds full-width digits (U+FF10-FF19) and similar compatibility forms to ASCII.
   // The length cap above runs first, so this is bounded work.
-  const cleaned = raw.normalize("NFKC").replace(IGNORED, "").replace(NON_ASCII_DIGITS, toAsciiDigit);
+  const cleaned = cleanPhoneInput(raw);
   if (cleaned.length === 0) return null;
 
   // International form: `+digits` or `00digits`.

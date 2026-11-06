@@ -26,9 +26,11 @@ import {
   type Query,
 } from "firebase-admin/firestore";
 
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError } from "@/lib/errors";
+import { isAlreadyExists } from "@/lib/firestore-errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { isValidIdSegment } from "@/lib/ids";
+import { invalid } from "@/lib/validation-error";
 import { decodeCursor, encodeCursor, type Cursor } from "@/lib/pagination";
 
 export type WhereOp = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "array-contains";
@@ -67,12 +69,6 @@ const MAX_LIMIT = 100;
 const MAX_IN_VALUES = 30;
 const MAX_WHERE_CLAUSES = 10;
 const MAX_SERIALIZE_DEPTH = 8;
-const GRPC_ALREADY_EXISTS = 6;
-
-function invalid(path: string, message: string): ValidationError {
-  // Messages carry field names only, never caller-supplied values.
-  return new ValidationError([{ path, message }]);
-}
 
 function assertId(value: unknown, path: string): asserts value is string {
   if (!isValidIdSegment(value)) throw invalid(path, "Invalid id");
@@ -245,7 +241,7 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
     try {
       await ref.create(payload);
     } catch (error) {
-      if ((error as { code?: unknown } | null)?.code === GRPC_ALREADY_EXISTS) {
+      if (isAlreadyExists(error)) {
         throw new ConflictError("A document with this id already exists");
       }
       throw error;
