@@ -1,7 +1,86 @@
 rules_version = '2';
+
+// Tenant isolation rules.
+//
+// Every write (create/update/delete) goes through the server via the Admin SDK,
+// which bypasses these rules, so clients may never write anything. Clients may
+// only read a small, explicit set of documents. Authorization is derived solely
+// from request.auth.uid and stored documents (organizationMembers), never from
+// client-supplied request data.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Placeholder: deny everything until real rules are written.
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(orgId) {
+      return /databases/$(database)/documents/organizationMembers/$(orgId + '_' + request.auth.uid);
+    }
+
+    // One get() per call. Fails closed (rule error => deny) when the member doc
+    // is missing, has no role, or when orgId is not a string. Only the four
+    // known roles grant anything; any other role string grants nothing.
+    function isMember(orgId) {
+      return signedIn()
+        && get(memberPath(orgId)).data.role in ['owner', 'admin', 'agent', 'viewer'];
+    }
+
+    function isOrgAdmin(orgId) {
+      return signedIn()
+        && get(memberPath(orgId)).data.role in ['owner', 'admin'];
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isMember(orgId);
+      allow write: if false;
+    }
+
+    // Own member doc (a user's own record; no role check so that the
+    // where('uid', '==', uid) list query is statically provable), or any member doc of an org where the
+    // caller is owner/admin. List queries must be constrained on uid or
+    // organizationId accordingly.
+    match /organizationMembers/{memberId} {
+      allow read: if signedIn()
+        && (resource.data.uid == request.auth.uid
+            || isOrgAdmin(resource.data.organizationId));
+      allow write: if false;
+    }
+
+    // Org-scoped business data: readable by any member of the doc's organization.
+    // Queries must be constrained with where('organizationId', '==', <org>).
+    match /customers/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+    }
+
+    match /products/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+    }
+
+    match /categories/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+    }
+
+    match /inventory/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+
+      // Reservations are server-only; this also blocks collection-group reads.
+      match /reservations/{key} {
+        allow read, write: if false;
+      }
+    }
+
+    // rateLimits, auditLogs, customerPhones, productSkus, productSlugs and any
+    // other collection fall through to default deny.
     match /{document=**} {
       allow read, write: if false;
     }
