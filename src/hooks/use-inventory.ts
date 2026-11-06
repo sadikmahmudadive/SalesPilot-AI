@@ -1,15 +1,11 @@
 "use client";
 
-import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { inventoryKeys, productKeys } from "@/hooks/query-keys";
+import { usePagedList, type Page } from "@/hooks/use-paged-list";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import { clean, setPaging } from "@/lib/api/query-string";
 import type { AdjustInput, InventoryListItem, InventoryRecord } from "@/schemas/inventory";
 
 /** What the UI asks for. `cursor` is added by the infinite query. */
@@ -20,12 +16,7 @@ export interface InventoryListParams {
   cursor?: string;
 }
 
-export interface InventoryListPage {
-  items: InventoryListItem[];
-  nextCursor: string | null;
-}
-
-const clean = (v: string | undefined): string => (typeof v === "string" ? v.trim() : "");
+export type InventoryListPage = Page<InventoryListItem>;
 
 /**
  * Builds the list query string. `lowStock=false` is the same as absent, and `productId` wins over
@@ -36,32 +27,17 @@ export function buildInventoryQuery(params: InventoryListParams): URLSearchParam
   const productId = clean(params.productId);
   if (productId) out.set("productId", productId);
   else if (params.lowStock === true) out.set("lowStock", "true");
-  if (typeof params.limit === "number" && params.limit > 0) out.set("limit", String(params.limit));
-  const cursor = clean(params.cursor);
-  if (cursor) out.set("cursor", cursor);
+  setPaging(out, params);
   return out;
 }
 
-function listPath(params: InventoryListParams): string {
-  const qs = buildInventoryQuery(params).toString();
-  return qs ? `/api/inventory?${qs}` : "/api/inventory";
-}
-
 export function useInventory(params: Omit<InventoryListParams, "cursor">) {
-  return useInfiniteQuery<
-    InventoryListPage,
-    Error,
-    InfiniteData<InventoryListPage, string | undefined>,
-    ReturnType<typeof inventoryKeys.list>,
-    string | undefined
-  >({
-    queryKey: inventoryKeys.list(params),
-    initialPageParam: undefined,
-    queryFn: ({ pageParam, signal }) =>
-      apiFetch<InventoryListPage>(listPath({ ...params, cursor: pageParam }), { signal }),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
-  });
+  return usePagedList<InventoryListItem, Omit<InventoryListParams, "cursor">>(
+    inventoryKeys.list(params),
+    "/api/inventory",
+    params,
+    buildInventoryQuery,
+  );
 }
 
 /**

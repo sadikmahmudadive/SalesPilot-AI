@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2, UserX } from "lucide-react";
+import { Pencil, Trash2, UserX } from "lucide-react";
 
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
@@ -16,6 +15,7 @@ import {
   TagsCard,
 } from "@/components/customers/customer-profile-sections";
 import { DeleteCustomerDialog } from "@/components/customers/delete-customer-dialog";
+import { BackLink } from "@/components/shared/back-link";
 import { QueryErrorState } from "@/components/shared/query-error-state";
 import { SegmentBadge } from "@/components/customers/segment-badge";
 import { Badge } from "@/components/ui/badge";
@@ -25,17 +25,6 @@ import { TYPE_LABELS } from "@/config/customer-labels";
 import { useCustomer } from "@/hooks/use-customers";
 import { ApiError } from "@/lib/api/client";
 import { can, type Role } from "@/lib/security/permissions";
-
-function BackLink() {
-  return (
-    <Button variant="ghost" size="sm" className="-ml-2.5 mb-3" asChild>
-      <Link href="/customers">
-        <ArrowLeft aria-hidden="true" />
-        All customers
-      </Link>
-    </Button>
-  );
-}
 
 function ProfileSkeleton() {
   return (
@@ -59,7 +48,7 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
   if (query.isPending) {
     return (
       <div>
-        <BackLink />
+        <BackLink href="/customers">All customers</BackLink>
         <p className="sr-only" role="status">
           Loading customer
         </p>
@@ -72,7 +61,7 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
     const notFound = query.error instanceof ApiError && query.error.status === 404;
     return (
       <div>
-        <BackLink />
+        <BackLink href="/customers">All customers</BackLink>
         {notFound ? (
           <PlaceholderCard icon={UserX} heading="Customer not found">
             This customer may have been deleted, or the link is incorrect.
@@ -91,7 +80,7 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
 
   return (
     <div>
-      <BackLink />
+      <BackLink href="/customers">All customers</BackLink>
       <PageHeader
         title={customer.fullName}
         description={

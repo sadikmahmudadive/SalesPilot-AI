@@ -1,27 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft, Boxes, Lock } from "lucide-react";
+import { Boxes, Lock } from "lucide-react";
 
 import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
 import { ProductForm } from "@/components/products/product-form";
+import { BackLink } from "@/components/shared/back-link";
 import { QueryErrorState } from "@/components/shared/query-error-state";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProduct } from "@/hooks/use-products";
 import { ApiError } from "@/lib/api/client";
 import { can, type Role } from "@/lib/security/permissions";
-
-function BackLink() {
-  return (
-    <Button variant="ghost" size="sm" className="-ml-2.5 mb-3" asChild>
-      <Link href="/products">
-        <ArrowLeft aria-hidden="true" />
-        All products
-      </Link>
-    </Button>
-  );
-}
 
 function EditorSkeleton() {
   return (
@@ -42,7 +30,7 @@ function EditProduct({ id, canWrite }: { id: string; canWrite: boolean }) {
   if (query.isPending) {
     return (
       <div>
-        <BackLink />
+        <BackLink href="/products">All products</BackLink>
         <p className="sr-only" role="status">
           Loading product
         </p>
@@ -55,7 +43,7 @@ function EditProduct({ id, canWrite }: { id: string; canWrite: boolean }) {
     const notFound = query.error instanceof ApiError && query.error.status === 404;
     return (
       <div>
-        <BackLink />
+        <BackLink href="/products">All products</BackLink>
         {notFound ? (
           <PlaceholderCard icon={Boxes} heading="Product not found">
             This product may have been removed, or the link is incorrect.
@@ -83,7 +71,7 @@ export function ProductEditor({ id, role }: { id?: string; role: Role }) {
     if (!canWrite) {
       return (
         <div>
-          <BackLink />
+          <BackLink href="/products">All products</BackLink>
           <PlaceholderCard icon={Lock} heading="You cannot add products">
             Only owners and admins can add products. You can still browse the catalogue.
           </PlaceholderCard>

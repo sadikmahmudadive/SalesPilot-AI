@@ -1,16 +1,11 @@
 "use client";
 
-import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 
+import { usePagedList, type Page } from "@/hooks/use-paged-list";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import { clean, setPaging } from "@/lib/api/query-string";
 import type {
   Customer,
   CustomerSegment,
@@ -34,18 +29,13 @@ export interface CustomerListParams {
   cursor?: string;
 }
 
-export interface CustomerListPage {
-  items: Customer[];
-  nextCursor: string | null;
-}
+export type CustomerListPage = Page<Customer>;
 
 export type CustomerCreateBody = z.input<typeof customerInputSchema>;
 export type CustomerPatchBody = z.input<typeof customerPatchSchema>;
 
 /** Filters in priority order; the backend accepts only one of them per request. */
 const FILTER_KEYS = ["segment", "customerType", "tag", "assignedAgentId"] as const;
-
-const clean = (v: string | undefined): string => (typeof v === "string" ? v.trim() : "");
 
 /**
  * Builds the list query string and enforces the backend's rules client-side: empty values are
@@ -68,9 +58,7 @@ export function buildCustomersQuery(params: CustomerListParams): URLSearchParams
 
   if (params.sort) out.set("sort", params.sort);
   if (params.dir) out.set("dir", params.dir);
-  if (typeof params.limit === "number" && params.limit > 0) out.set("limit", String(params.limit));
-  const cursor = clean(params.cursor);
-  if (cursor) out.set("cursor", cursor);
+  setPaging(out, params);
   return out;
 }
 
@@ -81,26 +69,13 @@ export const customerKeys = {
   detail: (id: string) => [...customerKeys.all, "detail", id] as const,
 };
 
-function listPath(params: CustomerListParams): string {
-  const qs = buildCustomersQuery(params).toString();
-  return qs ? `/api/customers?${qs}` : "/api/customers";
-}
-
 export function useCustomers(params: Omit<CustomerListParams, "cursor">) {
-  return useInfiniteQuery<
-    CustomerListPage,
-    Error,
-    InfiniteData<CustomerListPage, string | undefined>,
-    ReturnType<typeof customerKeys.list>,
-    string | undefined
-  >({
-    queryKey: customerKeys.list(params),
-    initialPageParam: undefined,
-    queryFn: ({ pageParam, signal }) =>
-      apiFetch<CustomerListPage>(listPath({ ...params, cursor: pageParam }), { signal }),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    placeholderData: keepPreviousData, // keep showing the old rows while a new search/filter loads
-  });
+  return usePagedList<Customer, Omit<CustomerListParams, "cursor">>(
+    customerKeys.list(params),
+    "/api/customers",
+    params,
+    buildCustomersQuery,
+  );
 }
 
 export function useCustomer(id: string) {

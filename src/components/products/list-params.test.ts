@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FILTERS,
   hasActiveCriteria,
+  searchTerm,
   toListParams,
   type ProductFilterState,
 } from "@/components/products/list-params";
@@ -57,6 +58,34 @@ describe("toListParams", () => {
     expect(toListParams(state({ archived: false })).archived).toBe(false);
     expect(toListParams(state({ archived: true, filterBy: "availability", availability: "active" })).availability).toBeUndefined();
     expect(toListParams(state({ archived: true, filterBy: "category", categoryId: "c1" })).categoryId).toBe("c1");
+  });
+});
+
+describe("SKU search sanitising", () => {
+  const sku = (search: string) => toListParams(state({ search, searchMode: "sku" })).sku;
+
+  it("strips characters a SKU cannot contain, so the API never answers 400", () => {
+    expect(sku("TEE 1")).toBe("TEE1");
+    expect(sku(" tee-01 ")).toBe("tee-01");
+    expect(sku("a/b#c")).toBe("abc");
+    expect(sku("ts_1.2")).toBe("ts_1.2");
+  });
+
+  it("does not search when nothing usable is left", () => {
+    expect(sku("  ")).toBeUndefined();
+    expect(sku("@@")).toBeUndefined();
+    expect(sku("a@")).toBeUndefined();
+    expect(hasActiveCriteria(state({ search: "@@", searchMode: "sku" }))).toBe(false);
+  });
+
+  it("leaves a name search alone", () => {
+    expect(toListParams(state({ search: "red shirt #2" })).q).toBe("red shirt #2");
+  });
+
+  it("searchTerm is empty exactly when no search runs", () => {
+    expect(searchTerm({ search: "ab", searchMode: "name" })).toBe("ab");
+    expect(searchTerm({ search: "a b", searchMode: "sku" })).toBe("ab");
+    expect(searchTerm({ search: "a", searchMode: "name" })).toBe("");
   });
 });
 

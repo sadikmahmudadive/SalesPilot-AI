@@ -3,6 +3,7 @@
 import { useId } from "react";
 
 import {
+  searchTerm,
   SORT_OPTIONS,
   type FilterBy,
   type ProductFilterState,
@@ -13,7 +14,7 @@ import { SelectField } from "@/components/shared/form-controls";
 import { SearchField } from "@/components/shared/search-field";
 import { ToggleButton } from "@/components/shared/toggle-button";
 import { LIVE_AVAILABILITY_OPTIONS } from "@/config/product-labels";
-import { isSearchActive, MIN_SEARCH_LENGTH } from "@/lib/list-ui";
+import { MIN_SEARCH_LENGTH } from "@/lib/list-ui";
 import type { Category } from "@/schemas/product";
 
 interface ProductFiltersProps {
@@ -38,7 +39,7 @@ const SORT_SELECT_OPTIONS = SORT_OPTIONS.map((o) => ({ value: o.key, label: o.la
 /** Search (by name or SKU), the single "Filter by" control with its value, sort, and the archived toggle. */
 export function ProductFilters({ value, onChange, categories }: ProductFiltersProps) {
   const hintId = useId();
-  const searching = isSearchActive(value.search);
+  const searching = searchTerm(value) !== "";
   const tooShort = value.search.trim().length > 0 && !searching;
   const patch = (next: Partial<ProductFilterState>) => onChange({ ...value, ...next });
   const categoryOptions = (categories ?? []).map((c) => ({ value: c.id, label: c.name }));

@@ -104,7 +104,15 @@ export function NewCategoryDialog({ open, onOpenChange, onCreated }: NewCategory
             error={fieldError}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                reset();
+                onOpenChange(false);
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending} aria-busy={pending}>

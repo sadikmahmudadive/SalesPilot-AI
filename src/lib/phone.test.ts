@@ -11,7 +11,7 @@ describe("source hygiene", () => {
   const FORBIDDEN_LITERALS =
     /[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF\uFF10-\uFF19]/u;
 
-  it.each(["src/lib/phone.ts", "src/schemas/customer.ts"])(
+  it.each(["src/lib/phone.ts", "src/lib/digits.ts", "src/schemas/customer.ts"])(
     "%s has no literal invisible/format or Bangla/Arabic digit characters",
     (file) => {
       const source = readFileSync(join(process.cwd(), file), "utf8");

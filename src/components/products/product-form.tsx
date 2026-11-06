@@ -25,6 +25,7 @@ import { DiscardChangesDialog } from "@/components/shared/discard-changes-dialog
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
+import { useRevealAlert } from "@/hooks/use-reveal-alert";
 import { useBeforeUnloadGuard } from "@/hooks/use-unsaved-changes";
 import { asApiError } from "@/lib/api/map-error";
 import type { Product } from "@/schemas/product";
@@ -50,7 +51,9 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
   const update = useUpdateProduct();
   const submitLock = useRef(false);
   const [pending, setPending] = useState(false);
-  const [formError, setFormError] = useState<{ message: string; requestId?: string } | null>(null);
+  // `reveal`: the failure has no field to focus, so the banner itself is scrolled to and focused.
+  const [formError, setFormError] = useState<{ message: string; requestId?: string; reveal?: boolean } | null>(null);
+  const alertRef = useRevealAlert(formError?.reveal ? formError : null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
@@ -81,7 +84,9 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
     }
     const first = mapped.fields.find((f) => !LIST_ROOTS.has(f.name));
     if (first) setFocus(first.name as FieldPath<ProductFormValues>);
-    setFormError(mapped.formError ? { message: mapped.formError, requestId: mapped.requestId } : null);
+    setFormError(
+      mapped.formError ? { message: mapped.formError, requestId: mapped.requestId, reveal: !first } : null,
+    );
   }
 
   async function save() {
@@ -168,7 +173,7 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
         noValidate
         aria-label={isEdit ? `Edit ${name}` : "New product"}
       >
-        <FormAlert message={formError?.message}>
+        <FormAlert ref={alertRef} message={formError?.message}>
           {formError?.requestId ? <p className="text-xs">Reference: {formError.requestId}</p> : null}
         </FormAlert>
         {/* A disabled fieldset disables every control inside it, which is all read-only mode needs. */}

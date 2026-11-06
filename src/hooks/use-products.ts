@@ -1,17 +1,12 @@
 "use client";
 
-import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 
 import { inventoryKeys, productKeys } from "@/hooks/query-keys";
+import { usePagedList, type Page } from "@/hooks/use-paged-list";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import { clean, setPaging } from "@/lib/api/query-string";
 import type { Availability, Product, productInputSchema, productPatchSchema } from "@/schemas/product";
 
 export type ProductSortName = "createdAt" | "name" | "updatedAt";
@@ -32,18 +27,13 @@ export interface ProductListParams {
   cursor?: string;
 }
 
-export interface ProductListPage {
-  items: Product[];
-  nextCursor: string | null;
-}
+export type ProductListPage = Page<Product>;
 
 export type ProductCreateBody = z.input<typeof productInputSchema>;
 export type ProductPatchBody = z.input<typeof productPatchSchema>;
 
 /** Filters in priority order; the backend accepts only one of them per request. */
 const FILTER_KEYS = ["availability", "categoryId"] as const;
-
-const clean = (v: string | undefined): string => (typeof v === "string" ? v.trim() : "");
 
 /**
  * Builds the list query string and enforces the backend's rules client-side: empty values are
@@ -74,32 +64,17 @@ export function buildProductsQuery(params: ProductListParams): URLSearchParams {
     if (params.sort) out.set("sort", params.sort);
     if (params.dir) out.set("dir", params.dir);
   }
-  if (typeof params.limit === "number" && params.limit > 0) out.set("limit", String(params.limit));
-  const cursor = clean(params.cursor);
-  if (cursor) out.set("cursor", cursor);
+  setPaging(out, params);
   return out;
 }
 
-function listPath(params: ProductListParams): string {
-  const qs = buildProductsQuery(params).toString();
-  return qs ? `/api/products?${qs}` : "/api/products";
-}
-
 export function useProducts(params: Omit<ProductListParams, "cursor">) {
-  return useInfiniteQuery<
-    ProductListPage,
-    Error,
-    InfiniteData<ProductListPage, string | undefined>,
-    ReturnType<typeof productKeys.list>,
-    string | undefined
-  >({
-    queryKey: productKeys.list(params),
-    initialPageParam: undefined,
-    queryFn: ({ pageParam, signal }) =>
-      apiFetch<ProductListPage>(listPath({ ...params, cursor: pageParam }), { signal }),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    placeholderData: keepPreviousData, // keep showing the old rows while a new search/filter loads
-  });
+  return usePagedList<Product, Omit<ProductListParams, "cursor">>(
+    productKeys.list(params),
+    "/api/products",
+    params,
+    buildProductsQuery,
+  );
 }
 
 export function useProduct(id: string) {

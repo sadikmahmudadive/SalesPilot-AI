@@ -42,6 +42,9 @@ describe("source hygiene", () => {
     "src/schemas/helpers.ts",
     "src/lib/slug.ts",
     "src/lib/text.ts",
+    "src/lib/digits.ts",
+    "src/lib/money.ts",
+    "src/components/inventory/stock-model.ts",
     "src/schemas/product.test.ts",
   ])("%s contains only ASCII", (file) => {
     const source = readFileSync(join(process.cwd(), file), "utf8");

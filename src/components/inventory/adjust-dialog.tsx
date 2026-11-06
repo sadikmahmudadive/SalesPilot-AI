@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { isUnconfirmedError, useAdjustStock } from "@/hooks/use-inventory";
 import { ApiError } from "@/lib/api/client";
+import { guardOpenChange, pendingDismissProps } from "@/lib/dialog-guard";
 import { MAX_REASON_LENGTH } from "@/config/inventory";
 import { reasonSchema, type InventoryListItem } from "@/schemas/inventory";
 
@@ -33,9 +34,11 @@ const UNCONFIRMED_MESSAGE = "We couldn't confirm the change. Check the current s
 interface AdjustFormProps {
   item: InventoryListItem;
   onClose: () => void;
+  /** Reports whether a request is in flight, so the dialog cannot be dismissed meanwhile. */
+  onPendingChange: (pending: boolean) => void;
 }
 
-function AdjustForm({ item, onClose }: AdjustFormProps) {
+function AdjustForm({ item, onClose, onPendingChange }: AdjustFormProps) {
   const adjust = useAdjustStock();
   const lock = useRef(false);
   const [mode, setMode] = useState<AdjustMode>("add");
@@ -74,6 +77,7 @@ function AdjustForm({ item, onClose }: AdjustFormProps) {
 
     lock.current = true;
     setPending(true);
+    onPendingChange(true);
     setFormError(null);
     try {
       await adjust.mutateAsync({ productId: item.productId, variantId: item.variantId, delta, reason: why.data });
@@ -96,6 +100,7 @@ function AdjustForm({ item, onClose }: AdjustFormProps) {
     } finally {
       lock.current = false;
       setPending(false);
+      onPendingChange(false);
     }
   }
 
@@ -208,17 +213,19 @@ export function AdjustDialog({ item, onOpenChange }: AdjustDialogProps) {
   const [last, setLast] = useState(item);
   if (item && item.id !== last?.id) setLast(item);
   const shown = item ?? last;
+  // While a request runs, no way of closing the dialog may discard its outcome.
+  const [pending, setPending] = useState(false);
 
   return (
-    <Dialog open={item !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={item !== null} onOpenChange={guardOpenChange(pending, onOpenChange)}>
+      <DialogContent className="sm:max-w-md" {...pendingDismissProps(pending)}>
         <DialogHeader>
           <DialogTitle>Adjust stock</DialogTitle>
           <DialogDescription>
             {shown ? `${shown.productName} (${shown.variantLabel}${shown.sku ? `, ${shown.sku}` : ""})` : ""}
           </DialogDescription>
         </DialogHeader>
-        {item ? <AdjustForm key={item.id} item={item} onClose={() => onOpenChange(false)} /> : null}
+        {item ? <AdjustForm key={item.id} item={item} onClose={() => onOpenChange(false)} onPendingChange={setPending} /> : null}
       </DialogContent>
     </Dialog>
   );
