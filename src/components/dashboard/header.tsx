@@ -5,11 +5,11 @@ import { Search } from "lucide-react";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
 import { StatusChip } from "@/components/dashboard/status-chip";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
-import { roleLabel, UserMenu } from "@/components/dashboard/user-menu";
+import { UserMenu } from "@/components/dashboard/user-menu";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { visibleNavItems } from "@/config/nav";
-import type { Role } from "@/lib/security/permissions";
+import { ROLE_LABELS, type Role } from "@/lib/security/permissions";
 
 const SEARCH_TITLE = "Search is coming in a later release";
 
@@ -30,7 +30,7 @@ export function Header({ organizationName, role, email, displayName }: HeaderPro
           {organizationName}
         </span>
         <Badge variant="secondary" className="hidden sm:inline-flex">
-          {roleLabel(role)}
+          {ROLE_LABELS[role]}
         </Badge>
       </div>
 

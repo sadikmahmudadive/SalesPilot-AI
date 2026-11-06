@@ -7,6 +7,14 @@
 export const ROLES = ['owner', 'admin', 'agent', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 
+/** Display names for roles; the single source for UI labels. */
+export const ROLE_LABELS: Readonly<Record<Role, string>> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  agent: 'Agent',
+  viewer: 'Viewer',
+};
+
 export const PERMISSIONS = [
   'org:manage',
   'members:manage',

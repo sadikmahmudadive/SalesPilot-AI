@@ -9,6 +9,7 @@ import {
   registerOrganizationRequest,
   resolvePostSignIn,
   signOutEverywhere,
+  signOutNavigation,
 } from "./client-flow";
 
 function json(body: unknown, status = 200): Response {
@@ -208,8 +209,32 @@ describe("signOutEverywhere", () => {
   it("returns a fixed message and never echoes raw error text", async () => {
     const { deps } = setup({ serverThrows: true, firebaseThrows: true });
     const result = await signOutEverywhere(deps);
-    expect(result).toEqual({ ok: false, message: expect.any(String) });
+    expect(result).toEqual({ ok: false, serverCleared: false, message: expect.any(String) });
     expect(JSON.stringify(result)).not.toMatch(/offline|firebase down/);
+  });
+
+  it("reports serverCleared separately from the Firebase outcome", async () => {
+    expect(await signOutEverywhere(setup({ firebaseThrows: true }).deps)).toMatchObject({ ok: false, serverCleared: true });
+    expect(await signOutEverywhere(setup({ serverStatus: 500 }).deps)).toMatchObject({ ok: false, serverCleared: false });
+  });
+});
+
+describe("signOutNavigation", () => {
+  it("full success: client-side replace to /login, no toast", () => {
+    expect(signOutNavigation({ ok: true })).toEqual({ kind: "replace", url: "/login" });
+  });
+
+  it("server cleared but Firebase failed: still replace to /login, with the toast", () => {
+    const nav = signOutNavigation({ ok: false, serverCleared: true, message: "partial" });
+    expect(nav).toEqual({ kind: "replace", url: "/login", toast: "partial" });
+  });
+
+  it("server DELETE failed: hard-navigate through /api/auth/expired (clears the cookie) with a device-only notice", () => {
+    const nav = signOutNavigation({ ok: false, serverCleared: false, message: "x" });
+    expect(nav.kind).toBe("assign");
+    expect(nav.url).toBe("/api/auth/expired");
+    expect(nav.toast).toMatch(/Signed out on this device/);
+    expect(nav.toast).toMatch(/revocation/i);
   });
 });
 

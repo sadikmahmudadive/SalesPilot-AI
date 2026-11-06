@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PERMISSIONS, PERMISSION_MATRIX, ROLES, can, type Permission, type Role } from './permissions';
+import { PERMISSIONS, PERMISSION_MATRIX, ROLES, ROLE_LABELS, can, type Permission, type Role } from './permissions';
 
 const ALL: readonly Permission[] = [
   'org:manage',
@@ -76,5 +76,12 @@ describe('can()', () => {
       expect(can(role, 'nope:everything' as Permission)).toBe(false);
       expect(can(role, '' as Permission)).toBe(false);
     }
+  });
+});
+
+describe('ROLE_LABELS', () => {
+  it('has a capitalised label for every role and nothing else', () => {
+    expect(Object.keys(ROLE_LABELS).sort()).toEqual([...ROLES].sort());
+    expect(ROLE_LABELS).toEqual({ owner: 'Owner', admin: 'Admin', agent: 'Agent', viewer: 'Viewer' });
   });
 });

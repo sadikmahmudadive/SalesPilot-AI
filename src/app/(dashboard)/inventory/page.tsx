@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PackageSearch } from "lucide-react";
 
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
 
 export const metadata: Metadata = { title: "Inventory" };
 
@@ -11,16 +11,7 @@ export default function Page() {
   return (
     <div>
       <PageHeader title="Inventory" />
-      <Card className="border border-dashed shadow-none ring-0">
-        <CardContent className="flex flex-col items-center gap-3 py-12 text-center sm:py-16">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-            <PackageSearch className="size-5" aria-hidden="true" />
-          </span>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Stock levels and adjustments for each product will be tracked here. This page is being built.
-          </p>
-        </CardContent>
-      </Card>
+      <PlaceholderCard icon={PackageSearch}>Stock levels and adjustments for each product will be tracked here. This page is being built.</PlaceholderCard>
     </div>
   );
 }

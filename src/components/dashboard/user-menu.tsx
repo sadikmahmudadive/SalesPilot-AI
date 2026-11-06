@@ -15,9 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { initialsFor } from "@/lib/initials";
-import type { Role } from "@/lib/security/permissions";
-
-export const roleLabel = (role: Role): string => role.charAt(0).toUpperCase() + role.slice(1);
+import { ROLE_LABELS, type Role } from "@/lib/security/permissions";
 
 interface UserMenuProps {
   email: string | null;
@@ -40,7 +38,7 @@ export function UserMenu({ email, displayName, role }: UserMenuProps) {
         <DropdownMenuLabel className="flex flex-col gap-0.5 py-2 font-normal">
           {displayName && <span className="truncate text-sm font-medium text-foreground">{displayName}</span>}
           <span className="truncate text-xs text-muted-foreground">{email ?? "No email on file"}</span>
-          <span className="text-xs text-muted-foreground">Role: {roleLabel(role)}</span>
+          <span className="text-xs text-muted-foreground">Role: {ROLE_LABELS[role]}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

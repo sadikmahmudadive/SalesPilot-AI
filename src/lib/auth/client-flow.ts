@@ -97,7 +97,10 @@ export interface SignOutDeps {
   firebaseSignOut(): Promise<void>;
 }
 
-export type SignOutResult = { ok: true } | { ok: false; message: string };
+export type SignOutResult =
+  | { ok: true }
+  /** `serverCleared` is false when the DELETE failed, i.e. the session cookie may still be present. */
+  | { ok: false; serverCleared: boolean; message: string };
 
 const SIGN_OUT_ERROR = "We could not fully sign you out. Please close this browser window if you are on a shared device.";
 
@@ -114,7 +117,7 @@ export async function signOutEverywhere(deps: SignOutDeps): Promise<SignOutResul
   } catch {
     firebaseCleared = false;
   }
-  return serverCleared && firebaseCleared ? { ok: true } : { ok: false, message: SIGN_OUT_ERROR };
+  return serverCleared && firebaseCleared ? { ok: true } : { ok: false, serverCleared, message: SIGN_OUT_ERROR };
 }
 
 /** Reads the signed-in member. 403 means signed in but no organization yet. */
@@ -288,4 +291,25 @@ export async function registerAccount<U>(
     return { outcome: "success", path: safeNextPath(input.next) };
   }
   return { outcome: "onboarding", message: ONBOARDING_MESSAGE };
+}
+
+export interface SignOutNavigation {
+  /** `replace`: client-side `router.replace(url)`. `assign`: hard `window.location.assign(url)`. */
+  kind: "replace" | "assign";
+  url: string;
+  toast?: string;
+}
+
+const DEVICE_ONLY_NOTICE = "Signed out on this device. Session revocation couldn't be confirmed.";
+
+/**
+ * Where to go after `signOutEverywhere`. When the server DELETE succeeded the cookie is gone, so a
+ * client-side replace to /login works. When it failed the cookie may survive and the proxy would bounce
+ * /login back to /dashboard, so hard-navigate to /api/auth/expired, which clears the cookie and
+ * redirects to /login (it does not revoke tokens, hence the notice).
+ */
+export function signOutNavigation(result: SignOutResult): SignOutNavigation {
+  if (result.ok) return { kind: "replace", url: "/login" };
+  if (result.serverCleared) return { kind: "replace", url: "/login", toast: result.message };
+  return { kind: "assign", url: "/api/auth/expired", toast: DEVICE_ONLY_NOTICE };
 }

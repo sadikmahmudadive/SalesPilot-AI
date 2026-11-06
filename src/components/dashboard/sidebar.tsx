@@ -119,17 +119,17 @@ export function DesktopSidebar({ items, collapsed, animate, onToggle }: DesktopS
       </div>
       <SidebarNav items={items} collapsed={collapsed} />
       <div className={cn("flex shrink-0 border-t p-2", collapsed && "justify-center")}>
+        {/* One mechanism: a static label plus aria-expanded conveys the state. */}
         <Button
           type="button"
           variant="ghost"
-          size={collapsed ? "icon" : "sm"}
+          size="icon"
           onClick={onToggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label="Toggle sidebar"
           aria-expanded={!collapsed}
           className="text-sidebar-foreground/70"
         >
           <ToggleIcon aria-hidden="true" />
-          {!collapsed && <span>Collapse</span>}
         </Button>
       </div>
     </aside>

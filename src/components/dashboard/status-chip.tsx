@@ -8,7 +8,6 @@ export function StatusChip({ className }: { className?: string }) {
   const emulator = getClientEnv().NEXT_PUBLIC_USE_EMULATORS;
   return (
     <span
-      role="status"
       className={cn(
         "inline-flex h-7 items-center gap-1.5 rounded-full border bg-background px-2.5 text-xs font-medium text-muted-foreground",
         className,

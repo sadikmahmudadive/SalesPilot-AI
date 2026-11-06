@@ -3,10 +3,9 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { ROLE_LABELS } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Settings" };
-
-const ROLE_LABELS = { owner: "Owner", admin: "Admin", agent: "Agent", viewer: "Viewer" } as const;
 
 // Read-only for now: editing organization and profile details arrives with later tasks.
 export default async function SettingsPage() {
