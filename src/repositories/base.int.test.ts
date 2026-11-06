@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, isAppError, NotFoundError, ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { decodeCursor, encodeCursor } from "@/lib/pagination";
 
@@ -266,15 +266,98 @@ describe("list", () => {
     for (let i = 1; i < flat.length; i++) expect(flat[i - 1]!.rank).toBeGreaterThanOrEqual(flat[i]!.rank);
   });
 
-  it("paginates on createdAt (timestamp cursors keep full precision)", async () => {
+  it("paginates timestamps that differ by microseconds or are identical (nanosecond cursors + id tie-breaker)", async () => {
+    // All 12 docs fall inside ONE millisecond. A cursor truncated to ms would restart inside
+    // that millisecond and return duplicates / loop; identical pairs force the id tie-break.
     const orgId = newOrg();
-    const ids = await seed(orgId, 12);
-    const { pages } = await pageAll(orgId, { orderBy: ["createdAt", "asc"], limit: 5 });
-    const flat = pages.flat();
-    expect(flat.map((i) => i.id).sort()).toEqual([...ids].sort());
-    expect(new Set(flat.map((i) => i.id)).size).toBe(12);
-    const times = flat.map((i) => new Date(i.createdAt).getTime());
-    expect([...times].sort((x, y) => x - y)).toEqual(times);
+    const seconds = Math.floor(Date.parse("2026-05-06T07:08:09Z") / 1000);
+    const col = adminDb().collection(COLLECTION);
+    const written: { id: string; nanos: number }[] = [];
+    for (let k = 0; k < 6; k++) {
+      for (let dup = 0; dup < 2; dup++) {
+        const id = `mu-${randomUUID()}`;
+        const nanos = 123_000_000 + k * 1000; // microsecond steps, same millisecond
+        await col.doc(id).set({
+          organizationId: orgId,
+          name: id,
+          rank: k,
+          status: "open",
+          createdAt: new Timestamp(seconds, nanos),
+          updatedAt: new Timestamp(seconds, nanos),
+        });
+        written.push({ id, nanos });
+      }
+    }
+    for (const dir of ["asc", "desc"] as const) {
+      const sign = dir === "asc" ? 1 : -1;
+      const expected = [...written]
+        .sort((x, y) => sign * (x.nanos - y.nanos || (x.id < y.id ? -1 : 1)))
+        .map((w) => w.id);
+      const { pages } = await pageAll(orgId, { orderBy: ["createdAt", dir], limit: 5 });
+      expect(pages.map((p) => p.length)).toEqual([5, 5, 2]);
+      expect(pages.flat().map((i) => i.id)).toEqual(expected);
+    }
+  });
+
+  it("rejects forged timestamp cursors with ValidationError (never a raw Error)", async () => {
+    const orgId = newOrg();
+    await seed(orgId, 2);
+    const forged = [
+      "0000-01-01T00:00:00.000000000Z", // below Firestore's minimum
+      "0000-12-31T23:59:59.999999999Z",
+      "2026-02-31T00:00:00.000000000Z", // rolls over
+      "2026-13-01T00:00:00.000000000Z",
+      "2026-01-01T00:00:00.000Z", // not full precision
+    ];
+    for (const v of forged) {
+      const err = await expectRejects(
+        repo.list(orgId, { orderBy: ["createdAt", "asc"], limit: 5, cursor: encodeCursor({ t: "ts", v, id: "x" }) }),
+        ValidationError,
+      );
+      expect(JSON.stringify(err.details)).not.toContain(v);
+    }
+    // The upper bound (year 9999) is valid and simply yields an empty page.
+    const res = await repo.list(orgId, {
+      orderBy: ["createdAt", "asc"],
+      limit: 5,
+      cursor: encodeCursor({ t: "ts", v: "9999-12-31T23:59:59.999999999Z", id: "x" }),
+    });
+    expect(res.items).toEqual([]);
+  });
+
+  it("throws a plain internal Error (not a 400) when the last row's sort value cannot be a cursor key", async () => {
+    const col = adminDb().collection(COLLECTION);
+    const cases: Record<string, unknown>[] = [
+      { name: "x".repeat(257) },
+      { name: ["a", "b"] },
+      { name: { nested: "map" } },
+    ];
+    for (const extra of cases) {
+      const orgId = newOrg();
+      for (let i = 0; i < 2; i++) {
+        await col.doc(`bad-${randomUUID()}`).set({ organizationId: orgId, rank: i, status: "open", ...extra });
+      }
+      let thrown: unknown;
+      try {
+        await repo.list(orgId, { orderBy: ["name", "asc"], limit: 1 });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(ValidationError);
+      expect(isAppError(thrown)).toBe(false);
+      expect((thrown as Error).message).not.toContain("xxxx");
+    }
+  });
+
+  it("accepts the largest allowed string sort key (256 chars) and paginates over it", async () => {
+    const orgId = newOrg();
+    const col = adminDb().collection(COLLECTION);
+    for (let i = 0; i < 3; i++) {
+      await col.doc(`long-${randomUUID()}`).set({ organizationId: orgId, rank: i, status: "open", name: `${"é".repeat(255)}${i}` });
+    }
+    const { pages } = await pageAll(orgId, { orderBy: ["name", "asc"], limit: 1 });
+    expect(pages.map((p) => p.length)).toEqual([1, 1, 1]);
   });
 
   it("applies a where filter together with pagination", async () => {
@@ -344,23 +427,22 @@ describe("list", () => {
 
   it("a cursor from org A used on org B's list returns only org B docs", async () => {
     const [a, b] = [newOrg(), newOrg()];
-    await seed(a, 8);
-    const bIds = await seed(b, 8);
+    await seed(a, 8); // ranks 0..7
+    const bIds = await seed(b, 8, (i) => 10 + i); // ranks 10..17: all sort after A's cursor position
     const pageA = await repo.list(a, { orderBy: ["rank", "asc"], limit: 3 });
     expect(pageA.nextCursor).not.toBeNull();
     const res = await repo.list(b, { orderBy: ["rank", "asc"], limit: 100, cursor: pageA.nextCursor! });
-    expect(res.items.length).toBeGreaterThan(0);
-    expect(res.items.every((i) => i.organizationId === b && bIds.includes(i.id))).toBe(true);
+    expect(res.items.map((i) => i.id)).toEqual(bIds); // exactly B's 8 docs, none of A's
   });
 
   it("a forged cursor cannot widen the query beyond the caller's org", async () => {
     const [a, b] = [newOrg(), newOrg()];
-    await seed(a, 5);
+    const aIds = await seed(a, 5);
     const bItems = await seed(b, 5);
     // Position the cursor at the start of B's data but ask as A.
     const forged = encodeCursor({ t: "n", v: -1, id: bItems[0]! });
     const res = await repo.list(a, { orderBy: ["rank", "asc"], limit: 100, cursor: forged });
-    expect(res.items.every((i) => i.organizationId === a)).toBe(true);
+    expect(res.items.map((i) => i.id)).toEqual(aIds); // exactly A's 5 docs (all rank >= 0 > -1)
     // What the repo emits stays decodable.
     const page = await repo.list(a, { orderBy: ["rank", "asc"], limit: 2 });
     expect(decodeCursor(page.nextCursor).t).toBe("n");
@@ -414,10 +496,16 @@ describe("helpers for service transactions", () => {
     const orgId = newOrg();
     const created = await repo.create(orgId, { name: "a", rank: 1, status: "open" } as NewItem);
     const snap = await repo.docRef(created.id).get();
-    expect(repo.fromSnapshot(snap)).toEqual(created);
     expect(repo.fromSnapshot(snap, orgId)).toEqual(created);
-    expect(repo.fromSnapshot(snap, newOrg())).toBeNull();
+    expect(repo.fromSnapshot(snap, newOrg())).toBeNull(); // cross-org snapshot
+    // A missing/invalid org must never fail open.
+    expect(() => repo.fromSnapshot(snap, undefined as never)).toThrow(ValidationError);
+    expect(() => repo.fromSnapshot(snap, "" as never)).toThrow(ValidationError);
+    expect(() => repo.fromSnapshot(snap, null as never)).toThrow(ValidationError);
     const missing = await repo.docRef(`missing-${randomUUID()}`).get();
-    expect(repo.fromSnapshot(missing)).toBeNull();
+    expect(repo.fromSnapshot(missing, orgId)).toBeNull();
+    // Low-level variant: no tenant check by design.
+    expect(repo.unsafeFromSnapshot(snap)).toEqual(created);
+    expect(repo.unsafeFromSnapshot(missing)).toBeNull();
   });
 });

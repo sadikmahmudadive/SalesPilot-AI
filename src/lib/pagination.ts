@@ -40,7 +40,9 @@ function invalid(message: string): ValidationError {
 
 export function encodeCursor(cursor: Cursor): string {
   const token = Buffer.from(JSON.stringify({ t: cursor.t, v: cursor.v, id: cursor.id }), "utf8").toString("base64url");
-  if (token.length > MAX_CURSOR_LENGTH) throw invalid("Cursor too large");
+  // Oversize here is a data/config fault (a stored key too large), not a caller error:
+  // plain Error with a generic message, never a ValidationError.
+  if (token.length > MAX_CURSOR_LENGTH) throw new Error("Cursor too large to encode");
   return token;
 }
 

@@ -49,7 +49,10 @@ export interface ListResult<T> {
 export interface OrgRepositoryOptions {
   /** Fields callers may filter on in `list()`. `organizationId` is never allowed. */
   filterable?: readonly string[];
-  /** Fields callers may order by in `list()`. */
+  /**
+   * Fields callers may order by in `list()`. Policy: each must hold a short scalar in every
+   * document (string <= 256 chars, number, boolean, Timestamp, or null); see `list()`.
+   */
   sortable?: readonly string[];
 }
 
@@ -100,22 +103,41 @@ function timestampToCursorString(ts: Timestamp): string {
   return `${base}.${String(ts.nanoseconds).padStart(9, "0")}Z`;
 }
 
+const MIN_TIMESTAMP_SECONDS = -62135596800; // 0001-01-01T00:00:00Z
+const MAX_TIMESTAMP_SECONDS = 253402300799; // 9999-12-31T23:59:59Z
+const MAX_SORT_STRING_LENGTH = 256;
+
 const CURSOR_TS = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{9})Z$/;
 
 function cursorStringToTimestamp(value: string): Timestamp {
   const match = CURSOR_TS.exec(value);
   const ms = match ? Date.parse(`${match[1]}Z`) : Number.NaN;
-  if (!match || Number.isNaN(ms)) throw invalid("cursor", "Cursor is malformed");
-  return new Timestamp(ms / 1000, Number(match[2]));
+  // Reject unparsable dates, rolled-over dates (e.g. Feb 31) and anything outside Firestore's
+  // supported range (years 0001-9999) with a fixed message: never build a Timestamp from it.
+  if (!match || Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 19) !== match[1]) {
+    throw invalid("cursor", "Cursor is malformed");
+  }
+  const seconds = ms / 1000;
+  if (seconds < MIN_TIMESTAMP_SECONDS || seconds > MAX_TIMESTAMP_SECONDS) throw invalid("cursor", "Cursor is malformed");
+  try {
+    return new Timestamp(seconds, Number(match[2]));
+  } catch {
+    throw invalid("cursor", "Cursor is malformed");
+  }
 }
 
-function cursorFor(sortValue: unknown, id: string, field: string): Cursor {
+/**
+ * Sort keys must be short scalars (see `list()`). A stored value that cannot be encoded is a
+ * server-side data problem, not a caller error: throw a plain Error (generic message, no
+ * values) so it becomes a logged 500 instead of a misleading 400.
+ */
+function cursorFor(sortValue: unknown, id: string): Cursor {
   if (sortValue instanceof Timestamp) return { t: "ts", v: timestampToCursorString(sortValue), id };
-  if (typeof sortValue === "string") return { t: "s", v: sortValue, id };
+  if (typeof sortValue === "string" && sortValue.length <= MAX_SORT_STRING_LENGTH) return { t: "s", v: sortValue, id };
   if (typeof sortValue === "number" && Number.isFinite(sortValue)) return { t: "n", v: sortValue, id };
   if (typeof sortValue === "boolean") return { t: "b", v: sortValue, id };
   if (sortValue === null) return { t: "null", v: null, id };
-  throw invalid(field, "Field value cannot be used as a sort key");
+  throw new Error("OrgRepository: stored sort value is not a supported cursor key");
 }
 
 function isScalarFilterValue(value: unknown): boolean {
@@ -185,15 +207,28 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
   }
 
   /**
-   * Converts a snapshot to `T` (id set, Timestamps as ISO strings); null when it does not
-   * exist. With `orgId`, also null when the doc belongs to another organization. Without
-   * it NO organization check is made (low-level; prefer passing `orgId`).
+   * Converts a snapshot to `T` (id set, Timestamps as ISO strings) and enforces tenancy:
+   * null when the doc does not exist OR belongs to another organization. `orgId` is
+   * required and must be a valid id (ValidationError otherwise), so a missing org can never
+   * fail open.
    */
-  fromSnapshot(snap: DocumentSnapshot, orgId?: string): T | null {
+  fromSnapshot(snap: DocumentSnapshot, orgId: string): T | null {
+    assertId(orgId, "organizationId");
+    if (!snap.exists) return null;
+    const data = snap.data();
+    if (!data || data.organizationId !== orgId) return null;
+    return this.unsafeFromSnapshot(snap);
+  }
+
+  /**
+   * LOW-LEVEL, NO TENANT CHECK: converts a snapshot to `T` (null if it does not exist).
+   * Only for callers that have ALREADY enforced the organization (e.g. inside their own
+   * transaction after comparing `organizationId`). Prefer `fromSnapshot(snap, orgId)`.
+   */
+  unsafeFromSnapshot(snap: DocumentSnapshot): T | null {
     if (!snap.exists) return null;
     const data = snap.data();
     if (!data) return null;
-    if (orgId !== undefined && data.organizationId !== orgId) return null;
     return { ...(serialize(data) as Record<string, unknown>), id: snap.id } as T;
   }
 
@@ -273,6 +308,13 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
    * within the caller's own org-scoped query; the org filter is applied here regardless and
    * is never read from the cursor. Only fields allow-listed via `filterable`/`sortable` may
    * be used, so API query params cannot probe arbitrary fields.
+   *
+   * SORT KEY POLICY: every `sortable` field must hold a short scalar in every document:
+   * string of at most 256 chars, finite number, boolean, Timestamp, or null. The next-page
+   * cursor is built from the last row's value; if that value is a longer string, array, map,
+   * GeoPoint, etc. (or the cursor would exceed the token size) `list()` throws a plain
+   * internal Error (a logged 500, never a ValidationError), because that is a data/config
+   * fault rather than a caller mistake.
    */
   async list(orgId: string, q: ListQuery): Promise<ListResult<T>> {
     assertId(orgId, "organizationId");
@@ -328,7 +370,7 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
     let nextCursor: string | null = null;
     if (snap.docs.length > limit) {
       const last = page[page.length - 1]!;
-      nextCursor = encodeCursor(cursorFor(last.get(sortField), last.id, sortField));
+      nextCursor = encodeCursor(cursorFor(last.get(sortField), last.id));
     }
     return { items, nextCursor };
   }

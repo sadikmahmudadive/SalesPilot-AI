@@ -34,6 +34,19 @@ describe("cursor round trip", () => {
   });
 });
 
+describe("encodeCursor", () => {
+  it("throws a plain Error (not a ValidationError) when the token would exceed the size cap", () => {
+    try {
+      encodeCursor({ t: "s", v: "x".repeat(2000), id: "d" });
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(ValidationError);
+      return;
+    }
+    throw new Error("expected encodeCursor to throw");
+  });
+});
+
 describe("decodeCursor rejects bad input", () => {
   it("non-string input", () => {
     for (const bad of [undefined, null, 5, {}, [], true]) expectInvalid(bad);
