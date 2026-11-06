@@ -49,9 +49,9 @@ describe("customerInputSchema", () => {
   });
 
   it("accepts a Bangla name and NFC-normalizes it", () => {
-    expect(customerInputSchema.parse({ ...base, fullName: "রহিম উদ্দিন" }).fullName).toBe("রহিম উদ্দিন");
+    expect(customerInputSchema.parse({ ...base, fullName: "\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8" }).fullName).toBe("\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8");
     // "e" + combining acute (NFD) -> single code point (NFC)
-    expect(customerInputSchema.parse({ ...base, fullName: "José" }).fullName).toBe("José");
+    expect(customerInputSchema.parse({ ...base, fullName: "Jose\u0301" }).fullName).toBe("Jos\u00E9");
   });
 
   it("trims the name and rejects blank / too long names", () => {

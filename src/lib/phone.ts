@@ -28,7 +28,7 @@ const BD_NATIONAL = /^01[3-9]\d{8}$/;
 const BD_INTERNATIONAL = /^880(1[3-9]\d{8})$/;
 const INTERNATIONAL = /^[1-9]\d{7,14}$/;
 
-const NON_ASCII_DIGITS = /[٠-٩۰-۹০-৯]/g;
+const NON_ASCII_DIGITS = /[\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF]/g;
 // Whitespace, separators, and invisible format characters (\p{Cf}: bidi marks, zero-width
 // space/joiner, word joiner, BOM, ...) that commonly ride along with pasted numbers.
 const IGNORED = /[\p{Cf}\p{Z}\s\-.()]/gu;

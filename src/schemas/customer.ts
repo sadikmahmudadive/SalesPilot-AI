@@ -78,8 +78,13 @@ const emailCore = z
 const addressCore = z.string().trim().max(500, "Use 500 characters or fewer");
 const leadSourceCore = z.string().trim().max(80, "Use 80 characters or fewer");
 
-/** Invisible format characters except ZWNJ/ZWJ, which are meaningful inside Bangla/Persian names. */
-const STRIPPED_FROM_NAMES = /(?![‌‍])\p{Cf}/gu;
+/**
+ * Invisible format characters (\p{Cf}) are stripped from names EXCEPT U+200C (ZWNJ) and U+200D
+ * (ZWJ): they control conjunct and letter shaping in Bangla/Persian, so removing them would
+ * corrupt real names. Keep both as escapes: written literally they are invisible, and a
+ * formatter that strips them would silently turn this into "strip every format character".
+ */
+const STRIPPED_FROM_NAMES = /(?![\u200C\u200D])\p{Cf}/gu;
 
 /**
  * Create flavour of a blank-able optional field: a blank string (after trimming) is omitted

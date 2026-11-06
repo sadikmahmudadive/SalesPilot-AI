@@ -1,6 +1,24 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { normalizePhone } from "./phone";
+
+describe("source hygiene", () => {
+  // Invisible, bidi, full-width and Bangla/Arabic digit characters must be written as escapes
+  // in source: literally they are invisible or silently rewritten by editors and formatters.
+  const FORBIDDEN_LITERALS =
+    /[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF\uFF10-\uFF19]/u;
+
+  it.each(["src/lib/phone.ts", "src/schemas/customer.ts"])(
+    "%s has no literal invisible/format or Bangla/Arabic digit characters",
+    (file) => {
+      const source = readFileSync(join(process.cwd(), file), "utf8");
+      expect(source).not.toMatch(FORBIDDEN_LITERALS);
+    },
+  );
+});
 
 describe("normalizePhone", () => {
   it.each([
@@ -17,13 +35,13 @@ describe("normalizePhone", () => {
   });
 
   it("maps Bangla digits", () => {
-    expect(normalizePhone("০১৭১২৩৪৫৬৭৮")).toBe("+8801712345678");
-    expect(normalizePhone("+৮৮০ ১৭১২ ৩৪৫৬৭৮")).toBe("+8801712345678");
+    expect(normalizePhone("\u09E6\u09E7\u09ED\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC\u09ED\u09EE")).toBe("+8801712345678");
+    expect(normalizePhone("+\u09EE\u09EE\u09E6 \u09E7\u09ED\u09E7\u09E8 \u09E9\u09EA\u09EB\u09EC\u09ED\u09EE")).toBe("+8801712345678");
   });
 
   it("maps Arabic-Indic and Extended Arabic-Indic digits", () => {
-    expect(normalizePhone("٠١٧١٢٣٤٥٦٧٨")).toBe("+8801712345678");
-    expect(normalizePhone("۰۱۷۱۲۳۴۵۶۷۸")).toBe("+8801712345678");
+    expect(normalizePhone("\u0660\u0661\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668")).toBe("+8801712345678");
+    expect(normalizePhone("\u06F0\u06F1\u06F7\u06F1\u06F2\u06F3\u06F4\u06F5\u06F6\u06F7\u06F8")).toBe("+8801712345678");
   });
 
   it("accepts every valid BD operator prefix 013-019", () => {
@@ -68,25 +86,25 @@ describe("normalizePhone", () => {
   });
 
   it.each([
-    ["LRM/RLM", "‎+880 1712 345678‏"],
-    ["LRE/RLE/PDF", "‪+8801712345678‬"],
-    ["RLE + PDF", "‫+8801712345678‬"],
-    ["LRO/RLO", "‭01712345678‮"],
-    ["isolates", "⁦⁧⁨+8801712345678⁩"],
-    ["zero-width space", "01712​345678"],
-    ["zero-width joiner/non-joiner", "0171‌2‍345678"],
-    ["word joiner", "⁠+8801712345678"],
-    ["BOM", "﻿01712345678"],
-    ["NBSP and narrow NBSP", "+880 1712 345678"],
-    ["ideographic space", "01712　345678"],
-    ["full-width digits", "０１７１２３４５６７８"],
-    ["full-width plus and digits", "＋８８０１７１２３４５６７８"],
+    ["LRM/RLM", "\u200E+880 1712 345678\u200F"],
+    ["LRE/RLE/PDF", "\u202A+8801712345678\u202C"],
+    ["RLE + PDF", "\u202B+8801712345678\u202C"],
+    ["LRO/RLO", "\u202D01712345678\u202E"],
+    ["isolates", "\u2066\u2067\u2068+8801712345678\u2069"],
+    ["zero-width space", "01712\u200B345678"],
+    ["zero-width joiner/non-joiner", "0171\u200C2\u200D345678"],
+    ["word joiner", "\u2060+8801712345678"],
+    ["BOM", "\uFEFF01712345678"],
+    ["NBSP and narrow NBSP", "+880\u00A01712\u202F345678"],
+    ["ideographic space", "01712\u3000345678"],
+    ["full-width digits", "\uFF10\uFF11\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17\uFF18"],
+    ["full-width plus and digits", "\uFF0B\uFF18\uFF18\uFF10\uFF11\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17\uFF18"],
   ])("tolerates pasted invisible characters: %s", (_name, raw) => {
     expect(normalizePhone(raw)).toBe("+8801712345678");
   });
 
   it("keeps the length cap in front of the expensive normalization", () => {
-    const huge = "​".repeat(1_000_000);
+    const huge = "\u200B".repeat(1_000_000);
     const start = performance.now();
     expect(normalizePhone(huge)).toBeNull();
     expect(normalizePhone("0".repeat(1_000_000))).toBeNull();
@@ -101,10 +119,10 @@ describe("normalizePhone", () => {
       "x".repeat(100_000),
       "0".repeat(100_000),
       "+" + "1".repeat(100_000),
-      "😀📞🇧🇩",
-      "\u0000\u0001‮",
+      "\u{1F600}\u{1F4DE}\u{1F1E7}\u{1F1E9}",
+      "\u0000\u0001\u202E",
       "-.()  ",
-      "০".repeat(50),
+      "\u09E6".repeat(50),
       "\ud800", // lone surrogate
       "+".repeat(1000),
       "\n\t",
