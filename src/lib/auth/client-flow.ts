@@ -1,0 +1,182 @@
+/**
+ * Non-visual client auth flow: talks to the session / me / register routes and maps
+ * Firebase auth errors to safe messages. Every function takes `fetch` as a parameter so it
+ * is unit-testable, and none of them throws: failures come back as typed results.
+ *
+ * Messages returned here are fixed strings. Raw server or Firebase error text is never
+ * echoed to the user.
+ */
+
+export type FetchFn = typeof fetch;
+
+export const GENERIC_ERROR = "Something went wrong. Please try again.";
+const NETWORK_ERROR = "Network problem. Check your connection and try again.";
+const RATE_LIMITED = "Too many attempts. Please wait a minute and try again.";
+const SESSION_ERROR = "We could not start your session. Please try again.";
+
+export interface MeResponse {
+  uid: string;
+  email: string | null;
+  organizationId: string;
+  role: string;
+}
+
+export type SessionResult =
+  | { status: "ok" }
+  | { status: "unauthenticated" | "rate_limited" | "network" | "error"; message: string };
+
+export type MeResult =
+  | { status: "ok"; me: MeResponse }
+  | { status: "unauthenticated" | "no_organization" | "rate_limited" | "network" | "error"; message: string };
+
+export type RegisterOrgResult =
+  | { status: "created"; organizationId: string }
+  | { status: "exists"; organizationId: string }
+  | { status: "unauthenticated" | "rate_limited" | "invalid" | "network" | "error"; message: string };
+
+export type PostSignInResult = { to: "app" } | { to: "onboarding" } | { to: "error"; message: string };
+
+type Raw = { ok: true; status: number; body: unknown } | { ok: false; kind: "network" };
+
+async function request(fetchFn: FetchFn, url: string, init: RequestInit): Promise<Raw> {
+  try {
+    const response = await fetchFn(url, { ...init, credentials: "same-origin" });
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return { ok: true, status: response.status, body };
+  } catch {
+    return { ok: false, kind: "network" };
+  }
+}
+
+function jsonPost(fetchFn: FetchFn, url: string, payload: unknown): Promise<Raw> {
+  return request(fetchFn, url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+const failure = (status: "network", message: string = NETWORK_ERROR) => ({ status, message }) as const;
+
+/** Exchanges a fresh Firebase ID token for the httpOnly session cookie. */
+export async function exchangeSession(idToken: string, fetchFn: FetchFn): Promise<SessionResult> {
+  const raw = await jsonPost(fetchFn, "/api/auth/session", { idToken });
+  if (!raw.ok) return failure("network");
+  if (raw.status >= 200 && raw.status < 300) return { status: "ok" };
+  if (raw.status === 401) return { status: "unauthenticated", message: SESSION_ERROR };
+  if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
+  return { status: "error", message: SESSION_ERROR };
+}
+
+function isMe(value: unknown): value is MeResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.uid === "string" && typeof v.organizationId === "string" && typeof v.role === "string";
+}
+
+/** Clears the session cookie (and revokes refresh tokens) server-side. Best effort: never throws. */
+export async function endSession(fetchFn: FetchFn): Promise<void> {
+  await request(fetchFn, "/api/auth/session", { method: "DELETE" });
+}
+
+/** Reads the signed-in member. 403 means signed in but no organization yet. */
+export async function fetchMe(fetchFn: FetchFn): Promise<MeResult> {
+  const raw = await request(fetchFn, "/api/me", { method: "GET", headers: { Accept: "application/json" } });
+  if (!raw.ok) return failure("network");
+  if (raw.status === 200) {
+    return isMe(raw.body) ? { status: "ok", me: raw.body } : { status: "error", message: GENERIC_ERROR };
+  }
+  if (raw.status === 401) return { status: "unauthenticated", message: "Your session has expired. Please sign in again." };
+  if (raw.status === 403) return { status: "no_organization", message: "No organization found for this account." };
+  if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
+  return { status: "error", message: GENERIC_ERROR };
+}
+
+/** Creates the organization for the signed-in user (requires the session cookie). */
+export async function registerOrganizationRequest(
+  body: { organizationName: string; displayName: string },
+  fetchFn: FetchFn,
+): Promise<RegisterOrgResult> {
+  const raw = await jsonPost(fetchFn, "/api/organizations/register", body);
+  if (!raw.ok) return failure("network");
+  if (raw.status === 200 || raw.status === 201) {
+    const id = (raw.body as { organizationId?: unknown } | null)?.organizationId;
+    if (typeof id === "string") {
+      return raw.status === 201 ? { status: "created", organizationId: id } : { status: "exists", organizationId: id };
+    }
+    return { status: "error", message: GENERIC_ERROR };
+  }
+  if (raw.status === 401) return { status: "unauthenticated", message: "Your session has expired. Please sign in again." };
+  if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
+  if (raw.status === 400) return { status: "invalid", message: "Please check the details you entered and try again." };
+  return { status: "error", message: "We could not create your organization. Please try again." };
+}
+
+/**
+ * After Firebase sign-in: set the session cookie, then decide where the user belongs.
+ * Members go to the app, users without an organization go to onboarding.
+ */
+export async function resolvePostSignIn(idToken: string, fetchFn: FetchFn): Promise<PostSignInResult> {
+  const session = await exchangeSession(idToken, fetchFn);
+  if (session.status !== "ok") return { to: "error", message: session.message };
+  const me = await fetchMe(fetchFn);
+  if (me.status === "ok") return { to: "app" };
+  if (me.status === "no_organization") return { to: "onboarding" };
+  return { to: "error", message: me.message };
+}
+
+const CREDENTIAL_ERRORS = new Set([
+  "wrong-password",
+  "user-not-found",
+  "invalid-credential",
+  "invalid-login-credentials",
+]);
+const SILENT_ERRORS = new Set(["popup-closed-by-user", "cancelled-popup-request"]);
+
+function normaliseCode(code: string): string {
+  return code.startsWith("auth/") ? code.slice(5) : code;
+}
+
+/** True for errors that must not be shown (the user simply closed the Google popup). */
+export function isSilentAuthError(code: string): boolean {
+  return SILENT_ERRORS.has(normaliseCode(code));
+}
+
+/**
+ * Maps a Firebase auth error code to a friendly fixed message. Wrong password, unknown
+ * user and invalid credential share one message so the UI never reveals whether an
+ * account exists. Returns "" for silent errors. Unknown codes get the generic message.
+ */
+export function mapAuthError(code: string): string {
+  const c = normaliseCode(code);
+  if (SILENT_ERRORS.has(c)) return "";
+  if (CREDENTIAL_ERRORS.has(c)) return "Incorrect email or password.";
+  switch (c) {
+    case "email-already-in-use":
+      return "An account with this email already exists. Try signing in instead.";
+    case "weak-password":
+      return "Choose a stronger password with at least 10 characters.";
+    case "too-many-requests":
+      return "Too many attempts. Please wait a few minutes and try again.";
+    case "network-request-failed":
+      return NETWORK_ERROR;
+    case "popup-blocked":
+      return "Your browser blocked the sign-in popup. Allow popups and try again.";
+    default:
+      return GENERIC_ERROR;
+  }
+}
+
+/** Reads `.code` off an unknown thrown value (Firebase errors carry a string `code`). */
+export function authErrorCode(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return "";
+}
