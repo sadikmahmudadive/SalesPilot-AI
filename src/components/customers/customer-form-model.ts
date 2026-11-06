@@ -7,12 +7,11 @@ import type { z } from "zod";
 
 import type { CustomerCreateBody, CustomerPatchBody } from "@/hooks/use-customers";
 import type { ApiError } from "@/lib/api/client";
+import { dedupeTags, MAX_TAG_LENGTH, MAX_TAGS, tagKey } from "@/lib/tags";
 import type { Customer, customerInputSchema } from "@/schemas/customer";
 
 /** The form edits the schema's INPUT shape (defaults not yet applied). */
 export type CustomerFormValues = z.input<typeof customerInputSchema>;
-
-export const MAX_TAGS = 20;
 
 export const EMPTY_FORM_VALUES: CustomerFormValues = {
   fullName: "",
@@ -49,19 +48,6 @@ const text = (v: string | undefined): string | undefined => {
   const t = (v ?? "").trim();
   return t.length > 0 ? t : undefined;
 };
-
-function dedupeTags(tags: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of tags) {
-    const tag = raw.trim();
-    const key = tag.toLowerCase();
-    if (!tag || seen.has(key)) continue;
-    seen.add(key);
-    out.push(tag);
-  }
-  return out;
-}
 
 /** Trims text, drops blank optional fields, de-duplicates tags. The result is what the API receives. */
 export function prepareCustomerBody(values: CustomerFormValues): CustomerCreateBody {
@@ -199,15 +185,54 @@ export function mapApiError(error: ApiError): MappedApiError {
   return { fields: [], formError: error.message, requestId };
 }
 
-/** Adds comma-separated tags to a list: trimmed, blanks and case-insensitive duplicates ignored, capped. */
-export function addTags(current: readonly string[], raw: string): string[] {
-  const out = [...current];
-  const seen = new Set(out.map((t) => t.toLowerCase()));
+export interface AddTagsResult {
+  tags: string[];
+  /** Set when something was refused; the accepted tags are still returned. */
+  error?: string;
+}
+
+/**
+ * Adds comma-separated tags to a list: trimmed, blanks and duplicates (by `tagKey`) ignored. A tag over
+ * the length limit is refused with a message (no chip is added), as is anything beyond the tag cap.
+ */
+export function addTags(current: readonly string[], raw: string): AddTagsResult {
+  const tags = [...current];
+  const seen = new Set(tags.map(tagKey));
+  let error: string | undefined;
   for (const piece of raw.split(",")) {
     const tag = piece.trim();
-    if (!tag || seen.has(tag.toLowerCase()) || out.length >= MAX_TAGS) continue;
-    seen.add(tag.toLowerCase());
-    out.push(tag);
+    if (!tag || seen.has(tagKey(tag))) continue;
+    if (tag.length > MAX_TAG_LENGTH) {
+      error = `Tags can be at most ${MAX_TAG_LENGTH} characters`;
+      continue;
+    }
+    if (tags.length >= MAX_TAGS) {
+      error = `You can add up to ${MAX_TAGS} tags`;
+      continue;
+    }
+    seen.add(tagKey(tag));
+    tags.push(tag);
   }
-  return out;
+  return error ? { tags, error } : { tags };
+}
+
+type TagsFieldError =
+  { message?: string; root?: { message?: string } } | readonly (TagsFieldError | undefined)[] | undefined;
+
+/**
+ * The message to show under the tags control. React Hook Form stores an array-item error from the
+ * schema (`tags.2`) as `errors.tags[2]`, so reading only `errors.tags.message` would hide it.
+ */
+export function tagsErrorMessage(error: TagsFieldError | object | undefined): string | undefined {
+  if (!error) return undefined;
+  const e = error as TagsFieldError;
+  if (Array.isArray(e)) {
+    for (const item of e) {
+      const message = tagsErrorMessage(item);
+      if (message) return message;
+    }
+    return undefined;
+  }
+  const single = e as { message?: string; root?: { message?: string } };
+  return single.message ?? single.root?.message ?? undefined;
 }

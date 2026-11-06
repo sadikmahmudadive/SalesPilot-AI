@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addTags,
+  tagsErrorMessage,
   buildPatch,
   customerToFormValues,
   EMPTY_FORM_VALUES,
@@ -148,6 +149,18 @@ describe("buildPatch", () => {
     expect(edit({ preferences: { language: undefined, notes: "" } })).toEqual({ preferences: {} });
   });
 
+  it("sends the whole preferences map when only the notes changed", () => {
+    expect(edit({ preferences: { language: "bn", notes: "Prefers WhatsApp" } })).toEqual({
+      preferences: { language: "bn", notes: "Prefers WhatsApp" },
+    });
+  });
+
+  it("sends the whole consent map when only the source changed", () => {
+    expect(edit({ consent: { status: "granted", source: "Phone call" } })).toEqual({
+      consent: { status: "granted", source: "Phone call" },
+    });
+  });
+
   it("never sends assignedAgentId or read-only fields", () => {
     const patch = edit({ fullName: "X" });
     expect(Object.keys(patch)).toEqual(["fullName"]);
@@ -210,16 +223,67 @@ describe("mapApiError", () => {
 
 describe("addTags", () => {
   it("adds comma separated tags, trimmed, ignoring blanks", () => {
-    expect(addTags(["a"], " b, c ,, ")).toEqual(["a", "b", "c"]);
+    expect(addTags(["a"], " b, c ,, ")).toEqual({ tags: ["a", "b", "c"] });
   });
 
   it("ignores case-insensitive duplicates", () => {
-    expect(addTags(["VIP"], "vip, new")).toEqual(["VIP", "new"]);
+    expect(addTags(["VIP"], "vip, new")).toEqual({ tags: ["VIP", "new"] });
   });
 
-  it("caps the list at 20 tags", () => {
+  it("caps the list at 20 tags and says so", () => {
     const current = Array.from({ length: 19 }, (_, i) => `t${i}`);
-    expect(addTags(current, "x, y, z")).toHaveLength(20);
+    const result = addTags(current, "x, y, z");
+    expect(result.tags).toHaveLength(20);
+    expect(result.error).toMatch(/20 tags/);
+  });
+
+  it("refuses a tag over 40 characters with a message and adds no chip", () => {
+    const result = addTags(["a"], "x".repeat(41));
+    expect(result.tags).toEqual(["a"]);
+    expect(result.error).toMatch(/40 characters/);
+  });
+
+  it("accepts a tag of exactly 40 characters", () => {
+    const tag = "x".repeat(40);
+    expect(addTags([], tag)).toEqual({ tags: [tag] });
+  });
+
+  it("keeps the valid tags in the same input as a refused one", () => {
+    const result = addTags([], `ok, ${"y".repeat(50)}, fine`);
+    expect(result.tags).toEqual(["ok", "fine"]);
+    expect(result.error).toBeDefined();
+  });
+});
+
+describe("tagsErrorMessage", () => {
+  it("reads the array-level message", () => {
+    expect(tagsErrorMessage({ message: "Use at most 20 tags" })).toBe("Use at most 20 tags");
+  });
+
+  it("reads a root message", () => {
+    expect(tagsErrorMessage({ root: { message: "Tags must be a list" } })).toBe("Tags must be a list");
+  });
+
+  it("surfaces the first nested per-item error (errors.tags[2])", () => {
+    const nested = [undefined, undefined, { message: "Use 40 characters or fewer per tag" }];
+    expect(tagsErrorMessage(nested)).toBe("Use 40 characters or fewer per tag");
+  });
+
+  it("is undefined when there is no error", () => {
+    expect(tagsErrorMessage(undefined)).toBeUndefined();
+    expect(tagsErrorMessage([undefined, undefined])).toBeUndefined();
+  });
+
+  it("matches what the resolver produces for an over-long tag", () => {
+    const body = prepareCustomerBody({
+      ...EMPTY_FORM_VALUES,
+      fullName: "A",
+      phone: "01811111111",
+      tags: ["x".repeat(41)],
+    });
+    const result = customerInputSchema.safeParse(body);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path.join(".")).toBe("tags.0");
   });
 });
 

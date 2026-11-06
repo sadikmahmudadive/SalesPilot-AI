@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useForm, type Resolver } from "react-hook-form";
@@ -61,7 +61,8 @@ function CustomerForm({ customer, onDirtyChange, onCancel, onSaved }: CustomerFo
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<{ message: string; requestId?: string } | null>(null);
 
-  const defaults = useMemo(() => (customer ? customerToFormValues(customer) : EMPTY_FORM_VALUES), [customer]);
+  // Frozen at mount: the edit diff must not move if the customer prop refreshes while the dialog is open.
+  const [defaults] = useState(() => (customer ? customerToFormValues(customer) : EMPTY_FORM_VALUES));
   const form = useForm<CustomerFormValues, unknown, FormOutput>({
     resolver,
     defaultValues: defaults,

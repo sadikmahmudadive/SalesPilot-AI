@@ -4,18 +4,16 @@ import { Controller, type UseFormReturn } from "react-hook-form";
 import type { z } from "zod";
 
 import { TextField } from "@/components/auth/text-field";
-import type { CustomerFormValues } from "@/components/customers/customer-form-model";
+import { tagsErrorMessage, type CustomerFormValues } from "@/components/customers/customer-form-model";
 import { FieldError, FormSection, SelectField, TextAreaField } from "@/components/customers/form-controls";
 import { TagInput } from "@/components/customers/tag-input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CONSENT_LABELS, LANGUAGE_LABELS, SEGMENT_LABELS, TYPE_LABELS } from "@/config/customer-labels";
-import { CONSENT_STATUSES, CUSTOMER_SEGMENTS, CUSTOMER_TYPES, type customerInputSchema } from "@/schemas/customer";
+import { CONSENT_LABELS, LANGUAGE_LABELS, SEGMENT_OPTIONS, TYPE_OPTIONS } from "@/config/customer-labels";
+import { CONSENT_STATUSES, type customerInputSchema } from "@/schemas/customer";
 
 export type CustomerForm = UseFormReturn<CustomerFormValues, unknown, z.output<typeof customerInputSchema>>;
 
-const SEGMENT_OPTIONS = CUSTOMER_SEGMENTS.map((value) => ({ value, label: SEGMENT_LABELS[value] }));
-const TYPE_OPTIONS = CUSTOMER_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const LANGUAGE_NOT_SET = "none";
 const LANGUAGE_OPTIONS = [
   { value: LANGUAGE_NOT_SET, label: "Not set" },
@@ -108,7 +106,7 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
           control={control}
           name="tags"
           render={({ field }) => (
-            <TagInput value={field.value ?? []} onChange={field.onChange} error={errors.tags?.message} />
+            <TagInput value={field.value ?? []} onChange={field.onChange} error={tagsErrorMessage(errors.tags)} />
           )}
         />
       </FormSection>
@@ -147,6 +145,7 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
                 onValueChange={field.onChange}
                 className="grid gap-2 sm:grid-cols-3"
                 aria-labelledby="consent-status-label"
+                aria-describedby={errors.consent?.status?.message ? "consent-status-error" : undefined}
               >
                 {CONSENT_STATUSES.map((status) => (
                   <Label key={status} htmlFor={`consent-${status}`} className="gap-2 font-normal">

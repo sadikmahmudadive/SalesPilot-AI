@@ -22,19 +22,39 @@ interface SelectFieldProps {
   placeholder?: string;
   error?: string;
   disabled?: boolean;
+  /** Compact filter-bar look: small muted label, tighter spacing. */
+  compact?: boolean;
+  /** Width classes for the trigger (defaults to full width). */
+  triggerClassName?: string;
 }
 
-/** Labelled shadcn Select with an inline error, wired for `aria-invalid` / `aria-describedby`. */
-export function SelectField({ label, value, onValueChange, options, placeholder, error, disabled }: SelectFieldProps) {
+/**
+ * Labelled shadcn Select with an inline error, wired for `aria-invalid` / `aria-describedby`.
+ * Controlled (`value` + `onValueChange`), so it works directly with a react-hook-form
+ * `Controller` (`value={field.value} onValueChange={field.onChange}`) and with plain state.
+ */
+export function SelectField({
+  label,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  error,
+  disabled,
+  compact = false,
+  triggerClassName = "w-full",
+}: SelectFieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+    <div className={compact ? "space-y-1.5" : "space-y-2"}>
+      <Label htmlFor={id} className={compact ? "text-xs text-muted-foreground" : undefined}>
+        {label}
+      </Label>
       <Select value={value ?? ""} onValueChange={onValueChange} disabled={disabled}>
         <SelectTrigger
           id={id}
-          className="w-full"
+          className={triggerClassName}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
         >

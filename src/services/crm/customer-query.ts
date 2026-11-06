@@ -20,6 +20,7 @@ import { z } from "zod";
 import { ValidationError, type ValidationDetail } from "@/lib/errors";
 import { isValidIdSegment } from "@/lib/ids";
 import { cleanPhoneInput } from "@/lib/phone";
+import { tagKey } from "@/lib/tags";
 import { invalid as fieldError } from "@/lib/validation-error";
 import type { WhereClause } from "@/repositories/base";
 import {
@@ -91,9 +92,7 @@ function invalid(path: string, message: string): ValidationError {
  * Case-insensitive tag key: NFKC, trimmed, lower-cased. Stored (de-duplicated) in `tagsLower`
  * and used, normalised the same way, for the tag filter, so `VIP`, `vip` and ` vip ` all match.
  */
-export function tagKey(tag: string): string {
-  return tag.normalize("NFKC").trim().toLocaleLowerCase("en-US");
-}
+export { tagKey };
 
 export function tagKeys(tags: readonly string[]): string[] {
   return [...new Set(tags.map(tagKey).filter((t) => t.length > 0))];

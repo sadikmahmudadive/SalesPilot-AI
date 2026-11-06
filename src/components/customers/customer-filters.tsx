@@ -5,18 +5,19 @@ import { Search, X } from "lucide-react";
 
 import {
   isSearchActive,
+  MAX_SEARCH_LENGTH,
   MIN_SEARCH_LENGTH,
   SORT_OPTIONS,
   type FilterBy,
   type ListFilterState,
   type SortKey,
 } from "@/components/customers/list-params";
+import { SelectField } from "@/components/customers/form-controls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SEGMENT_LABELS, TYPE_LABELS } from "@/config/customer-labels";
-import { CUSTOMER_SEGMENTS, CUSTOMER_TYPES, type CustomerSegment, type CustomerType } from "@/schemas/customer";
+import { SEGMENT_OPTIONS, TYPE_OPTIONS } from "@/config/customer-labels";
+import type { CustomerSegment, CustomerType } from "@/schemas/customer";
 
 interface CustomerFiltersProps {
   value: ListFilterState;
@@ -30,45 +31,6 @@ const FILTER_BY_OPTIONS: readonly { value: FilterBy; label: string }[] = [
   { value: "tag", label: "Tag" },
 ];
 
-function LabelledSelect({
-  label,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: readonly { value: string; label: string }[];
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  const id = useId();
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SelectTrigger id={id} className="w-full sm:w-44">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-const SEGMENT_OPTIONS = CUSTOMER_SEGMENTS.map((value) => ({ value, label: SEGMENT_LABELS[value] }));
-const TYPE_OPTIONS = CUSTOMER_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const SORT_SELECT_OPTIONS = SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }));
 
 /** Search box, the single "Filter by" control with its value control, and the sort select. */
@@ -99,6 +61,7 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
               onChange={(e) => patch({ search: e.target.value })}
               placeholder="Search by name or phone"
               autoComplete="off"
+              maxLength={MAX_SEARCH_LENGTH}
               aria-describedby={hintId}
               className="px-8 [&::-webkit-search-cancel-button]:appearance-none"
             />
@@ -117,7 +80,9 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
           </div>
         </div>
 
-        <LabelledSelect
+        <SelectField
+          compact
+          triggerClassName="w-full sm:w-44"
           label="Filter by"
           value={value.filterBy}
           disabled={searching}
@@ -129,7 +94,9 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
         />
 
         {value.filterBy === "segment" ? (
-          <LabelledSelect
+          <SelectField
+            compact
+            triggerClassName="w-full sm:w-44"
             label="Segment"
             value={value.segment}
             disabled={searching}
@@ -139,7 +106,9 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
           />
         ) : null}
         {value.filterBy === "customerType" ? (
-          <LabelledSelect
+          <SelectField
+            compact
+            triggerClassName="w-full sm:w-44"
             label="Customer type"
             value={value.customerType}
             disabled={searching}
@@ -159,13 +128,16 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
               disabled={searching}
               onChange={(e) => patch({ tag: e.target.value })}
               placeholder="e.g. vip"
+              maxLength={80}
               autoComplete="off"
               className="w-full sm:w-44"
             />
           </div>
         ) : null}
 
-        <LabelledSelect
+        <SelectField
+          compact
+          triggerClassName="w-full sm:w-44"
           label="Sort by"
           value={value.sortKey}
           disabled={searching}

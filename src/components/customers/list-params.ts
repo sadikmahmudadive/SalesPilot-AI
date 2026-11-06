@@ -4,6 +4,8 @@ import type { CustomerSegment, CustomerType } from "@/schemas/customer";
 
 export const PAGE_SIZE = 25;
 export const MIN_SEARCH_LENGTH = 2;
+/** Matches the backend limit on `q`. */
+export const MAX_SEARCH_LENGTH = 64;
 
 export type FilterBy = "none" | "segment" | "customerType" | "tag";
 export type SortKey = "newest" | "name-asc" | "name-desc" | "recent";

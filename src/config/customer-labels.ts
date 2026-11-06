@@ -1,4 +1,10 @@
-import type { ConsentStatus, CustomerSegment, CustomerType } from "@/schemas/customer";
+import {
+  CUSTOMER_SEGMENTS,
+  CUSTOMER_TYPES,
+  type ConsentStatus,
+  type CustomerSegment,
+  type CustomerType,
+} from "@/schemas/customer";
 
 /** Badge variants understood by `components/ui/badge`. */
 export type CustomerBadgeVariant = "default" | "secondary" | "outline" | "destructive";
@@ -26,10 +32,15 @@ export const SEGMENT_VARIANTS: Readonly<Record<CustomerSegment, CustomerBadgeVar
   inactive: "outline",
 };
 
+/** `{ value, label }` lists for select controls, in schema order. */
+export const SEGMENT_OPTIONS = CUSTOMER_SEGMENTS.map((value) => ({ value, label: SEGMENT_LABELS[value] }));
+
 export const TYPE_LABELS: Readonly<Record<CustomerType, string>> = {
   retail: "Retail",
   wholesale: "Wholesale",
 };
+
+export const TYPE_OPTIONS = CUSTOMER_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 
 export const CONSENT_LABELS: Readonly<Record<ConsentStatus, string>> = {
   granted: "Granted",

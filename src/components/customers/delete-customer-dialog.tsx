@@ -29,6 +29,10 @@ export function DeleteCustomerDialog({ customer, onOpenChange, onDeleted }: Dele
   const lock = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const pending = remove.isPending;
+  // Keep the last customer so the title does not change while the dialog animates closed.
+  const [lastCustomer, setLastCustomer] = useState(customer);
+  if (customer && customer !== lastCustomer) setLastCustomer(customer);
+  const shown = customer ?? lastCustomer;
 
   async function confirm() {
     if (!customer || lock.current) return;
@@ -57,7 +61,7 @@ export function DeleteCustomerDialog({ customer, onOpenChange, onDeleted }: Dele
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {customer?.fullName ?? "customer"}?</AlertDialogTitle>
+          <AlertDialogTitle>Delete {shown?.fullName ?? "customer"}?</AlertDialogTitle>
           <AlertDialogDescription>
             This permanently removes the customer record. It cannot be undone.
           </AlertDialogDescription>

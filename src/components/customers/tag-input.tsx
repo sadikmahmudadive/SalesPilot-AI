@@ -3,12 +3,13 @@
 import { useId, useState } from "react";
 import { X } from "lucide-react";
 
-import { addTags, MAX_TAGS } from "@/components/customers/customer-form-model";
+import { addTags } from "@/components/customers/customer-form-model";
 import { FieldError } from "@/components/customers/form-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MAX_TAGS } from "@/lib/tags";
 
 interface TagInputProps {
   value: string[];
@@ -22,11 +23,22 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const [draft, setDraft] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const message = localError ?? error;
   const full = value.length >= MAX_TAGS;
 
   function commit(raw: string) {
-    if (raw.trim()) onChange(addTags(value, raw));
-    setDraft("");
+    if (!raw.trim()) return setDraft("");
+    const result = addTags(value, raw);
+    if (result.tags.length !== value.length) onChange(result.tags);
+    if (result.error) {
+      // Keep what was typed so it can be shortened; nothing invalid becomes a chip.
+      setDraft(raw.replace(/,\s*$/, ""));
+      setLocalError(result.error);
+    } else {
+      setDraft("");
+      setLocalError(null);
+    }
   }
 
   return (
@@ -37,10 +49,11 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
         value={draft}
         disabled={full}
         placeholder={full ? `Maximum of ${MAX_TAGS} tags` : "Type a tag and press Enter"}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${hintId} ${errorId}` : hintId}
+        aria-invalid={message ? true : undefined}
+        aria-describedby={message ? `${hintId} ${errorId}` : hintId}
         onChange={(e) => {
           const next = e.target.value;
+          setLocalError(null);
           if (next.includes(",")) commit(next);
           else setDraft(next);
         }}
@@ -78,7 +91,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
           ))}
         </ul>
       ) : null}
-      <FieldError id={errorId} message={error} />
+      <FieldError id={errorId} message={message} />
     </div>
   );
 }
