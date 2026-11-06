@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
-import { Boxes } from "lucide-react";
 
-import { PageHeader } from "@/components/dashboard/page-header";
-import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
+import { ProductList } from "@/components/products/product-list";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
 
 export const metadata: Metadata = { title: "Products" };
 
-// TEMPORARY stub: replaced by the real products page in Task 19.
-export default function Page() {
-  return (
-    <div>
-      <PageHeader title="Products" />
-      <PlaceholderCard icon={Boxes}>Your product catalogue, prices and images will be managed here. This page is being built.</PlaceholderCard>
-    </div>
-  );
+export default async function ProductsPage() {
+  // The layout guard only runs on hard loads, so data pages verify the session themselves.
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  return <ProductList role={ctx.role} />;
 }
