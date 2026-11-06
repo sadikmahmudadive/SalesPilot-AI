@@ -11,8 +11,10 @@
  * - Other countries: the input must be in international form (`+` or `00` prefix)
  *   followed by 8-15 digits, the first of which is non-zero. These are passed through
  *   as `+digits` without per-country validation.
- * - Bangla (U+09E6-09EF) and Arabic-Indic (U+0660-0669, U+06F0-06F9) digits are mapped
- *   to ASCII first. Spaces, hyphens, dots and parentheses are ignored.
+ * - Input is NFKC-normalized (full-width digits become ASCII), then Bangla (U+09E6-09EF)
+ *   and Arabic-Indic (U+0660-0669, U+06F0-06F9) digits are mapped to ASCII. Whitespace,
+ *   hyphens, dots, parentheses and invisible format characters (bidi marks, zero-width
+ *   characters, BOM) are ignored.
  *
  * Anything else (letters, extensions, several numbers in one string, too short/long)
  * returns null.
@@ -27,7 +29,9 @@ const BD_INTERNATIONAL = /^880(1[3-9]\d{8})$/;
 const INTERNATIONAL = /^[1-9]\d{7,14}$/;
 
 const NON_ASCII_DIGITS = /[٠-٩۰-۹০-৯]/g;
-const IGNORED_SEPARATORS = /[\s\-.()]/g;
+// Whitespace, separators, and invisible format characters (\p{Cf}: bidi marks, zero-width
+// space/joiner, word joiner, BOM, ...) that commonly ride along with pasted numbers.
+const IGNORED = /[\p{Cf}\p{Z}\s\-.()]/gu;
 
 function toAsciiDigit(ch: string): string {
   const code = ch.charCodeAt(0);
@@ -40,7 +44,9 @@ function toAsciiDigit(ch: string): string {
 export function normalizePhone(raw: string, defaultCountry = "BD"): string | null {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_RAW_LENGTH) return null;
 
-  const cleaned = raw.replace(NON_ASCII_DIGITS, toAsciiDigit).replace(IGNORED_SEPARATORS, "");
+  // NFKC folds full-width digits (U+FF10-FF19) and similar compatibility forms to ASCII.
+  // The length cap above runs first, so this is bounded work.
+  const cleaned = raw.normalize("NFKC").replace(IGNORED, "").replace(NON_ASCII_DIGITS, toAsciiDigit);
   if (cleaned.length === 0) return null;
 
   // International form: `+digits` or `00digits`.

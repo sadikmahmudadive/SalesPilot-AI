@@ -340,3 +340,120 @@ describe("customerPatchSchema", () => {
     }
   });
 });
+
+describe("customerInputSchema: display text and invisible characters", () => {
+  it("cleans control/format characters and collapses whitespace in the stored raw phone", () => {
+    const r = customerInputSchema.parse({ ...base, phone: "0171\n2345678" });
+    expect(r.phone).toBe("0171 2345678");
+    expect(r.phoneE164).toBe("+8801712345678");
+    expect(customerInputSchema.parse({ ...base, phone: " +880 \t 1712\u200b   345678\u202c " }).phone).toBe(
+      "+880 1712 345678",
+    );
+    expect(customerInputSchema.parse({ ...base, phone: "\u202a01712345678\u202c" }).phone).toBe("01712345678");
+  });
+
+  it("cleans the stored raw whatsappNumber the same way", () => {
+    const r = customerInputSchema.parse({ ...base, whatsappNumber: "01812\r\n\u200b345678" });
+    expect(r.whatsappNumber).toBe("01812 345678");
+    expect(r.whatsappE164).toBe("+8801812345678");
+  });
+
+  it("accepts a pasted phone with bidi marks and full-width digits", () => {
+    const r = customerInputSchema.parse({ ...base, phone: "\u200e+880 1712 345678\u200f" });
+    expect(r.phoneE164).toBe("+8801712345678");
+    expect(customerInputSchema.safeParse({ ...base, phone: "x".repeat(201) }).success).toBe(false);
+  });
+
+  it("treats an invisible-only name as blank but keeps ZWNJ/ZWJ inside real names", () => {
+    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200b\u2060\ufeff" }).success).toBe(false);
+    expect(customerInputSchema.safeParse({ ...base, fullName: " \u200b \u202e " }).success).toBe(false);
+    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200d\u200c" }).success).toBe(false);
+    expect(customerInputSchema.parse({ ...base, fullName: "\u202eAli\u200b" }).fullName).toBe("Ali");
+    expect(customerInputSchema.parse({ ...base, fullName: "\u09b0\u200d\u09cd\u09af" }).fullName).toBe(
+      "\u09b0\u200d\u09cd\u09af",
+    );
+  });
+
+  it("caps email at 254 characters", () => {
+    const local = "a".repeat(64);
+    const ok = `${local}@${"b".repeat(60)}.com`;
+    expect(customerInputSchema.parse({ ...base, email: ok }).email).toBe(ok);
+    const tooLong = `${local}@${"b".repeat(200)}.com`;
+    expect(tooLong.length).toBeGreaterThan(254);
+    expect(customerInputSchema.safeParse({ ...base, email: tooLong }).success).toBe(false);
+    expect(customerInputSchema.safeParse({ ...base, email: "a".repeat(1_000_000) }).success).toBe(false);
+  });
+
+  it("rejects null for clearable fields on create (null only means 'clear' in PATCH)", () => {
+    for (const key of ["email", "whatsappNumber", "address", "leadSource"]) {
+      expect(customerInputSchema.safeParse({ ...base, [key]: null }).success).toBe(false);
+    }
+  });
+});
+
+describe("customerPatchSchema: clearing optional fields", () => {
+  it.each([
+    [{ email: null }, { email: null }],
+    [{ email: "" }, { email: null }],
+    [{ email: "   " }, { email: null }],
+    [{ address: "" }, { address: null }],
+    [{ address: null }, { address: null }],
+    [{ leadSource: "  " }, { leadSource: null }],
+    [{ leadSource: null }, { leadSource: null }],
+    [{ whatsappNumber: null }, { whatsappNumber: null, whatsappE164: null }],
+    [{ whatsappNumber: "" }, { whatsappNumber: null, whatsappE164: null }],
+    [{ whatsappNumber: "\u200b" }, { whatsappNumber: null, whatsappE164: null }],
+  ])("%j -> %j", (input, expected) => {
+    expect(customerPatchSchema.parse(input)).toStrictEqual(expected);
+  });
+
+  it("a blank-only patch is a valid clear, not an empty patch", () => {
+    expect(customerPatchSchema.safeParse({ email: "" }).success).toBe(true);
+  });
+
+  it("an empty patch is still rejected", () => {
+    const r = customerPatchSchema.safeParse({});
+    expect(r.success).toBe(false);
+    expect(r.error!.issues[0]?.message).toBe("At least one field is required");
+  });
+
+  it("replacing whatsappNumber recomputes whatsappE164; other fields leave it untouched", () => {
+    expect(customerPatchSchema.parse({ whatsappNumber: "01912-345678" })).toStrictEqual({
+      whatsappNumber: "01912-345678",
+      whatsappE164: "+8801912345678",
+    });
+    expect(customerPatchSchema.parse({ address: "Dhaka" })).toStrictEqual({ address: "Dhaka" });
+  });
+
+  it("still validates non-blank values and trims them", () => {
+    expect(customerPatchSchema.safeParse({ email: "nope" }).success).toBe(false);
+    expect(customerPatchSchema.safeParse({ whatsappNumber: "12345" }).success).toBe(false);
+    expect(customerPatchSchema.safeParse({ address: "a".repeat(501) }).success).toBe(false);
+    expect(customerPatchSchema.safeParse({ email: 5 }).success).toBe(false);
+    expect(customerPatchSchema.parse({ address: "  Dhaka " })).toStrictEqual({ address: "Dhaka" });
+  });
+
+  it("cannot clear phone (required) with null or blank", () => {
+    expect(customerPatchSchema.safeParse({ phone: null }).success).toBe(false);
+    expect(customerPatchSchema.safeParse({ phone: "" }).success).toBe(false);
+  });
+
+  it("applies the same display cleaning to patched phone", () => {
+    expect(customerPatchSchema.parse({ phone: "0171\n2345678" })).toStrictEqual({
+      phone: "0171 2345678",
+      phoneE164: "+8801712345678",
+    });
+  });
+
+  it("matches the create output exactly for derived-field shape (toStrictEqual)", () => {
+    expect(customerInputSchema.parse({ ...base, email: "" })).toStrictEqual({
+      fullName: "Rahim Uddin",
+      phone: "01712-345678",
+      phoneE164: "+8801712345678",
+      customerType: "retail",
+      tags: [],
+      segment: "new_lead",
+      consent: { status: "unknown" },
+    });
+  });
+});

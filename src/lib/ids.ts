@@ -14,5 +14,6 @@ export function isValidIdSegment(value: unknown): value is string {
   if (value.includes("/")) return false;
   if (value === "." || value === "..") return false;
   if (value.length >= 4 && value.startsWith("__") && value.endsWith("__")) return false;
-  return Buffer.byteLength(value, "utf8") <= MAX_ID_BYTES;
+  // TextEncoder is a global in Node and browsers (this module is imported by client-side schemas).
+  return new TextEncoder().encode(value).length <= MAX_ID_BYTES;
 }

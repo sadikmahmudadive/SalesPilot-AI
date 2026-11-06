@@ -67,6 +67,35 @@ describe("normalizePhone", () => {
     expect(normalizePhone(raw)).toBeNull();
   });
 
+  it.each([
+    ["LRM/RLM", "‎+880 1712 345678‏"],
+    ["LRE/RLE/PDF", "‪+8801712345678‬"],
+    ["RLE + PDF", "‫+8801712345678‬"],
+    ["LRO/RLO", "‭01712345678‮"],
+    ["isolates", "⁦⁧⁨+8801712345678⁩"],
+    ["zero-width space", "01712​345678"],
+    ["zero-width joiner/non-joiner", "0171‌2‍345678"],
+    ["word joiner", "⁠+8801712345678"],
+    ["BOM", "﻿01712345678"],
+    ["NBSP and narrow NBSP", "+880 1712 345678"],
+    ["ideographic space", "01712　345678"],
+    ["full-width digits", "０１７１２３４５６７８"],
+    ["full-width plus and digits", "＋８８０１７１２３４５６７８"],
+  ])("tolerates pasted invisible characters: %s", (_name, raw) => {
+    expect(normalizePhone(raw)).toBe("+8801712345678");
+  });
+
+  it("keeps the length cap in front of the expensive normalization", () => {
+    const huge = "​".repeat(1_000_000);
+    const start = performance.now();
+    expect(normalizePhone(huge)).toBeNull();
+    expect(normalizePhone("0".repeat(1_000_000))).toBeNull();
+    expect(performance.now() - start).toBeLessThan(250);
+    // 64 characters (the cap) still works with padding; 65 does not.
+    expect(normalizePhone(" ".repeat(51) + "01712345678")).toBe("+8801712345678");
+    expect(normalizePhone(" ".repeat(54) + "01712345678")).toBeNull();
+  });
+
   it("never throws on weird input", () => {
     const weird = [
       "x".repeat(100_000),
