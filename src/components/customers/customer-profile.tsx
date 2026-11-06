@@ -16,7 +16,7 @@ import {
   TagsCard,
 } from "@/components/customers/customer-profile-sections";
 import { DeleteCustomerDialog } from "@/components/customers/delete-customer-dialog";
-import { QueryErrorState } from "@/components/customers/query-error-state";
+import { QueryErrorState } from "@/components/shared/query-error-state";
 import { SegmentBadge } from "@/components/customers/segment-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

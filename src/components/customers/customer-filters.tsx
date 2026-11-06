@@ -1,19 +1,17 @@
 "use client";
 
 import { useId } from "react";
-import { Search, X } from "lucide-react";
 
 import {
   isSearchActive,
-  MAX_SEARCH_LENGTH,
   MIN_SEARCH_LENGTH,
   SORT_OPTIONS,
   type FilterBy,
   type ListFilterState,
   type SortKey,
 } from "@/components/customers/list-params";
-import { SelectField } from "@/components/customers/form-controls";
-import { Button } from "@/components/ui/button";
+import { SelectField } from "@/components/shared/form-controls";
+import { SearchField } from "@/components/shared/search-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SEGMENT_OPTIONS, TYPE_OPTIONS } from "@/config/customer-labels";
@@ -35,7 +33,6 @@ const SORT_SELECT_OPTIONS = SORT_OPTIONS.map((o) => ({ value: o.key, label: o.la
 
 /** Search box, the single "Filter by" control with its value control, and the sort select. */
 export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
-  const searchId = useId();
   const hintId = useId();
   const tagId = useId();
   const searching = isSearchActive(value.search);
@@ -45,40 +42,12 @@ export function CustomerFilters({ value, onChange }: CustomerFiltersProps) {
   return (
     <div className="mb-4 space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="min-w-0 flex-1 space-y-1.5 sm:min-w-64">
-          <Label htmlFor={searchId} className="text-xs text-muted-foreground">
-            Search
-          </Label>
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              id={searchId}
-              type="search"
-              value={value.search}
-              onChange={(e) => patch({ search: e.target.value })}
-              placeholder="Search by name or phone"
-              autoComplete="off"
-              maxLength={MAX_SEARCH_LENGTH}
-              aria-describedby={hintId}
-              className="px-8 [&::-webkit-search-cancel-button]:appearance-none"
-            />
-            {value.search ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="absolute top-1/2 right-1.5 -translate-y-1/2"
-                aria-label="Clear search"
-                onClick={() => patch({ search: "" })}
-              >
-                <X aria-hidden="true" />
-              </Button>
-            ) : null}
-          </div>
-        </div>
+        <SearchField
+          value={value.search}
+          onChange={(search) => patch({ search })}
+          placeholder="Search by name or phone"
+          describedBy={hintId}
+        />
 
         <SelectField
           compact

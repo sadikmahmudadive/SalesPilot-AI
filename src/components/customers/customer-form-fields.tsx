@@ -5,7 +5,7 @@ import type { z } from "zod";
 
 import { TextField } from "@/components/auth/text-field";
 import { tagsErrorMessage, type CustomerFormValues } from "@/components/customers/customer-form-model";
-import { FieldError, FormSection, SelectField, TextAreaField } from "@/components/customers/form-controls";
+import { FieldError, FormSection, SelectField, TextAreaField } from "@/components/shared/form-controls";
 import { TagInput } from "@/components/customers/tag-input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";

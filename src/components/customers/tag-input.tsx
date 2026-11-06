@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { X } from "lucide-react";
 
 import { addTags } from "@/components/customers/customer-form-model";
-import { FieldError } from "@/components/customers/form-controls";
+import { FieldError } from "@/components/shared/form-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,11 +1,9 @@
 /** Pure mapping from the list screen's controls to API query parameters. */
 import type { CustomerListParams } from "@/hooks/use-customers";
+import { isSearchActive, MAX_SEARCH_LENGTH, MIN_SEARCH_LENGTH, PAGE_SIZE } from "@/lib/list-ui";
 import type { CustomerSegment, CustomerType } from "@/schemas/customer";
 
-export const PAGE_SIZE = 25;
-export const MIN_SEARCH_LENGTH = 2;
-/** Matches the backend limit on `q`. */
-export const MAX_SEARCH_LENGTH = 64;
+export { isSearchActive, MAX_SEARCH_LENGTH, MIN_SEARCH_LENGTH, PAGE_SIZE };
 
 export type FilterBy = "none" | "segment" | "customerType" | "tag";
 export type SortKey = "newest" | "name-asc" | "name-desc" | "recent";
@@ -39,11 +37,6 @@ export const SORT_OPTIONS: readonly {
   { key: "name-desc", label: "Name Z-A", sort: "fullName", dir: "desc" },
   { key: "recent", label: "Recently active", sort: "lastInteractionAt", dir: "desc" },
 ];
-
-/** A search only runs once it has enough characters. */
-export function isSearchActive(search: string): boolean {
-  return search.trim().length >= MIN_SEARCH_LENGTH;
-}
 
 export function toListParams(state: ListFilterState): Omit<CustomerListParams, "cursor"> {
   const option = SORT_OPTIONS.find((o) => o.key === state.sortKey) ?? SORT_OPTIONS[0]!;

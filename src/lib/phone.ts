@@ -20,6 +20,8 @@
  * returns null.
  */
 
+import { toAsciiDigits } from "@/lib/digits";
+
 // Longest plausible raw input: 15 digits plus generous punctuation. Bounds the work done
 // on hostile input.
 const MAX_RAW_LENGTH = 64;
@@ -28,17 +30,9 @@ const BD_NATIONAL = /^01[3-9]\d{8}$/;
 const BD_INTERNATIONAL = /^880(1[3-9]\d{8})$/;
 const INTERNATIONAL = /^[1-9]\d{7,14}$/;
 
-const NON_ASCII_DIGITS = /[\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF]/g;
 // Whitespace, separators, and invisible format characters (\p{Cf}: bidi marks, zero-width
 // space/joiner, word joiner, BOM, ...) that commonly ride along with pasted numbers.
 const IGNORED = /[\p{Cf}\p{Z}\s\-.()]/gu;
-
-function toAsciiDigit(ch: string): string {
-  const code = ch.charCodeAt(0);
-  if (code >= 0x09e6) return String(code - 0x09e6); // Bangla
-  if (code >= 0x06f0) return String(code - 0x06f0); // Extended Arabic-Indic
-  return String(code - 0x0660); // Arabic-Indic
-}
 
 /**
  * The shared cleaning step: NFKC, then separators / whitespace / invisible format characters
@@ -48,7 +42,7 @@ function toAsciiDigit(ch: string): string {
  */
 export function cleanPhoneInput(raw: string): string {
   if (typeof raw !== "string" || raw.length > MAX_RAW_LENGTH) return "";
-  return raw.normalize("NFKC").replace(IGNORED, "").replace(NON_ASCII_DIGITS, toAsciiDigit);
+  return toAsciiDigits(raw.normalize("NFKC").replace(IGNORED, ""));
 }
 
 /** Returns the E.164 form of a supported mobile number, or null when it cannot be normalized. */

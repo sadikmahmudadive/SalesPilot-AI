@@ -1,21 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useDeleteCustomer } from "@/hooks/use-customers";
-import { ApiError } from "@/lib/api/client";
 
 interface DeleteCustomerDialogProps {
   /** The customer to delete; `null` keeps the dialog closed. */
@@ -26,63 +15,25 @@ interface DeleteCustomerDialogProps {
 
 export function DeleteCustomerDialog({ customer, onOpenChange, onDeleted }: DeleteCustomerDialogProps) {
   const remove = useDeleteCustomer();
-  const lock = useRef(false);
-  const [error, setError] = useState<string | null>(null);
-  const pending = remove.isPending;
   // Keep the last customer so the title does not change while the dialog animates closed.
   const [lastCustomer, setLastCustomer] = useState(customer);
   if (customer && customer !== lastCustomer) setLastCustomer(customer);
   const shown = customer ?? lastCustomer;
 
-  async function confirm() {
-    if (!customer || lock.current) return;
-    lock.current = true;
-    setError(null);
-    try {
-      await remove.mutateAsync(customer.id);
-      toast.success(`${customer.fullName} was deleted`);
-      onOpenChange(false);
-      onDeleted?.(customer.id);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not delete the customer. Please try again.");
-    } finally {
-      lock.current = false;
-    }
-  }
-
   return (
-    <AlertDialog
+    <ConfirmDialog
       open={customer !== null}
-      onOpenChange={(open) => {
-        if (pending) return; // do not close mid-request
-        if (!open) setError(null);
-        onOpenChange(open);
+      onOpenChange={onOpenChange}
+      title={`Delete ${shown?.fullName ?? "customer"}?`}
+      description="This permanently removes the customer record. It cannot be undone."
+      confirmLabel="Delete customer"
+      errorFallback="Could not delete the customer. Please try again."
+      onConfirm={async () => {
+        if (!customer) return;
+        await remove.mutateAsync(customer.id);
+        toast.success(`${customer.fullName} was deleted`);
+        onDeleted?.(customer.id);
       }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {shown?.fullName ?? "customer"}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This permanently removes the customer record. It cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div role="alert">{error ? <p className="text-sm text-destructive">{error}</p> : null}</div>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={pending}
-            aria-busy={pending}
-            onClick={(e) => {
-              e.preventDefault();
-              void confirm();
-            }}
-          >
-            {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-            Delete customer
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    />
   );
 }

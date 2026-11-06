@@ -3,23 +3,10 @@ import { MessageSquare, ShoppingBag } from "lucide-react";
 import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
 import { CustomerTags } from "@/components/customers/customer-tags";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard as Section } from "@/components/shared/section-card";
 import { CONSENT_LABELS, CONSENT_VARIANTS, LANGUAGE_LABELS } from "@/config/customer-labels";
 import { formatDate, formatDateOr, formatDateTime, formatMoneyMinor } from "@/lib/format";
 import type { Customer } from "@/schemas/customer";
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <h2 className="text-base font-medium">{title}</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (

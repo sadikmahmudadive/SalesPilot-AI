@@ -10,7 +10,7 @@ interface QueryErrorStateProps {
   retrying?: boolean;
 }
 
-/** Shared error panel for the customer screens: message, request id (when the API sent one) and retry. */
+/** Shared error panel for list and detail screens: message, request id (when the API sent one) and retry. */
 export function QueryErrorState({ title, error, onRetry, retrying = false }: QueryErrorStateProps) {
   const requestId = error instanceof ApiError ? error.requestId : undefined;
   const message =

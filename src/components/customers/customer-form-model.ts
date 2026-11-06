@@ -7,6 +7,7 @@ import type { z } from "zod";
 
 import type { CustomerCreateBody, CustomerPatchBody } from "@/hooks/use-customers";
 import type { ApiError } from "@/lib/api/client";
+import { mapApiErrorWith, type MappedApiError as SharedMappedApiError } from "@/lib/api/map-error";
 import { dedupeTags, MAX_TAG_LENGTH, MAX_TAGS, tagKey } from "@/lib/tags";
 import type { Customer, customerInputSchema } from "@/schemas/customer";
 
@@ -148,41 +149,16 @@ function toFieldName(path: string): FormFieldName | null {
   return FIELD_NAMES.has(normalized) ? (normalized as FormFieldName) : null;
 }
 
-export interface MappedApiError {
-  fields: { name: FormFieldName; message: string }[];
-  formError: string | null;
-  requestId?: string;
-}
+export type MappedApiError = SharedMappedApiError<FormFieldName>;
 
 export const DUPLICATE_PHONE_MESSAGE = "A customer with this phone number already exists";
 
 /** Turns a failed save into per-field errors plus (at most) one top-level message. */
 export function mapApiError(error: ApiError): MappedApiError {
-  const requestId = error.requestId;
-  if (error.code === "CONFLICT") {
-    return {
-      fields: [{ name: "phone", message: DUPLICATE_PHONE_MESSAGE }],
-      formError: null,
-      requestId,
-    };
-  }
-  if (error.code === "UNAUTHENTICATED") {
-    return { fields: [], formError: "Your session has expired. Please sign in again.", requestId };
-  }
-  if (error.code === "FORBIDDEN") {
-    return { fields: [], formError: "You do not have permission to make this change.", requestId };
-  }
-  if (error.code === "VALIDATION_ERROR" && error.details.length > 0) {
-    const fields: MappedApiError["fields"] = [];
-    const unmatched: string[] = [];
-    for (const detail of error.details) {
-      const name = toFieldName(detail.path);
-      if (name) fields.push({ name, message: detail.message });
-      else unmatched.push(detail.message);
-    }
-    return { fields, formError: unmatched.length > 0 ? unmatched.join(" ") : null, requestId };
-  }
-  return { fields: [], formError: error.message, requestId };
+  return mapApiErrorWith(error, {
+    toField: toFieldName,
+    onConflict: () => ({ fields: [{ name: "phone", message: DUPLICATE_PHONE_MESSAGE }], formError: null }),
+  });
 }
 
 export interface AddTagsResult {

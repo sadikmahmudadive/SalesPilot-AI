@@ -17,16 +17,7 @@ import {
   prepareCustomerBody,
   type CustomerFormValues,
 } from "@/components/customers/customer-form-model";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DiscardChangesDialog } from "@/components/shared/discard-changes-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,7 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCreateCustomer, useUpdateCustomer } from "@/hooks/use-customers";
-import { ApiError } from "@/lib/api/client";
+import { asApiError } from "@/lib/api/map-error";
 import { customerInputSchema, type Customer } from "@/schemas/customer";
 
 type FormOutput = z.output<typeof customerInputSchema>;
@@ -94,15 +85,7 @@ function CustomerForm({ customer, onDirtyChange, onCancel, onSaved }: CustomerFo
       toast.success(isEdit ? "Customer updated" : "Customer added");
       onSaved();
     } catch (error) {
-      const mapped = mapApiError(
-        error instanceof ApiError
-          ? error
-          : new ApiError({
-              status: 0,
-              code: "UNKNOWN",
-              message: "Something went wrong. Please try again.",
-            }),
-      );
+      const mapped = mapApiError(asApiError(error));
       for (const field of mapped.fields) setError(field.name, { type: "server", message: field.message });
       const first = mapped.fields[0];
       if (first) setFocus(first.name);
@@ -179,22 +162,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFor
           />
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The details you entered have not been saved and will be lost.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={close}>
-              Discard
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DiscardChangesDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} onDiscard={close} />
     </>
   );
 }
