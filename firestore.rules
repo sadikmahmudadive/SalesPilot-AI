@@ -79,8 +79,8 @@ service cloud.firestore {
       }
     }
 
-    // rateLimits, auditLogs, customerPhones, productSkus, productSlugs and any
-    // other collection fall through to default deny.
+    // rateLimits, auditLogs, customerPhones, productSkus, productSlugs,
+    // categoryNames and any other collection fall through to default deny.
     match /{document=**} {
       allow read, write: if false;
     }

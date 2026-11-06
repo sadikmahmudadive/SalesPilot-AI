@@ -27,7 +27,14 @@ const ORG_A = "orgA";
 const ORG_B = "orgB";
 const ORG_C = "orgC";
 const BUSINESS = ["customers", "products", "categories", "inventory"] as const;
-const LOCKED = ["rateLimits", "auditLogs", "customerPhones", "productSkus", "productSlugs"] as const;
+const LOCKED = [
+  "rateLimits",
+  "auditLogs",
+  "customerPhones",
+  "productSkus",
+  "productSlugs",
+  "categoryNames",
+] as const;
 const ROLES = ["owner", "admin", "agent", "viewer"] as const;
 
 let testEnv: RulesTestEnvironment;

@@ -21,6 +21,7 @@ import { ValidationError, type ValidationDetail } from "@/lib/errors";
 import { isValidIdSegment } from "@/lib/ids";
 import { cleanPhoneInput } from "@/lib/phone";
 import { tagKey } from "@/lib/tags";
+import { PREFIX_END, hasLoneSurrogate, sortKey } from "@/lib/text";
 import { invalid as fieldError } from "@/lib/validation-error";
 import type { WhereClause } from "@/repositories/base";
 import {
@@ -35,15 +36,6 @@ export const MAX_LIMIT = 50;
 export const MAX_SEARCH_LENGTH = 64;
 const MIN_PHONE_DIGITS = 3;
 const MAX_TAG_FILTER_LENGTH = 80;
-const MAX_SORT_KEY_LENGTH = 256;
-
-/**
- * Exclusive upper bound suffix for a prefix range. Firestore compares strings by UTF-8 bytes
- * (= code point order), and U+10FFFF is the largest code point, so `prefix + PREFIX_END` is
- * above every string that starts with `prefix`. (The common U+F8FF suffix would miss values
- * whose next character is above U+F8FF, e.g. emoji.)
- */
-export const PREFIX_END = String.fromCodePoint(0x10ffff);
 
 export type SortName = "createdAt" | "fullName" | "lastInteractionAt";
 export type SortDir = "asc" | "desc";
@@ -98,30 +90,13 @@ export function tagKeys(tags: readonly string[]): string[] {
   return [...new Set(tags.map(tagKey).filter((t) => t.length > 0))];
 }
 
-/** Whether `s` contains an unpaired surrogate (round-tripping through UTF-8 replaces it). */
-function hasLoneSurrogate(s: string): boolean {
-  return Buffer.from(s, "utf8").toString("utf8") !== s;
-}
-
-function truncateUnits(s: string, max: number): string {
-  if (s.length <= max) return s;
-  let end = max;
-  const last = s.charCodeAt(end - 1);
-  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // do not split a surrogate pair
-  return s.slice(0, end);
-}
-
 /**
- * The stored sort/search key for a name: NFKC, lower-cased (locale-independent), whitespace
- * runs collapsed to one space, trimmed, at most 256 UTF-16 units. The search query goes
+ * The stored sort/search key for a customer name (see `sortKey`). The search query goes
  * through the same function so both sides always agree.
  */
-export function fullNameLowerKey(fullName: string): string {
-  return truncateUnits(
-    fullName.normalize("NFKC").toLocaleLowerCase("en-US").replace(/\s+/g, " ").trim(),
-    MAX_SORT_KEY_LENGTH,
-  );
-}
+export const fullNameLowerKey = sortKey;
+
+export { PREFIX_END };
 
 export type SearchPlan =
   | { kind: "phone"; field: "phoneE164"; start: string; end: string }

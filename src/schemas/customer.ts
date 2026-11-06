@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import { isValidIdSegment } from "@/lib/ids";
 import { normalizePhone } from "@/lib/phone";
+import { cleanName, isBlank } from "@/lib/text";
+
+import { clearable, dropUndefined, omitWhenBlank } from "./helpers";
 
 export const CUSTOMER_SEGMENTS = [
   "new_lead",
@@ -44,9 +47,6 @@ function dedupeTags(tags: string[]): string[] {
   return out;
 }
 
-/** True for strings that are empty or hold only whitespace / control / invisible format characters. */
-const isBlank = (v: string) => /^[\s\p{Cc}\p{Cf}]*$/u.test(v);
-
 /**
  * Display text for a phone number: control and invisible format characters (bidi marks,
  * zero-width, BOM) removed, internal whitespace collapsed to single spaces.
@@ -78,37 +78,6 @@ const emailCore = z
 const addressCore = z.string().trim().max(500, "Use 500 characters or fewer");
 const leadSourceCore = z.string().trim().max(80, "Use 80 characters or fewer");
 
-/**
- * Invisible format characters (\p{Cf}) are stripped from names EXCEPT U+200C (ZWNJ) and U+200D
- * (ZWJ): they control conjunct and letter shaping in Bangla/Persian, so removing them would
- * corrupt real names. Keep both as escapes: written literally they are invisible, and a
- * formatter that strips them would silently turn this into "strip every format character".
- */
-const STRIPPED_FROM_NAMES = /(?![\u200C\u200D])\p{Cf}/gu;
-
-/**
- * Create flavour of a blank-able optional field: a blank string (after trimming) is omitted
- * from the output. `null` is rejected (it is only meaningful in PATCH).
- */
-function omitWhenBlank(core: z.ZodType<string, string>, message: string) {
-  return z
-    .string({ error: message })
-    .transform((v) => (isBlank(v) ? undefined : v))
-    .pipe(core.optional())
-    .optional();
-}
-
-/**
- * PATCH flavour of a clearable optional field: `null` or a blank string means "clear this
- * field". The output carries an explicit `null`; the service layer (Task 15) maps `null` to
- * `FieldValue.delete()` instead of writing it.
- */
-function clearable(core: z.ZodType<string, string>) {
-  return z
-    .preprocess((v) => (v === null || (typeof v === "string" && isBlank(v)) ? null : v), core.nullable())
-    .optional();
-}
-
 const consentSchema = z
   .object({
     status: z.enum(CONSENT_STATUSES, { error: "Choose a consent status" }),
@@ -130,7 +99,7 @@ const sharedFields = {
   fullName: z
     .string({ error: NAME_MESSAGE })
     .max(1000, "Use 120 characters or fewer")
-    .transform((v) => v.normalize("NFC").replace(STRIPPED_FROM_NAMES, "").trim())
+    .transform(cleanName)
     .pipe(
       z
         .string()
@@ -161,14 +130,6 @@ const sharedFields = {
     .optional(),
   consent: consentSchema,
 };
-
-function dropUndefined<T extends Record<string, unknown>>(value: T): T {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out as T;
-}
 
 /**
  * Adds the derived E.164 fields. They are computed only here, never read from client input
