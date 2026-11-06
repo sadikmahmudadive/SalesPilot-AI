@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   InsufficientStockError,
   IntegrationNotConfiguredError,
+  InventoryBusyError,
   NotFoundError,
   RateLimitedError,
   UnauthenticatedError,
@@ -64,5 +65,16 @@ describe('errors', () => {
     const err = new IntegrationNotConfiguredError('zalo');
     expect(err.integration).toBe('zalo');
     expect(err.message).toContain('zalo');
+  });
+
+  it('InventoryBusyError is a retryable 409 CONFLICT that is distinguishable from other conflicts', () => {
+    const busy = new InventoryBusyError();
+    expect(busy).toBeInstanceOf(ConflictError);
+    expect(busy).toBeInstanceOf(AppError);
+    expect(busy.status).toBe(409);
+    expect(busy.code).toBe('CONFLICT');
+    expect(busy.message).toBe('Inventory is busy, please try again');
+    expect(busy.name).toBe('InventoryBusyError');
+    expect(new ConflictError()).not.toBeInstanceOf(InventoryBusyError);
   });
 });

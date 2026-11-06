@@ -18,9 +18,15 @@
  * single ASCENDING entry. The unfiltered name index (nameLower ASC) also serves the name prefix
  * search (range on the ordered field).
  */
-import type { FilterField, OrderField, QueryShape } from "./product-query";
+import {
+  INDEX_DIRECTIONS,
+  directionWord as dirWord,
+  type FirestoreIndex,
+  type FirestoreIndexField,
+  type IndexDirection,
+} from "@/lib/firestore-index-table";
 
-export type IndexDirection = "ASCENDING" | "DESCENDING";
+import type { FilterField, OrderField, QueryShape } from "./product-query";
 
 export interface ProductIndexSpec {
   /** Equality filter field (ASCENDING in the index). `archived` is always present and not listed. */
@@ -33,10 +39,8 @@ export interface ProductIndexSpec {
 }
 
 const SORT_FIELDS = ["createdAt", "nameLower", "updatedAt"] as const;
-const DIRECTIONS: readonly IndexDirection[] = ["ASCENDING", "DESCENDING"];
+const DIRECTIONS = INDEX_DIRECTIONS;
 const EQUALITY_FIELDS: readonly FilterField[] = ["availability", "categoryId"];
-
-const dirWord = (d: IndexDirection) => (d === "ASCENDING" ? "ascending" : "descending");
 
 const base = SORT_FIELDS.flatMap((orderField) =>
   DIRECTIONS.map<ProductIndexSpec>((direction) => ({
@@ -67,16 +71,6 @@ const skuSearch: ProductIndexSpec = {
 };
 
 export const PRODUCT_LIST_INDEXES: readonly ProductIndexSpec[] = [...base, ...equality, skuSearch];
-
-export interface FirestoreIndexField {
-  fieldPath: string;
-  order: "ASCENDING" | "DESCENDING";
-}
-export interface FirestoreIndex {
-  collectionGroup: string;
-  queryScope: "COLLECTION";
-  fields: FirestoreIndexField[];
-}
 
 /** The entry exactly as it must appear in firestore.indexes.json (key order included). */
 export function toFirestoreIndex(spec: ProductIndexSpec): FirestoreIndex {

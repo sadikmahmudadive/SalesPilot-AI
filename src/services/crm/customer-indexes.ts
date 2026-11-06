@@ -21,10 +21,17 @@
  *
  * The tag filter uses the lower-cased `tagsLower` array (array-contains), not `tags`.
  */
+import {
+  INDEX_DIRECTIONS,
+  directionWord as dirWord,
+  type FirestoreIndex,
+  type FirestoreIndexField,
+  type IndexDirection,
+} from "@/lib/firestore-index-table";
+
 import type { QueryShape } from "./customer-query";
 
 export type IndexEqualityField = "segment" | "customerType" | "assignedAgentId";
-export type IndexDirection = "ASCENDING" | "DESCENDING";
 
 export interface CustomerIndexSpec {
   /** Equality filter field (ASCENDING in the index; direction is irrelevant for equality). */
@@ -39,14 +46,12 @@ export interface CustomerIndexSpec {
 }
 
 const SORT_FIELDS = ["createdAt", "fullNameLower", "lastInteractionAt"] as const;
-const DIRECTIONS: readonly IndexDirection[] = ["ASCENDING", "DESCENDING"];
+const DIRECTIONS = INDEX_DIRECTIONS;
 const EQUALITY_FIELDS: readonly IndexEqualityField[] = [
   "segment",
   "customerType",
   "assignedAgentId",
 ];
-
-const dirWord = (d: IndexDirection) => (d === "ASCENDING" ? "ascending" : "descending");
 
 const base = SORT_FIELDS.flatMap((orderField) =>
   DIRECTIONS.map<CustomerIndexSpec>((direction) => ({
@@ -91,17 +96,6 @@ export const CUSTOMER_LIST_INDEXES: readonly CustomerIndexSpec[] = [
   ...tags,
   phoneSearch,
 ];
-
-export interface FirestoreIndexField {
-  fieldPath: string;
-  order?: "ASCENDING" | "DESCENDING";
-  arrayConfig?: "CONTAINS";
-}
-export interface FirestoreIndex {
-  collectionGroup: "customers";
-  queryScope: "COLLECTION";
-  fields: FirestoreIndexField[];
-}
 
 /** The entry exactly as it must appear in firestore.indexes.json (key order included). */
 export function toFirestoreIndex(spec: CustomerIndexSpec): FirestoreIndex {

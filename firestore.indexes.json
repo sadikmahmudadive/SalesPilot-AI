@@ -1195,20 +1195,6 @@
           "order": "ASCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "inventory",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "organizationId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "available",
-          "order": "ASCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": []

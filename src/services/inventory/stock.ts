@@ -9,14 +9,15 @@
  *
  * INVARIANTS. All counters are non-negative safe integers and `available === onHand - reserved`
  * (so `reserved <= onHand`). Every mutator is ONE Firestore transaction that reads the inventory
- * document (and the reservation) first and writes after, so a retry always re-reads fresh state;
- * nothing outside the callback is mutated. A document that already violates the invariants (or an
- * operation that would make a counter negative) is data corruption: a plain internal Error with a
- * generic message is thrown (a logged 500) and nothing is written. Counters are never clamped.
+ * document (and the reservation) first and writes after. The SDK re-runs the callback on
+ * contention and the callback re-reads fresh state each time; nothing outside the callback is
+ * mutated. A document that already violates the invariants (or an operation that would make a
+ * counter negative) is data corruption: a plain internal Error with a generic message is thrown
+ * (a logged 500) and nothing is written. Counters are never clamped.
  *
  * RESERVATIONS ARE SERVER-ONLY. There is NO HTTP route for reserve / release / commit in this
  * phase: Phase 5 orders call these functions directly (and unchanged). The idempotency key is the
- * reservation id (one per order line, for example); retrying a call with the same key is safe:
+ * reservation id; retrying a call with the same key is safe:
  *   - reserve   same key + same quantity -> the existing reservation is returned (any status), no
  *               count change; same key + DIFFERENT quantity -> ConflictError.
  *   - release   only from `reserved`; a repeat is a no-op; after a commit -> ConflictError.
@@ -25,14 +26,43 @@
  * An unknown key, a missing inventory document and another organization's inventory document are
  * the same NotFoundError (no existence oracle).
  *
- * CONCURRENCY. Transactions run with `maxAttempts: 30`. If contention outlasts the attempts the
- * caller gets ConflictError("Inventory is busy, please try again"), which callers should treat as
- * RETRYABLE. Firestore sustains about 1 write per second on a single document in production, and
- * every stock unit is one document, so a very hot product (flash sale) can see this error under
- * heavy parallel load; sharding counters is deliberately out of scope.
+ * NOTES FOR PHASE 5 (orders), which calls these functions:
+ *   - CHECK `status` OF THE RESERVE RESULT. A resolved `reserveStock` can carry
+ *     `status: "released"` or `"committed"` (a replay of a key whose reservation already ended);
+ *     only `"reserved"` means the units are held now.
+ *   - The idempotency key must be per ORDER LINE (stable across retries of one line, different for
+ *     every line; keys are scoped to one stock unit, so one key per unit per line is enough).
+ *   - Reserve does NOT check the product's availability or archived state; the caller must.
+ *   - Reservations have NO expiry. An abandoned `reserved` reservation holds stock forever, so
+ *     Phase 5 needs an expiry policy plus a sweep that releases them, and a retention rule for
+ *     finished reservation documents (they are never deleted here; they are the idempotency record).
+ *   - A variant that was EVER reserved can never be removed from its product: variant removal is
+ *     refused while the `reservations` subcollection is non-empty (see products.ts).
+ *
+ * CONCURRENCY AND RETRY BUDGET. The Firestore SDK retries a transaction on ABORTED with an
+ * exponential backoff (1 s start, x1.5, +/-50% jitter, 60 s cap). That backoff gives up after 10
+ * retries, so `maxAttempts` above 11 is silently capped at 11 attempts (and the SDK would then
+ * reject with a codeless "Exceeded maximum number of retries" error instead of the real one).
+ * Hence the budgets:
+ *   - reserve / release / commit  `RESERVATION_MAX_ATTEMPTS = 11`: about 2 minutes of backoff in
+ *     total (1 + 1.5 + 2.3 + 3.4 + 5.1 + 7.6 + 11.4 + 17.1 + 25.6 + 38.4 s on average). It is longer
+ *     when the SDK resets the backoff to the maximum (RESOURCE_EXHAUSTED and similar codes).
+ *   - adjust (on the HTTP path)   `ADJUST_MAX_ATTEMPTS = 5`: about 8 s of backoff, so a request
+ *     answers within roughly 10 s.
+ * Only ABORTED (contention) that outlasts the attempts becomes `InventoryBusyError` (a
+ * ConflictError, code CONFLICT, 409, message "Inventory is busy, please try again"), which callers
+ * treat as RETRYABLE; every other ConflictError is terminal. Other failures (UNAVAILABLE,
+ * RESOURCE_EXHAUSTED, ...) propagate unchanged as logged 500s: an outage must not look like busy.
+ * Each exhaustion is logged with `logger.warn` (the error response of an AppError is not logged).
+ * Firestore sustains about 1 write per second on one document in production and every stock unit
+ * is one document, so a very hot product (flash sale) can see this error under heavy parallel
+ * load; sharding counters is deliberately out of scope.
  *
  * ADJUSTMENTS (`adjustStock`, owner/admin through the API) change `onHand` by a nonzero delta and
- * are audited in the same transaction (a failing audit write persists nothing).
+ * are audited in the same transaction (a failing audit write persists nothing). `adjustStock` is
+ * NOT idempotent: a lost acknowledgement (the commit succeeded but the response did not arrive)
+ * followed by a client retry applies the delta TWICE. The UI (Task 19) must guard against double
+ * submit and must not auto-retry an adjustment.
  */
 import "server-only";
 
@@ -47,11 +77,14 @@ import { MAX_ON_HAND } from "@/config/inventory";
 import {
   ConflictError,
   InsufficientStockError,
+  InventoryBusyError,
   NotFoundError,
   ValidationError,
 } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
+import { isContention } from "@/lib/firestore-errors";
 import { isValidIdSegment } from "@/lib/ids";
+import { logger } from "@/lib/logger";
 import { assertOrgCtx, type OrgCtx } from "@/lib/org-context";
 import { writeAuditInTransaction } from "@/lib/security/audit";
 import { invalid } from "@/lib/validation-error";
@@ -64,8 +97,10 @@ import {
 } from "@/schemas/inventory";
 
 export const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
-const MAX_ATTEMPTS = 30;
-const BUSY_MESSAGE = "Inventory is busy, please try again";
+/** Attempts of reserve / release / commit: the most the SDK's backoff allows (see the header). */
+export const RESERVATION_MAX_ATTEMPTS = 11;
+/** Attempts of adjustStock, which answers an HTTP request (see the header). */
+export const ADJUST_MAX_ATTEMPTS = 5;
 const KEY_CONFLICT_MESSAGE = "This idempotency key was already used with a different quantity";
 const RELEASED_MESSAGE = "This reservation was already released";
 const COMMITTED_MESSAGE = "This reservation was already committed";
@@ -173,17 +208,25 @@ function nextCounts(onHand: number, reserved: number): Counts {
 
 // ---- transaction runner --------------------------------------------------------------------
 
-/** Firestore ABORTED (gRPC 10) or HTTP 409: contention that outlasted the attempts. */
-function isContention(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  return code === 10 || code === 409 || code === "aborted";
-}
-
-async function runStockTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+/**
+ * Runs `fn` as a transaction with at most `maxAttempts` attempts. ABORTED that survives all
+ * attempts is `InventoryBusyError` (retryable) and is logged; any other error is rethrown as is.
+ */
+async function runStockTransaction<T>(
+  inventoryId: string,
+  maxAttempts: number,
+  fn: (tx: Transaction) => Promise<T>,
+): Promise<T> {
   try {
-    return await adminDb().runTransaction(fn, { maxAttempts: MAX_ATTEMPTS });
+    return await adminDb().runTransaction(fn, { maxAttempts });
   } catch (err) {
-    if (isContention(err)) throw new ConflictError(BUSY_MESSAGE);
+    if (isContention(err)) {
+      logger.warn("inventory transaction gave up after repeated contention", {
+        inventoryId,
+        maxAttempts,
+      });
+      throw new InventoryBusyError();
+    }
     throw err;
   }
 }
@@ -208,7 +251,7 @@ export async function reserveStock(
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  return runStockTransaction(async (tx) => {
+  return runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
     // Reads first (both documents), writes after.
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
@@ -260,7 +303,7 @@ export async function releaseStock(
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  await runStockTransaction(async (tx) => {
+  await runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
     const res = readReservation(resSnap!, orgId);
@@ -294,7 +337,7 @@ export async function commitStock(
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  await runStockTransaction(async (tx) => {
+  await runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
     const res = readReservation(resSnap!, orgId);
@@ -338,7 +381,7 @@ export async function adjustStock(
   const orgId = ctx.organizationId;
   const invRef = inventoryRefOrNotFound(productId, variantId);
 
-  await runStockTransaction(async (tx) => {
+  await runStockTransaction(invRef.id, ADJUST_MAX_ATTEMPTS, async (tx) => {
     const counts = readCounts(await tx.get(invRef), orgId);
     const onHand = counts.onHand + delta;
     if (onHand < counts.reserved) throw new ConflictError(BELOW_RESERVED_MESSAGE);

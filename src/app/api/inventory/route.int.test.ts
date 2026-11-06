@@ -233,7 +233,7 @@ describe("POST /api/inventory/adjust", () => {
         body: "x",
       }),
     );
-    expect([400, 415]).toContain(res.status);
+    expect(res.status).toBe(415);
   });
 
   it("409 when the result would drop onHand below the reserved quantity", async () => {
@@ -279,6 +279,20 @@ describe("POST /api/inventory/adjust", () => {
       ).docs.filter((d) => d.get("action") === "inventory.adjust"),
     ).toHaveLength(0);
   });
+
+  it("is rate limited to 60 adjustments per minute per user (61st -> 429, nothing applied)", async () => {
+    const { p } = await owner();
+    const statuses: number[] = [];
+    let last: Response | undefined;
+    for (let i = 0; i < 61; i++) {
+      last = await adjust(req(p, { delta: 1 }));
+      statuses.push(last.status);
+    }
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
+    expect(last!.headers.get("retry-after")).toBeTruthy();
+    expect((await invOf(p.id)).onHand).toBe(60);
+  }, 120_000);
 
   it("adjusts a variant's own unit", async () => {
     const actor = await seed("owner");

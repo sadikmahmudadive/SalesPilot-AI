@@ -12,6 +12,7 @@ import {
   toFirestoreIndex as toProductIndex,
 } from "@/services/products/product-indexes";
 
+import { normalizedIndexKey } from "@/lib/firestore-index-table";
 import { INVENTORY_LIST_INDEXES, indexServing, toFirestoreIndex } from "./inventory-indexes";
 import { buildListPlan, type InventoryListQuery } from "./inventory-query";
 
@@ -30,7 +31,40 @@ describe("INVENTORY_LIST_INDEXES table", () => {
   it("has no duplicate entries", () => {
     const keys = INVENTORY_LIST_INDEXES.map((s) => canon(toFirestoreIndex(s)));
     expect(new Set(keys).size).toBe(keys.length);
-    expect(INVENTORY_LIST_INDEXES).toHaveLength(4);
+    expect(INVENTORY_LIST_INDEXES).toHaveLength(3);
+  });
+
+  it("no two inventory entries (table or JSON) are the same index once the implicit __name__ is dropped", () => {
+    const tableKeys = INVENTORY_LIST_INDEXES.map((spec) =>
+      normalizedIndexKey(toFirestoreIndex(spec)),
+    );
+    expect(new Set(tableKeys).size).toBe(tableKeys.length);
+    const jsonKeys = of("inventory").map((i) =>
+      normalizedIndexKey(i as unknown as Parameters<typeof normalizedIndexKey>[0]),
+    );
+    expect(new Set(jsonKeys).size).toBe(jsonKeys.length);
+  });
+
+  it("normalizedIndexKey treats a trailing same-direction __name__ as implicit", () => {
+    const f = (fieldPath: string, order: "ASCENDING" | "DESCENDING") => ({ fieldPath, order });
+    const mk = (...fields: ReturnType<typeof f>[]) => ({
+      collectionGroup: "inventory",
+      queryScope: "COLLECTION" as const,
+      fields,
+    });
+    const a = mk(f("organizationId", "ASCENDING"), f("available", "ASCENDING"));
+    const b = mk(
+      f("organizationId", "ASCENDING"),
+      f("available", "ASCENDING"),
+      f("__name__", "ASCENDING"),
+    );
+    const c = mk(
+      f("organizationId", "ASCENDING"),
+      f("available", "ASCENDING"),
+      f("__name__", "DESCENDING"),
+    );
+    expect(normalizedIndexKey(a)).toBe(normalizedIndexKey(b));
+    expect(normalizedIndexKey(a)).not.toBe(normalizedIndexKey(c));
   });
 
   it("equals the inventory entries of firestore.indexes.json exactly (none missing, none extra)", () => {
@@ -42,9 +76,7 @@ describe("INVENTORY_LIST_INDEXES table", () => {
     for (const spec of INVENTORY_LIST_INDEXES) {
       const { fields } = toFirestoreIndex(spec);
       expect(fields[0]).toEqual({ fieldPath: "organizationId", order: "ASCENDING" });
-      if (spec.withName) {
-        expect(fields.at(-1)).toEqual({ fieldPath: "__name__", order: fields.at(-2)!.order });
-      }
+      expect(fields.at(-1)).toEqual({ fieldPath: "__name__", order: fields.at(-2)!.order });
       expect(spec.note.length).toBeGreaterThan(10);
     }
   });
@@ -79,17 +111,14 @@ describe("INVENTORY_LIST_INDEXES table", () => {
     }
   });
 
-  it("includes the organization + available shape of the low-stock count query", () => {
-    expect(of("inventory").map(canon)).toContain(
-      canon({
-        collectionGroup: "inventory",
-        queryScope: "COLLECTION",
-        fields: [
-          { fieldPath: "organizationId", order: "ASCENDING" },
-          { fieldPath: "available", order: "ASCENDING" },
-        ],
-      }),
-    );
+  it("the lowStock entry also serves the overview count (organizationId == org AND available <= N)", () => {
+    const spec = indexServing("lowStock")!;
+    expect(toFirestoreIndex(spec).fields).toEqual([
+      { fieldPath: "organizationId", order: "ASCENDING" },
+      { fieldPath: "available", order: "ASCENDING" },
+      { fieldPath: "__name__", order: "ASCENDING" },
+    ]);
+    expect(spec.note).toMatch(/count/i);
   });
 });
 

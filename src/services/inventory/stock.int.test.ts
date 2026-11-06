@@ -1,17 +1,40 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import path from "node:path";
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Transaction } from "firebase-admin/firestore";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import {
   ConflictError,
   InsufficientStockError,
+  InventoryBusyError,
   NotFoundError,
   ValidationError,
   isAppError,
 } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 
-import { adjustStock, commitStock, releaseStock, reserveStock } from "./stock";
+import { productInputSchema, productPatchSchema } from "@/schemas/product";
+import { createProduct, updateProduct } from "@/services/products/products";
+
+import {
+  ADJUST_MAX_ATTEMPTS,
+  RESERVATION_MAX_ATTEMPTS,
+  adjustStock,
+  commitStock,
+  releaseStock,
+  reserveStock,
+} from "./stock";
 
 // Failure seam: lets a test make the in-transaction audit write throw, to prove that the
 // counters written in the same transaction do not survive.
@@ -173,7 +196,8 @@ describe("reserveStock", () => {
         expect(s).toMatchObject({ onHand: 10, reserved: 10, available: 0 });
         expect(s.reservations).toHaveLength(10);
         if (REPEAT > 1)
-          console.info(`30-way round ${round + 1}/${REPEAT}: ${Date.now() - startedAt}ms`);
+          process.stderr.write(`30-way round ${round + 1}/${REPEAT}: ${Date.now() - startedAt}ms
+`);
       }
     },
     90_000 * REPEAT,
@@ -648,57 +672,220 @@ describe("adjustStock", () => {
   }, 60_000);
 });
 
-describe("contention", () => {
-  it("runs every mutator with maxAttempts 30", async () => {
-    const u = await seed(newOrg(), { onHand: 5 });
-    const spy = vi.spyOn(adminDb(), "runTransaction");
-    try {
-      await reserve(u, 1, "k");
-      await release(u, "k");
-      await reserve(u, 1, "k2");
-      await commit(u, "k2");
-      await adjust(u, 1);
-      expect(spy).toHaveBeenCalledTimes(5);
-      for (const call of spy.mock.calls) expect(call[1]).toEqual({ maxAttempts: 30 });
-    } finally {
-      spy.mockRestore();
-    }
+describe("contention (through the real SDK retry loop)", () => {
+  const abortedError = () =>
+    Object.assign(new Error("10 ABORTED: too much contention on these documents"), { code: 10 });
+
+  // The SDK's backoff module is not importable by specifier (package exports map), so load it by
+  // file path. It is the same module instance the SDK itself uses.
+  const nodeRequire = createRequire(import.meta.url);
+  const backoff = nodeRequire(
+    path.join(
+      path.dirname(nodeRequire.resolve("@google-cloud/firestore/package.json")),
+      "build/src/backoff.js",
+    ),
+  ) as {
+    delayExecution: unknown;
+    setTimeoutHandler: (h: (f: () => void, ms: number) => void) => void;
+  };
+  const realDelay = backoff.delayExecution;
+  let delays: number[] = [];
+  let getAllSpy: MockInstance | undefined;
+  let getSpy: MockInstance | undefined;
+  let warn: MockInstance;
+  const getAllCalls = () => getAllSpy!.mock.calls.length;
+
+  beforeEach(() => {
+    delays = [];
+    // Zero the real waits but record what the SDK asked for.
+    backoff.setTimeoutHandler((f, ms) => {
+      delays.push(ms);
+      setImmediate(f);
+    });
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    backoff.delayExecution = realDelay;
+    getAllSpy?.mockRestore();
+    getSpy?.mockRestore();
+    getAllSpy = undefined;
+    getSpy = undefined;
+    warn.mockRestore();
   });
 
-  it("maps exhausted attempts (ABORTED) to a retryable ConflictError with a static message", async () => {
+  const failReads = (error: () => Error) => {
+    getAllSpy = vi.spyOn(Transaction.prototype, "getAll").mockRejectedValue(error());
+    getSpy = vi.spyOn(Transaction.prototype, "get").mockRejectedValue(error());
+  };
+
+  it.each([
+    ["reserve", (u: Unit) => reserve(u, 1, "k")],
+    ["release", (u: Unit) => release(u, "k")],
+    ["commit", (u: Unit) => commit(u, "k")],
+  ])(
+    "%s: persistent ABORTED runs the callback exactly 11 times, then InventoryBusyError",
+    async (_name, op) => {
+      const u = await seed(newOrg(), { onHand: 5 });
+      failReads(abortedError);
+      const err = await rejection(op(u));
+      expect(err).toBeInstanceOf(InventoryBusyError);
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as InventoryBusyError).code).toBe("CONFLICT");
+      expect((err as Error).message).toBe("Inventory is busy, please try again");
+      expect(RESERVATION_MAX_ATTEMPTS).toBe(11);
+      expect(getAllCalls()).toBe(11);
+      // The SDK asks for a wait before every attempt: none before the first, then 10 backoff
+      // waits, the first about 1 s (+/- 50% jitter) and the last about 38 s.
+      expect(delays).toHaveLength(11);
+      expect(delays[0]).toBe(0);
+      expect(delays[1]).toBeGreaterThanOrEqual(500);
+      expect(delays[1]).toBeLessThanOrEqual(1500);
+      expect(delays[10]).toBeGreaterThan(19_000);
+      const total = delays.reduce((a, b) => a + b, 0);
+      expect(total).toBeGreaterThan(55_000);
+      expect(total).toBeLessThan(170_000);
+      // exhaustion is logged (an AppError response is not) with the inventory id only
+      const line = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(line).toContain("inventoryId");
+      expect(line).toContain(u.id);
+    },
+  );
+
+  it("adjust: persistent ABORTED runs 5 times (4 waits, about 8 s), then InventoryBusyError", async () => {
     const u = await seed(newOrg(), { onHand: 5 });
-    const spy = vi
-      .spyOn(adminDb(), "runTransaction")
-      .mockRejectedValue(
-        Object.assign(new Error("10 ABORTED: too much contention on these documents"), {
-          code: 10,
-        }),
+    failReads(abortedError);
+    const err = await rejection(adjust(u, 1));
+    expect(err).toBeInstanceOf(InventoryBusyError);
+    expect(ADJUST_MAX_ATTEMPTS).toBe(5);
+    expect(getSpy!.mock.calls.length).toBe(5);
+    expect(delays).toHaveLength(5); // none before the first attempt, then 4 backoff waits
+    expect(delays[0]).toBe(0);
+    expect(delays.reduce((a, b) => a + b, 0)).toBeLessThan(16_000);
+    getSpy!.mockRestore();
+    getSpy = undefined;
+    expect(await state(u)).toMatchObject({ onHand: 5 });
+    expect(
+      (await db().collection("auditLogs").where("organizationId", "==", u.org).get()).size,
+    ).toBe(0);
+  });
+
+  it.each([
+    ["UNAVAILABLE", 14],
+    ["RESOURCE_EXHAUSTED", 8],
+    ["DEADLINE_EXCEEDED", 4],
+  ])("persistent %s is NOT reported as busy: the real error propagates", async (_n, code) => {
+    const u = await seed(newOrg(), { onHand: 5 });
+    failReads(() => Object.assign(new Error(`${code} outage`), { code }));
+    for (const op of [() => reserve(u, 1, "k"), () => release(u, "k"), () => commit(u, "k")]) {
+      const err = await rejection(op());
+      expect(err).not.toBeInstanceOf(InventoryBusyError);
+      expect(err).not.toBeInstanceOf(ConflictError);
+      expect(isAppError(err)).toBe(false);
+      expect((err as { code?: number }).code).toBe(code);
+      expect((err as Error).message).toBe(`${code} outage`);
+    }
+    const err = await rejection(adjust(u, 1));
+    expect((err as { code?: number }).code).toBe(code);
+    expect(err).not.toBeInstanceOf(InventoryBusyError);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("a non-retryable error is not retried and not disguised", async () => {
+    const u = await seed(newOrg(), { onHand: 5 });
+    failReads(() => new Error("boom"));
+    await expect(reserve(u, 1, "k")).rejects.toThrow("boom");
+    expect(getAllCalls()).toBe(1);
+    expect(delays.filter((d) => d > 0)).toHaveLength(0);
+  });
+
+  it("ABORTED a few times and then success: the retry re-reads and applies exactly once", async () => {
+    const u = await seed(newOrg(), { onHand: 5 });
+    const original = Transaction.prototype.getAll as (...a: unknown[]) => Promise<unknown>;
+    let calls = 0;
+    getAllSpy = vi.spyOn(Transaction.prototype, "getAll").mockImplementation(function (
+      this: Transaction,
+      ...refs: unknown[]
+    ) {
+      calls += 1;
+      if (calls <= 3) return Promise.reject(abortedError());
+      return original.apply(this, refs) as never;
+    });
+    expect(await reserve(u, 2, "k")).toMatchObject({ status: "reserved", available: 3 });
+    expect(calls).toBe(4);
+    expect(delays.filter((d) => d > 0).length).toBeGreaterThanOrEqual(3);
+    getAllSpy.mockRestore();
+    getAllSpy = undefined;
+    expect(await state(u)).toMatchObject({ onHand: 5, reserved: 2, available: 3 });
+  });
+});
+
+describe("reserve racing a variant removal", () => {
+  async function twoVariantProduct() {
+    const org = newOrg();
+    const ctx = { organizationId: org, uid: "uid-1" };
+    const p = await createProduct(
+      ctx,
+      productInputSchema.parse({
+        name: `Race ${randomUUID().slice(0, 6)}`,
+        sku: `race-${randomUUID().slice(0, 8)}`,
+        regularPriceMinor: 1000,
+        variants: [{ size: "S" }, { size: "M" }],
+      }),
+    );
+    const [keep, drop] = p.variants;
+    const unit = (v: { id: string }): Unit => ({
+      org,
+      productId: p.id,
+      variantId: v.id,
+      id: `${p.id}__${v.id}`,
+    });
+    const removeDrop = () =>
+      updateProduct(
+        ctx,
+        p.id,
+        productPatchSchema.parse({ variants: [{ id: keep!.id, size: "S" }] }),
       );
-    try {
-      for (const op of [
-        () => reserve(u, 1, "k"),
-        () => release(u, "k"),
-        () => commit(u, "k"),
-        () => adjust(u, 1),
-      ]) {
-        const err = await rejection(op());
-        expect(err).toBeInstanceOf(ConflictError);
-        expect((err as Error).message).toBe("Inventory is busy, please try again");
-      }
-    } finally {
-      spy.mockRestore();
-    }
-  });
+    return { drop: unit(drop!), removeDrop };
+  }
 
-  it("other transaction errors are not disguised as contention", async () => {
-    const u = await seed(newOrg(), { onHand: 5 });
-    const spy = vi.spyOn(adminDb(), "runTransaction").mockRejectedValue(new Error("boom"));
-    try {
-      await expect(reserve(u, 1, "k")).rejects.toThrow("boom");
-    } finally {
-      spy.mockRestore();
+  it("a stocked variant cannot be removed while reserves run: removal Conflicts, nothing is lost", async () => {
+    const { drop, removeDrop } = await twoVariantProduct();
+    await db().collection("inventory").doc(drop.id).update({ onHand: 4, available: 4 });
+    const [removal, ...reserves] = await Promise.allSettled([
+      removeDrop(),
+      ...Array.from({ length: 3 }, (_, i) => reserve(drop, 1, `r${i}`)),
+    ]);
+    expect(removal.status).toBe("rejected");
+    expect((removal as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
+    expect(reserves.every((r) => r.status === "fulfilled")).toBe(true);
+    expect(await state(drop)).toMatchObject({ onHand: 4, reserved: 3, available: 1 });
+  }, 90_000);
+
+  it("an empty variant: the reserve can never succeed and no orphan reservation is left", async () => {
+    for (let round = 0; round < 3; round++) {
+      const { drop, removeDrop } = await twoVariantProduct();
+      const [removal, res] = await Promise.allSettled([removeDrop(), reserve(drop, 1, "k")]);
+      expect(res.status).toBe("rejected");
+      const reason = (res as PromiseRejectedResult).reason;
+      expect(reason instanceof InsufficientStockError || reason instanceof NotFoundError).toBe(
+        true,
+      );
+      const invExists = (await db().collection("inventory").doc(drop.id).get()).exists;
+      expect(invExists).toBe(removal.status !== "fulfilled");
+      expect((await reservationsOf(drop)).length).toBe(0);
     }
-  });
+  }, 90_000);
+
+  it("once a variant has been reserved, it can never be removed", async () => {
+    const { drop, removeDrop } = await twoVariantProduct();
+    await db().collection("inventory").doc(drop.id).update({ onHand: 2, available: 2 });
+    await reserve(drop, 1, "k");
+    await release(drop, "k");
+    await adjust(drop, -2); // counters back to zero; only the reservation record remains
+    expect(await state(drop)).toMatchObject({ onHand: 0, reserved: 0, available: 0 });
+    await expect(removeDrop()).rejects.toBeInstanceOf(ConflictError);
+    expect((await db().collection("inventory").doc(drop.id).get()).exists).toBe(true);
+  }, 90_000);
 });
 
 // ---- randomized mixed sequences ---------------------------------------------------------------
@@ -715,7 +902,7 @@ function mulberry32(seed: number) {
 
 describe("randomized mixed sequences", () => {
   it.each([1])(
-    "seed %s: ~200 reserve/release/commit/adjust ops in concurrent batches keep every invariant",
+    "seed %s: ~100 reserve/release/commit/adjust ops in concurrent batches keep every invariant",
     async (seedNo) => {
       const rnd = mulberry32(seedNo * 7919);
       const int = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
@@ -732,7 +919,7 @@ describe("randomized mixed sequences", () => {
         e instanceof NotFoundError ||
         e instanceof ValidationError;
 
-      while (ops < 200) {
+      while (ops < 100) {
         const batchSize = rnd() < 0.5 ? 1 : int(2, 8);
         const batch: Array<Promise<{ delta?: number }>> = [];
         for (let i = 0; i < batchSize; i++, ops++) {

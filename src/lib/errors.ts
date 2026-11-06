@@ -74,6 +74,18 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * Inventory transactions kept losing races until their attempts ran out. Still a 409 `CONFLICT`
+ * (same envelope as any other conflict), but RETRYABLE: callers (Phase 5 orders) test
+ * `instanceof InventoryBusyError` to tell it from a terminal conflict such as a reused key.
+ */
+export class InventoryBusyError extends ConflictError {
+  constructor() {
+    super('Inventory is busy, please try again');
+    this.name = 'InventoryBusyError';
+  }
+}
+
 export class InsufficientStockError extends AppError {
   readonly code = 'INSUFFICIENT_STOCK';
   readonly status = 409;
