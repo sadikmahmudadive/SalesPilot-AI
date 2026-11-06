@@ -8,6 +8,7 @@ import {
   registerAccount,
   registerOrganizationRequest,
   resolvePostSignIn,
+  signOutEverywhere,
 } from "./client-flow";
 
 function json(body: unknown, status = 200): Response {
@@ -154,7 +155,61 @@ describe("endSession", () => {
     expect(url).toBe("/api/auth/session");
     expect(init.method).toBe("DELETE");
     expect(init.credentials).toBe("same-origin");
-    await expect(endSession(asFetch(vi.fn().mockRejectedValue(new Error("offline"))))).resolves.toBeUndefined();
+    await expect(endSession(asFetch(vi.fn().mockRejectedValue(new Error("offline"))))).resolves.toBe(false);
+  });
+
+  it("reports whether the server cleared the session", async () => {
+    expect(await endSession(asFetch(vi.fn().mockResolvedValue(json({ ok: true }))))).toBe(true);
+    expect(await endSession(asFetch(vi.fn().mockResolvedValue(envelope("FORBIDDEN", "x", 403))))).toBe(false);
+  });
+});
+
+describe("signOutEverywhere", () => {
+  function setup(opts: { serverStatus?: number; serverThrows?: boolean; firebaseThrows?: boolean } = {}) {
+    const calls: string[] = [];
+    const fetchFn = vi.fn(async () => {
+      calls.push("server");
+      if (opts.serverThrows) throw new TypeError("offline");
+      return json({ ok: true }, opts.serverStatus ?? 200);
+    });
+    const firebaseSignOut = vi.fn(async () => {
+      calls.push("firebase");
+      if (opts.firebaseThrows) throw new Error("firebase down");
+    });
+    return { calls, fetchFn, firebaseSignOut, deps: { fetch: asFetch(fetchFn), firebaseSignOut } };
+  }
+
+  it("clears the server session first, then signs out of Firebase", async () => {
+    const { calls, fetchFn, deps } = setup();
+    expect(await signOutEverywhere(deps)).toEqual({ ok: true });
+    expect(calls).toEqual(["server", "firebase"]);
+    const [url, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auth/session");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("same-origin");
+  });
+
+  it("still signs out of Firebase when the server call fails, and reports it", async () => {
+    for (const opts of [{ serverThrows: true }, { serverStatus: 500 }]) {
+      const { calls, deps } = setup(opts);
+      const result = await signOutEverywhere(deps);
+      expect(calls).toEqual(["server", "firebase"]);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it("still reports completion of the server call when Firebase sign-out fails", async () => {
+    const { calls, deps } = setup({ firebaseThrows: true });
+    const result = await signOutEverywhere(deps);
+    expect(calls).toEqual(["server", "firebase"]);
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns a fixed message and never echoes raw error text", async () => {
+    const { deps } = setup({ serverThrows: true, firebaseThrows: true });
+    const result = await signOutEverywhere(deps);
+    expect(result).toEqual({ ok: false, message: expect.any(String) });
+    expect(JSON.stringify(result)).not.toMatch(/offline|firebase down/);
   });
 });
 

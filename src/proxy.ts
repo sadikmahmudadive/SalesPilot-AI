@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { SESSION_COOKIE_NAME, decideRedirect } from "@/lib/auth/redirect";
+import { REQUEST_PATH_HEADER, SESSION_COOKIE_NAME, decideRedirect } from "@/lib/auth/redirect";
 
 /**
  * Route proxy (Next 16 name for middleware). This is a UX REDIRECT ONLY: it checks that a
@@ -16,7 +16,12 @@ export function proxy(request: NextRequest): NextResponse {
   const hasCookie = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
   const target = decideRedirect(pathname, search, hasCookie);
   if (target) return NextResponse.redirect(new URL(target, request.url));
-  return NextResponse.next();
+  // Server components cannot read the URL, but the dashboard layout needs it to build the
+  // `?next=` value when it bounces an invalid session. Always overwritten here, so a client-sent
+  // header is never trusted; consumers still validate it with `safeNextPath`.
+  const headers = new Headers(request.headers);
+  headers.set(REQUEST_PATH_HEADER, pathname + search);
+  return NextResponse.next({ request: { headers } });
 }
 
 // Matcher values must be static constants. Keep in sync with PROTECTED_PREFIXES (guarded by a unit test).

@@ -42,6 +42,15 @@ describe("proxy", () => {
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 
+  it("forwards the requested path to server components via x-sp-path, overwriting any client-sent value", () => {
+    const req = new NextRequest("http://localhost:3000/orders/42?tab=items", {
+      headers: { cookie: "__session=abc", "x-sp-path": "//evil.com" },
+    });
+    const res = proxy(req);
+    expect(res.headers.get("x-middleware-request-x-sp-path")).toBe("/orders/42?tab=items");
+    expect(res.headers.get("x-middleware-override-headers")).toContain("x-sp-path");
+  });
+
   it("sends a signed-in visitor away from /login and /register", () => {
     for (const p of ["/login", "/register"]) {
       const res = run(p, "abc");

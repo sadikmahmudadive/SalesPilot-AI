@@ -82,9 +82,39 @@ function isMe(value: unknown): value is MeResponse {
   return typeof v.uid === "string" && typeof v.organizationId === "string" && typeof v.role === "string";
 }
 
-/** Clears the session cookie (and revokes refresh tokens) server-side. Best effort: never throws. */
-export async function endSession(fetchFn: FetchFn): Promise<void> {
-  await request(fetchFn, "/api/auth/session", { method: "DELETE" });
+/**
+ * Clears the session cookie (and revokes refresh tokens) server-side. Never throws; resolves to
+ * whether the server confirmed (2xx). Callers that only care about best effort can ignore it.
+ */
+export async function endSession(fetchFn: FetchFn): Promise<boolean> {
+  const raw = await request(fetchFn, "/api/auth/session", { method: "DELETE" });
+  return raw.ok && raw.status >= 200 && raw.status < 300;
+}
+
+export interface SignOutDeps {
+  fetch: FetchFn;
+  /** Firebase client `signOut(getFirebaseAuth())`, injected so this stays unit-testable. */
+  firebaseSignOut(): Promise<void>;
+}
+
+export type SignOutResult = { ok: true } | { ok: false; message: string };
+
+const SIGN_OUT_ERROR = "We could not fully sign you out. Please close this browser window if you are on a shared device.";
+
+/**
+ * Full sign-out: server session first (cookie cleared, refresh tokens revoked), then the Firebase
+ * client session. A failure of one never skips the other; the caller navigates to /login either
+ * way and may show the message as a toast. Never throws.
+ */
+export async function signOutEverywhere(deps: SignOutDeps): Promise<SignOutResult> {
+  const serverCleared = await endSession(deps.fetch);
+  let firebaseCleared = true;
+  try {
+    await deps.firebaseSignOut();
+  } catch {
+    firebaseCleared = false;
+  }
+  return serverCleared && firebaseCleared ? { ok: true } : { ok: false, message: SIGN_OUT_ERROR };
 }
 
 /** Reads the signed-in member. 403 means signed in but no organization yet. */

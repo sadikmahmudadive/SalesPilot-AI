@@ -24,6 +24,9 @@ export const PROTECTED_PREFIXES = [
 /** Name of the session cookie. Lives here (pure) so the proxy can share it without importing server-only code. */
 export const SESSION_COOKIE_NAME = "__session";
 
+/** Request header the proxy sets to the requested path + query, for server components (see src/proxy.ts). */
+export const REQUEST_PATH_HEADER = "x-sp-path";
+
 const AUTH_PAGES = ["/login", "/register"] as const;
 
 export const DEFAULT_AFTER_LOGIN = "/dashboard";

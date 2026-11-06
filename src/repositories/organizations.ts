@@ -62,3 +62,27 @@ export async function getMembership(uid: string, organizationId?: string): Promi
   if (!data || data.organizationId !== orgId || data.uid !== uid || !isRole(data.role)) return null;
   return { organizationId: orgId, role: data.role };
 }
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+}
+
+/** Display fields of an organization, or null when it is missing or malformed. Callers must already have verified membership. */
+export async function getOrganization(organizationId: string): Promise<OrganizationSummary | null> {
+  if (!isIdSegment(organizationId)) return null;
+  const snap = await adminDb().collection(ORGANIZATIONS).doc(organizationId).get();
+  if (!snap.exists) return null;
+  const name: unknown = snap.get("name");
+  if (typeof name !== "string" || name.trim().length === 0) return null;
+  return { id: organizationId, name };
+}
+
+/** The user's display name from `users/{uid}`, or null when absent. Cosmetic only (greetings, avatars). */
+export async function getUserDisplayName(uid: string): Promise<string | null> {
+  if (!isIdSegment(uid)) return null;
+  const snap = await adminDb().collection(USERS).doc(uid).get();
+  if (!snap.exists) return null;
+  const name: unknown = snap.get("displayName");
+  return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
+}
