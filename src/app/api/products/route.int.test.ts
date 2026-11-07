@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Role } from "@/lib/security/permissions";
+import { seedUpload } from "@/test/uploads";
 
 import { POST as POST_CATEGORY } from "../categories/route";
 import { DELETE, GET as GET_ONE, PATCH } from "./[id]/route";
@@ -87,6 +88,7 @@ afterAll(async () => {
       "categories",
       "categoryNames",
       "auditLogs",
+      "uploads",
     ]) {
       const snap = await db.collection(col).where("organizationId", "==", org).get();
       await Promise.all(snap.docs.map((d) => db.recursiveDelete(d.ref)));
@@ -211,7 +213,10 @@ describe("POST /api/products", () => {
       const res = await post(valid(over));
       expect(res.status, JSON.stringify(over).slice(0, 80)).toBe(400);
     }
+    await seedUpload(owner.organizationId, img(1));
     expect((await post(valid({ images: [img(1)] }))).status).toBe(201);
+    // The same image unconfirmed (never seeded) is refused even though the body is well formed.
+    expect((await post(valid({ sku: "unconfirmed-1", images: [img(2)] }))).status).toBe(400);
   });
 
   it("400 for another organization's image publicId and for a foreign category", async () => {

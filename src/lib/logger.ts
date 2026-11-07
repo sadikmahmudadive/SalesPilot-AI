@@ -6,7 +6,7 @@
 
 const MASK = '[REDACTED]';
 const UNREADABLE = '[Unreadable]';
-const SENSITIVE_KEY = /key|token|secret|password|authorization|cookie|private/i;
+const SENSITIVE_KEY = /key|token|secret|password|authorization|auth|cookie|private/i;
 const PHONE_KEY = /phone|mobile|msisdn|whatsapp/i;
 const MAX_DEPTH = 8;
 

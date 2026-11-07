@@ -1,10 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { v2 as cloudinary } from "cloudinary";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetEnvCacheForTests } from "@/config/env";
-import { UnauthenticatedError } from "@/lib/errors";
+import { CONFIRM_QUOTA, assertConfirmQuota } from "@/lib/cloudinary/quota";
+import { uploadRecordRef } from "@/lib/cloudinary/records";
+import { RateLimitedError, UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Role } from "@/lib/security/permissions";
 
@@ -26,7 +28,7 @@ vi.mock("cloudinary", async (importOriginal) => {
   const real = (actual.v2 ?? (actual as unknown as { default: typeof actual }).default.v2) as typeof actual.v2;
   return {
     v2: {
-      config: real.config,
+      config: vi.fn(real.config),
       utils: { api_sign_request: vi.fn(real.utils.api_sign_request) },
       api: { resource: vi.fn() },
       uploader: { destroy: vi.fn() },
@@ -40,6 +42,15 @@ const SECRET = "secret-abcdefghijklmnop";
 const resource = vi.mocked(cloudinary.api.resource);
 const destroy = vi.mocked(cloudinary.uploader.destroy);
 const signSpy = vi.mocked(cloudinary.utils.api_sign_request);
+
+/** A generated-form public id (what sign returns): organizations/{org}/{kind}/{24 hex}. */
+const pid = (org: string, kind = "products") => `organizations/${org}/${kind}/${randomBytes(12).toString("hex")}`;
+/** The error shape the real SDK rejects with (cloudinary/lib/api_client/execute_request.js). */
+const sdkError = (httpCode: number, message = "Cloudinary says no") => ({
+  request_options: { method: "GET", host: "api.cloudinary.com", auth: `${KEY}:${SECRET}` },
+  query_params: `api_key=${KEY}`,
+  error: { message, http_code: httpCode },
+});
 
 const orgs = new Set<string>();
 const uids: string[] = [];
@@ -128,6 +139,10 @@ afterEach(() => {
 
 afterAll(async () => {
   const db = adminDb();
+  for (const org of orgs) {
+    const snap = await db.collection("uploads").where("organizationId", "==", org).get();
+    await Promise.all(snap.docs.map((d) => d.ref.delete()));
+  }
   await Promise.all(
     uids.flatMap((u) => [
       db.collection("users").doc(u).delete(),
@@ -160,7 +175,7 @@ describe("authentication, CSRF and content type", () => {
 });
 
 describe("POST /api/uploads/sign", () => {
-  it("signs the member's org folder and ignores a client folder / public_id", async () => {
+  it("signs a server-generated public id in the member's org folder and ignores client folder / public_id", async () => {
     const a = await seed("owner");
     signIn(a.uid);
     const res = await sign({
@@ -168,18 +183,20 @@ describe("POST /api/uploads/sign", () => {
       folder: "organizations/other/products",
       public_id: "organizations/other/products/steal",
       overwrite: true,
+      unique_filename: false,
       organizationId: "other",
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const out = await json(res);
-    expect(out.params.folder).toBe(`organizations/${a.organizationId}/products`);
-    expect(out.params).not.toHaveProperty("public_id");
-    expect(out.params.overwrite).toBe("false");
-    expect(out.params.unique_filename).toBe("true");
-    expect(out.params.use_filename).toBe("false");
-    expect(out.params.type).toBe("upload");
-    expect(out.params.allowed_formats).toBe("jpg,png,webp,avif");
+    expect(out.publicId).toMatch(new RegExp(`^organizations/${a.organizationId}/products/[a-f0-9]{24}$`));
+    expect(out.params).toEqual({
+      public_id: out.publicId,
+      timestamp: expect.stringMatching(/^\d{10}$/),
+      allowed_formats: "jpg,png,webp,avif",
+      overwrite: "0",
+      type: "upload",
+    });
     expect(out.cloudName).toBe(CLOUD);
     expect(out.apiKey).toBe(KEY);
     expect(out.uploadUrl).toBe(`https://api.cloudinary.com/v1_1/${CLOUD}/image/upload`);
@@ -189,15 +206,28 @@ describe("POST /api/uploads/sign", () => {
     expect(JSON.stringify(out)).not.toContain(SECRET);
   });
 
-  it("signature changes when the organization (folder) changes", async () => {
+  it("two sign calls return different public ids under the right org and kind path", async () => {
+    const a = await seed("owner");
+    signIn(a.uid);
+    const first = await json(await sign(signBody));
+    const second = await json(await sign(signBody));
+    const customers = await json(await sign({ ...signBody, kind: "customers" }));
+    expect(first.publicId).not.toBe(second.publicId);
+    expect(first.signature).not.toBe(second.signature);
+    expect(first.publicId.startsWith(`organizations/${a.organizationId}/products/`)).toBe(true);
+    expect(customers.publicId.startsWith(`organizations/${a.organizationId}/customers/`)).toBe(true);
+  });
+
+  it("signature changes when the organization changes", async () => {
     const a = await seed("owner");
     const b = await seed("owner");
     signIn(a.uid);
     const first = await json(await sign(signBody));
     signIn(b.uid);
     const second = await json(await sign(signBody));
-    expect(first.params.folder).not.toBe(second.params.folder);
+    expect(first.params.public_id).not.toBe(second.params.public_id);
     expect(first.signature).not.toBe(second.signature);
+    expect(second.publicId.startsWith(`organizations/${b.organizationId}/`)).toBe(true);
   });
 
   it.each([
@@ -244,7 +274,9 @@ describe("POST /api/uploads/sign", () => {
     expect((await sign({ ...signBody, kind: "campaigns" })).status).toBe(403);
     const ok = await sign({ ...signBody, kind: "customers" });
     expect(ok.status).toBe(200);
-    expect((await json(ok)).params.folder).toBe(`organizations/${agent.organizationId}/customers`);
+    expect((await json(ok)).publicId).toMatch(
+      new RegExp(`^organizations/${agent.organizationId}/customers/[a-f0-9]{24}$`),
+    );
 
     const admin = await seed("admin");
     signIn(admin.uid);
@@ -262,86 +294,123 @@ describe("POST /api/uploads/sign", () => {
 });
 
 describe("POST /api/uploads/confirm", () => {
-  it("returns the stored image shape and never the secret", async () => {
+  it("returns the stored image shape, writes a record and never the secret", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    const id = `organizations/${a.organizationId}/products/abc123`;
+    const id = pid(a.organizationId);
     resource.mockResolvedValue(asset(id));
     const res = await confirm({ kind: "products", publicId: id });
     expect(res.status).toBe(200);
     const out = await json(res);
-    expect(out).toEqual({
-      url: `https://res.cloudinary.com/${CLOUD}/image/upload/v1700000000/${id}.png`,
+    const url = `https://res.cloudinary.com/${CLOUD}/image/upload/v1700000000/${id}.png`;
+    expect(out).toEqual({ url, publicId: id, width: 400, height: 300 });
+    expect(JSON.stringify(out)).not.toContain(SECRET);
+    const rec = await uploadRecordRef(id).get();
+    expect(rec.data()).toMatchObject({
+      organizationId: a.organizationId,
+      kind: "products",
       publicId: id,
+      url,
       width: 400,
       height: 300,
+      bytes: 2000,
     });
-    expect(JSON.stringify(out)).not.toContain(SECRET);
+    expect(rec.get("confirmedAt")).toBeTruthy();
   });
 
-  it("403 for another organization's id, kind mismatch and role without permission", async () => {
+  it("re-confirming the same id is idempotent (the first record is kept)", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    expect((await confirm({ kind: "products", publicId: "organizations/other/products/x" })).status).toBe(403);
+    const id = pid(a.organizationId);
+    resource.mockResolvedValue(asset(id));
+    expect((await confirm({ kind: "products", publicId: id })).status).toBe(200);
+    const first = (await uploadRecordRef(id).get()).get("confirmedAt");
+    expect((await confirm({ kind: "products", publicId: id })).status).toBe(200);
+    const second = (await uploadRecordRef(id).get()).get("confirmedAt");
+    expect(second.isEqual(first)).toBe(true);
+  });
+
+  it("403 for another organization's id, non-generated ids, kind mismatch and role without permission", async () => {
+    const a = await seed("owner");
+    signIn(a.uid);
+    expect((await confirm({ kind: "products", publicId: pid("other") })).status).toBe(403);
     expect(
-      (await confirm({ kind: "products", publicId: `organizations/${a.organizationId}/customers/x` })).status,
+      (await confirm({ kind: "products", publicId: `organizations/${a.organizationId}/products/plain` })).status,
     ).toBe(403);
+    expect(
+      (await confirm({ kind: "products", publicId: `${pid(a.organizationId)}.jpg` })).status,
+    ).toBe(403);
+    expect((await confirm({ kind: "products", publicId: pid(a.organizationId, "customers") })).status).toBe(403);
     const agent = await seed("agent");
     signIn(agent.uid);
-    expect(
-      (await confirm({ kind: "products", publicId: `organizations/${agent.organizationId}/products/x` })).status,
-    ).toBe(403);
+    expect((await confirm({ kind: "products", publicId: pid(agent.organizationId) })).status).toBe(403);
     expect(resource).not.toHaveBeenCalled();
   });
 
   it("an agent may confirm a customers upload", async () => {
     const agent = await seed("agent");
     signIn(agent.uid);
-    const id = `organizations/${agent.organizationId}/customers/pic`;
+    const id = pid(agent.organizationId, "customers");
     resource.mockResolvedValue(asset(id));
     expect((await confirm({ kind: "customers", publicId: id })).status).toBe(200);
   });
 
-  it("400 and deletes an oversize asset", async () => {
+  it("400, deletes the asset and writes no record for an oversize asset", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    const id = `organizations/${a.organizationId}/products/big`;
+    const id = pid(a.organizationId);
     resource.mockResolvedValue(asset(id, { bytes: 6 * 1024 * 1024 }));
     destroy.mockResolvedValue({ result: "ok" });
     expect((await confirm({ kind: "products", publicId: id })).status).toBe(400);
     expect(destroy).toHaveBeenCalledWith(id, { resource_type: "image", invalidate: true });
+    expect((await uploadRecordRef(id).get()).exists).toBe(false);
   });
 
-  it("400 and deletes a wrong-format asset or one with a foreign-cloud url", async () => {
+  it("400 and deletes a wrong-format asset", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    const id = `organizations/${a.organizationId}/products/odd`;
+    const id = pid(a.organizationId);
     destroy.mockResolvedValue({ result: "ok" });
     resource.mockResolvedValue(asset(id, { format: "svg" }));
     expect((await confirm({ kind: "products", publicId: id })).status).toBe(400);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a foreign-cloud url is a deployment mismatch: generic 500, NOT destroyed, no record", async () => {
+    const a = await seed("owner");
+    signIn(a.uid);
+    const id = pid(a.organizationId);
     resource.mockResolvedValue(
       asset(id, { secure_url: `https://res.cloudinary.com/evil-cloud/image/upload/v1/${id}.png` }),
     );
-    expect((await confirm({ kind: "products", publicId: id })).status).toBe(400);
-    expect(destroy).toHaveBeenCalledTimes(2);
+    const res = await confirm({ kind: "products", publicId: id });
+    expect(res.status).toBe(500);
+    expect((await json(res)).error.code).toBe("INTERNAL_ERROR");
+    expect(destroy).not.toHaveBeenCalled();
+    expect((await uploadRecordRef(id).get()).exists).toBe(false);
   });
 
-  it("404 when Cloudinary has no such asset", async () => {
+  it("404 when Cloudinary has no such asset (the SDK's nested error shape), without leaks", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    resource.mockRejectedValue({ message: "Resource not found", http_code: 404 });
-    const res = await confirm({ kind: "products", publicId: `organizations/${a.organizationId}/products/gone` });
+    resource.mockRejectedValue(sdkError(404, "Resource not found"));
+    const res = await confirm({ kind: "products", publicId: pid(a.organizationId) });
     expect(res.status).toBe(404);
+    const everything = `${JSON.stringify(await json(res))}\n${logged.join("\n")}`;
+    expect(everything).not.toContain(KEY);
+    expect(everything).not.toContain(SECRET);
   });
 
-  it("generic 500 without leaking credentials for any other Cloudinary error", async () => {
+  it("generic 500 without leaking credentials for any other Cloudinary error (nested shape with auth)", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    resource.mockRejectedValue({
-      message: `boom https://api.cloudinary.com/v1_1/${CLOUD}/resources?api_key=${KEY}&signature=cafef00d secret=${SECRET}`,
-      http_code: 500,
-    });
-    const res = await confirm({ kind: "products", publicId: `organizations/${a.organizationId}/products/x` });
+    resource.mockRejectedValue(
+      sdkError(
+        500,
+        `boom https://api.cloudinary.com/v1_1/${CLOUD}/resources?api_key=${KEY}&signature=cafef00d secret=${SECRET}`,
+      ),
+    );
+    const res = await confirm({ kind: "products", publicId: pid(a.organizationId) });
     expect(res.status).toBe(500);
     const text = JSON.stringify(await json(res));
     const everything = `${text}\n${logged.join("\n")}`;
@@ -351,15 +420,87 @@ describe("POST /api/uploads/confirm", () => {
   });
 });
 
-describe("POST /api/uploads/delete", () => {
-  it("deletes an owned asset, idempotently", async () => {
+describe("confirm quotas (account-wide Admin API protection)", () => {
+  const original = { ...CONFIRM_QUOTA };
+  afterEach(() => Object.assign(CONFIRM_QUOTA, original));
+
+  it("the 121st confirm in an hour from one user is 429 (real limits, injected clock)", async () => {
+    const uid = `uid-${randomUUID()}`;
+    const now = Date.UTC(2031, 0, 1, 0, 10);
+    for (let i = 0; i < 120; i++) await assertConfirmQuota(uid, `org-${randomUUID()}`, now);
+    await expect(assertConfirmQuota(uid, `org-${randomUUID()}`, now)).rejects.toBeInstanceOf(RateLimitedError);
+    // The next hour is a fresh window.
+    await expect(assertConfirmQuota(uid, `org-${randomUUID()}`, now + 3_600_000)).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("the 301st confirm in an hour for one organization is 429, whoever sends it", async () => {
+    const org = `org-${randomUUID()}`;
+    const now = Date.UTC(2031, 0, 1, 0, 10);
+    for (let i = 0; i < 300; i++) await assertConfirmQuota(`uid-${randomUUID()}`, org, now);
+    await expect(assertConfirmQuota(`uid-${randomUUID()}`, org, now)).rejects.toBeInstanceOf(RateLimitedError);
+    await expect(assertConfirmQuota(`uid-${randomUUID()}`, `org-${randomUUID()}`, now)).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("the route enforces the hourly user quota before any SDK call", async () => {
+    CONFIRM_QUOTA.userPerHour = 2;
     const a = await seed("owner");
     signIn(a.uid);
-    const id = `organizations/${a.organizationId}/products/del1`;
+    resource.mockResolvedValue(asset("x"));
+    const ids = [pid(a.organizationId), pid(a.organizationId), pid(a.organizationId)];
+    for (const id of ids.slice(0, 2)) {
+      resource.mockResolvedValueOnce(asset(id));
+      expect((await confirm({ kind: "products", publicId: id })).status).toBe(200);
+    }
+    resource.mockClear();
+    const res = await confirm({ kind: "products", publicId: ids[2]! });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBeTruthy();
+    expect(resource).not.toHaveBeenCalled();
+  });
+
+  it("the route enforces the hourly org quota across users", async () => {
+    CONFIRM_QUOTA.orgPerHour = 2;
+    const a = await seed("owner");
+    const b = await seed("admin", a.organizationId);
+    const ids = [pid(a.organizationId), pid(a.organizationId), pid(a.organizationId)];
+    signIn(a.uid);
+    resource.mockResolvedValueOnce(asset(ids[0]!)).mockResolvedValueOnce(asset(ids[1]!));
+    expect((await confirm({ kind: "products", publicId: ids[0]! })).status).toBe(200);
+    signIn(b.uid);
+    expect((await confirm({ kind: "products", publicId: ids[1]! })).status).toBe(200);
+    resource.mockClear();
+    expect((await confirm({ kind: "products", publicId: ids[2]! })).status).toBe(429);
+    expect(resource).not.toHaveBeenCalled();
+  });
+
+  it("forged ids and forbidden kinds do not spend quota", async () => {
+    CONFIRM_QUOTA.userPerHour = 1;
+    const a = await seed("owner");
+    signIn(a.uid);
+    for (let i = 0; i < 3; i++) {
+      expect((await confirm({ kind: "products", publicId: pid("other") })).status).toBe(403);
+      expect((await confirm({ kind: "knowledge", publicId: pid(a.organizationId, "knowledge") })).status).toBe(400);
+    }
+    const id = pid(a.organizationId);
+    resource.mockResolvedValue(asset(id));
+    expect((await confirm({ kind: "products", publicId: id })).status).toBe(200);
+  });
+});
+
+describe("POST /api/uploads/delete", () => {
+  it("deletes an owned asset and its record, idempotently", async () => {
+    const a = await seed("owner");
+    signIn(a.uid);
+    const id = pid(a.organizationId);
+    resource.mockResolvedValue(asset(id));
+    expect((await confirm({ kind: "products", publicId: id })).status).toBe(200);
+    expect((await uploadRecordRef(id).get()).exists).toBe(true);
+
     destroy.mockResolvedValueOnce({ result: "ok" });
     const first = await del({ publicId: id });
     expect(first.status).toBe(200);
     expect(await json(first)).toEqual({ ok: true });
+    expect((await uploadRecordRef(id).get()).exists).toBe(false);
     destroy.mockResolvedValueOnce({ result: "not found" });
     const second = await del({ publicId: id });
     expect(second.status).toBe(200);
@@ -370,11 +511,12 @@ describe("POST /api/uploads/delete", () => {
   it("403 for a foreign id, prefix confusion and traversal; no SDK call", async () => {
     const a = await seed("owner");
     signIn(a.uid);
+    const hex = randomBytes(12).toString("hex");
     for (const publicId of [
-      "organizations/other/products/x",
-      `organizations/${a.organizationId}x/products/x`,
-      `organizations/${a.organizationId}/products/../../other/x`,
-      `organizations/${a.organizationId}/products/%2e%2e/x`,
+      pid("other"),
+      `organizations/${a.organizationId}x/products/${hex}`,
+      `organizations/${a.organizationId}/products/../../other/${hex}`,
+      `organizations/${a.organizationId}/products/%2e%2e/${hex}`,
     ]) {
       expect((await del({ publicId })).status).toBe(403);
     }
@@ -385,11 +527,11 @@ describe("POST /api/uploads/delete", () => {
     const agent = await seed("agent");
     signIn(agent.uid);
     destroy.mockResolvedValue({ result: "ok" });
-    expect((await del({ publicId: `organizations/${agent.organizationId}/customers/x` })).status).toBe(200);
-    expect((await del({ publicId: `organizations/${agent.organizationId}/products/x` })).status).toBe(403);
+    expect((await del({ publicId: pid(agent.organizationId, "customers") })).status).toBe(200);
+    expect((await del({ publicId: pid(agent.organizationId) })).status).toBe(403);
     const viewer = await seed("viewer");
     signIn(viewer.uid);
-    expect((await del({ publicId: `organizations/${viewer.organizationId}/customers/x` })).status).toBe(403);
+    expect((await del({ publicId: pid(viewer.organizationId, "customers") })).status).toBe(403);
   });
 });
 
@@ -398,7 +540,7 @@ describe("Cloudinary not configured", () => {
     stubCloudinary(false);
     const a = await seed("owner");
     signIn(a.uid);
-    const id = `organizations/${a.organizationId}/products/x`;
+    const id = pid(a.organizationId);
     for (const res of [
       await sign(signBody),
       await confirm({ kind: "products", publicId: id }),

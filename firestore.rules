@@ -79,6 +79,12 @@ service cloud.firestore {
       }
     }
 
+    // Confirmed Cloudinary uploads: written and read by the server only (Admin SDK). The products
+    // service trusts these records, so no client may read or forge one.
+    match /uploads/{id} {
+      allow read, write: if false;
+    }
+
     // rateLimits, auditLogs, customerPhones, productSkus, productSlugs,
     // categoryNames and any other collection fall through to default deny.
     match /{document=**} {

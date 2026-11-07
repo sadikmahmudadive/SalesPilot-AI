@@ -33,13 +33,14 @@ export interface SignedUpload {
   cloudName: string;
   apiKey: string;
   uploadUrl: string;
+  /** The server-generated `organizations/{orgId}/{kind}/{24 hex}`; send it to confirm after the upload. */
+  publicId: string;
   params: {
-    folder: string;
+    public_id: string;
     timestamp: string;
     allowed_formats: string;
-    overwrite: "false";
-    unique_filename: "true";
-    use_filename: "false";
+    /** "0" is how the Cloudinary SDK serialises `overwrite: false`. */
+    overwrite: "0";
     type: "upload";
   };
   signature: string;

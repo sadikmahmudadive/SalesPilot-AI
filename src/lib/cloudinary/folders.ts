@@ -62,35 +62,52 @@ export function kindPermission(kind: UploadKind): Permission {
   return PERMISSIONS[kind];
 }
 
-/** One path segment: starts with [A-Za-z0-9_-] (so never "." / ".."), then letters, digits, _ - . */
-const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
-const MAX_PUBLIC_ID_LENGTH = 512;
+/** An organization id as one folder segment: letters, digits, "_" and "-" only (no dots). */
+const ORG_SEGMENT = /^[A-Za-z0-9_-]+$/;
+/** The random leaf the server generates per sign request: 24 lowercase hex characters (12 bytes). */
+const LEAF = /^[a-f0-9]{24}$/;
+/** Cloudinary public id limit used by the product image schema. */
+const MAX_PUBLIC_ID_LENGTH = 255;
 
 /** `organizations/{orgId}/{kind}`. Throws (a programming error) for an org id that is not one safe segment. */
 export function orgFolder(orgId: string, kind: UploadKind): string {
-  if (!isValidIdSegment(orgId) || !SEGMENT.test(orgId)) throw new Error("Invalid organization id for an upload folder");
+  if (!isValidIdSegment(orgId) || !ORG_SEGMENT.test(orgId)) throw new Error("Invalid organization id for an upload folder");
   return `organizations/${orgId}/${kind}`;
 }
 
 const KIND_SET: ReadonlySet<string> = new Set(UPLOAD_KINDS);
 
 /**
- * Proves `publicId` is `organizations/{orgId}/{kind}/<path>` for exactly this organization and
- * returns the kind. Every path segment must match `SEGMENT` (no empty segments, `.`/`..`,
- * backslashes, percent-encoding, spaces or control characters), the id is at most 512 characters,
- * and the organization segment is compared whole so "AB" never matches "A".
- * Failure is a `ForbiddenError` with a static message: the id is never echoed.
+ * Proves `publicId` is exactly the form the server generates when signing:
+ * `organizations/{orgId}/{kind}/{24 lowercase hex}` for exactly this organization, and returns the
+ * kind. Nothing else is accepted: no nesting, dots, uppercase, encoding, backslashes, spaces or
+ * control characters, and at most 255 characters. That form also satisfies the product image
+ * schema's PUBLIC_ID_PATTERN and length limit. The org segment is compared whole, so "AB" never
+ * matches "A". Failure is a `ForbiddenError` with a static message: the id is never echoed.
  */
 export function assertOwnedPublicId(orgId: string, publicId: string): UploadKind {
   if (typeof publicId !== "string" || publicId.length === 0 || publicId.length > MAX_PUBLIC_ID_LENGTH) {
     throw new ForbiddenError();
   }
   const segments = publicId.split("/");
-  if (segments.length < 4) throw new ForbiddenError();
-  if (!segments.every((s) => SEGMENT.test(s))) throw new ForbiddenError();
-  const [root, org, kind] = segments;
-  if (root !== "organizations" || org !== orgId || kind === undefined || !KIND_SET.has(kind)) {
+  if (segments.length !== 4) throw new ForbiddenError();
+  const [root, org, kind, leaf] = segments;
+  if (
+    root !== "organizations" ||
+    org === undefined ||
+    !ORG_SEGMENT.test(org) ||
+    org !== orgId ||
+    kind === undefined ||
+    !KIND_SET.has(kind) ||
+    leaf === undefined ||
+    !LEAF.test(leaf)
+  ) {
     throw new ForbiddenError();
   }
   return kind as UploadKind;
+}
+
+/** Like `assertOwnedPublicId` and also requires the id's folder to be `kind` (otherwise Forbidden). */
+export function assertOwnedPublicIdOfKind(orgId: string, kind: UploadKind, publicId: string): void {
+  if (assertOwnedPublicId(orgId, publicId) !== kind) throw new ForbiddenError();
 }

@@ -1,6 +1,7 @@
 /**
  * POST /api/uploads/sign   { kind, contentType, bytes } -> SignedUpload
- *   Signs a direct-to-Cloudinary upload into `organizations/{orgId}/{kind}`. The folder, overwrite
+ *   Signs ONE direct-to-Cloudinary upload to a server-generated public id
+ *   `organizations/{orgId}/{kind}/{24 hex}` (returned as `publicId`). The id, overwrite
  *   flag and public-id behaviour are signed server-side; any `folder` / `public_id` in the body is
  *   stripped. `kind` needs `uploads:products` (products), `uploads:customers` (customers) or
  *   `uploads:org` (campaigns); knowledge is not available yet.

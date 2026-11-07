@@ -34,6 +34,7 @@ const LOCKED = [
   "productSkus",
   "productSlugs",
   "categoryNames",
+  "uploads",
 ] as const;
 const ROLES = ["owner", "admin", "agent", "viewer"] as const;
 

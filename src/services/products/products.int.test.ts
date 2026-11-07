@@ -4,8 +4,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { __resetEnvCacheForTests } from "@/config/env";
+import { uploadRecordRef } from "@/lib/cloudinary/records";
 import { adminDb } from "@/lib/firebase/admin";
 import { categoryInputSchema, productInputSchema, productPatchSchema } from "@/schemas/product";
+import { seedUpload } from "@/test/uploads";
 
 import { createCategory, listCategories } from "./categories";
 import { archiveProduct, createProduct, getProduct, listProducts, updateProduct } from "./products";
@@ -88,6 +90,7 @@ afterAll(async () => {
     "categories",
     "categoryNames",
     "auditLogs",
+    "uploads",
   ];
   await Promise.all(
     orgs.flatMap((org) =>
@@ -389,7 +392,10 @@ describe("createProduct", () => {
   it("accepts images of the own organization and rejects another organization's publicId", async () => {
     const ctx = newCtx();
     const other = newCtx();
-    const ok = await createProduct(ctx, make({ images: [image(ctx.organizationId)] }));
+    const ok = await createProduct(
+      ctx,
+      make({ images: [await seedUpload(ctx.organizationId, image(ctx.organizationId))] }),
+    );
     expect(ok.images).toHaveLength(1);
 
     const err = await rejection(
@@ -422,6 +428,69 @@ describe("createProduct", () => {
     expect(await rejection(updateProduct(ctx, p.id, sneaky))).toBeInstanceOf(ValidationError);
   });
 
+  describe("confirmed uploads", () => {
+    it("rejects an image with no confirmed upload record, on create and on update", async () => {
+      const ctx = newCtx();
+      const img = image(ctx.organizationId, 7); // never confirmed
+      const err = await rejection(createProduct(ctx, make({ images: [img] })));
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(JSON.stringify((err as ValidationError).details)).toContain("images");
+      expect((await countAll(ctx)).products).toBe(0);
+
+      const p = await createProduct(ctx, make());
+      expect(await rejection(updateProduct(ctx, p.id, patch({ images: [img] })))).toBeInstanceOf(
+        ValidationError,
+      );
+      expect(await getProduct(ctx, p.id)).toMatchObject({ images: [] });
+    });
+
+    it("rejects another organization's confirmed record, a non-product record and a mismatched one", async () => {
+      const ctx = newCtx();
+      const other = newCtx();
+      const img = image(ctx.organizationId, 8);
+      const cases: Array<Record<string, unknown>> = [
+        { organizationId: other.organizationId },
+        { kind: "customers" },
+        { publicId: `${img.publicId}x` },
+        { url: 42 },
+        { width: 1.5 },
+      ];
+      for (const over of cases) {
+        await seedUpload(ctx.organizationId, img, over);
+        expect(await rejection(createProduct(ctx, make({ images: [img] })))).toBeInstanceOf(
+          ValidationError,
+        );
+      }
+      expect((await countAll(ctx)).products).toBe(0);
+    });
+
+    it("stores url and dimensions from the record, not from the client", async () => {
+      const ctx = newCtx();
+      const confirmed = await seedUpload(ctx.organizationId, image(ctx.organizationId, 9));
+      const claimed = {
+        ...confirmed,
+        url: confirmed.url.replace(".jpg", ".png"),
+        width: 1,
+        height: 1,
+      };
+      const created = await createProduct(ctx, make({ images: [claimed] }));
+      expect(created.images).toEqual([confirmed]);
+
+      const p = await createProduct(ctx, make());
+      const updated = await updateProduct(ctx, p.id, patch({ images: [claimed] }));
+      expect(updated.images).toEqual([confirmed]);
+    });
+
+    it("an update that leaves images alone needs no record", async () => {
+      const ctx = newCtx();
+      const img = await seedUpload(ctx.organizationId, image(ctx.organizationId, 10));
+      const p = await createProduct(ctx, make({ images: [img] }));
+      await uploadRecordRef(img.publicId).delete();
+      const updated = await updateProduct(ctx, p.id, patch({ name: "Renamed" }));
+      expect(updated.images).toEqual([img]);
+    });
+  });
+
   describe("Cloudinary cloud binding", () => {
     const stubCloud = (name: string) => {
       vi.stubEnv("CLOUDINARY_CLOUD_NAME", name);
@@ -437,14 +506,16 @@ describe("createProduct", () => {
     it("accepts an image of the configured cloud", async () => {
       const ctx = newCtx();
       stubCloud("demo");
-      const p = await createProduct(ctx, make({ images: [image(ctx.organizationId)] }));
+      const img = await seedUpload(ctx.organizationId, image(ctx.organizationId));
+      const p = await createProduct(ctx, make({ images: [img] }));
       expect(p.images).toHaveLength(1);
     });
 
     it("rejects an image of a foreign cloud, even under the callers own folder", async () => {
       const ctx = newCtx();
       stubCloud("mine");
-      const foreign = image(ctx.organizationId); // cloud "demo" is not "mine"
+      // Even with a confirmed record, cloud "demo" is not "mine".
+      const foreign = await seedUpload(ctx.organizationId, image(ctx.organizationId));
       expect(await rejection(createProduct(ctx, make({ images: [foreign] })))).toBeInstanceOf(
         ValidationError,
       );
@@ -462,10 +533,8 @@ describe("createProduct", () => {
       }
       __resetEnvCacheForTests();
       const other = image(ctx.organizationId).url.replace("/demo/", "/anything/");
-      const p = await createProduct(
-        ctx,
-        make({ images: [{ ...image(ctx.organizationId), url: other }] }),
-      );
+      const img = await seedUpload(ctx.organizationId, { ...image(ctx.organizationId), url: other });
+      const p = await createProduct(ctx, make({ images: [img] }));
       expect(p.images).toHaveLength(1);
     });
   });

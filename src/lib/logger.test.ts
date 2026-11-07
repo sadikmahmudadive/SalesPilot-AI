@@ -27,6 +27,18 @@ describe('redact', () => {
     expect(out.safe).toBe('keep');
   });
 
+  it('masks auth-like keys (the Cloudinary SDK puts "key:secret" under request_options.auth)', () => {
+    const out = redact({
+      request_options: { auth: 'key:secret', host: 'api.cloudinary.com' },
+      oauth_token: 'o',
+      authHeader: 'h',
+    }) as Rec;
+    expect(out.request_options.auth).toBe(MASK);
+    expect(out.request_options.host).toBe('api.cloudinary.com');
+    expect(out.oauth_token).toBe(MASK);
+    expect(out.authHeader).toBe(MASK);
+  });
+
   it('masks objects/arrays under sensitive keys wholesale', () => {
     const out = redact({ credentials: { token: 't' }, secrets: ['a', 'b'] }) as Record<string, unknown>;
     expect(out.credentials).toEqual({ token: MASK });

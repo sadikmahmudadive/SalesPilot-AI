@@ -9,6 +9,11 @@
  * resolve to a category of the SAME organization, and every image `publicId` must live under
  * `organizations/{organizationId}/products/`, so a client cannot attach another tenant's data.
  *
+ * IMAGES. An image is only accepted when `confirmUpload` has recorded it (`uploads/{sha256(publicId)}`,
+ * same organization, kind "products"); `url`, `width` and `height` are taken from that record and
+ * the client's values are ignored. The records (at most 10) are read inside the create / update
+ * transaction before any write. A missing, foreign or non-product record is a validation error.
+ *
  * UNIQUENESS. A SKU is unique per organization through `productSkus/{organizationId}_{SKU}` and a
  * slug through `productSlugs/{organizationId}_{slug}`. Locks are written in the SAME transaction
  * as the product (create), the SKU lock is moved in the same transaction as a SKU change
@@ -51,6 +56,7 @@ import { randomUUID } from "node:crypto";
 import { FieldValue, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
 
 import { getServerEnv, isConfigured } from "@/config/env";
+import { uploadRecordRef } from "@/lib/cloudinary/records";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { isAlreadyExists } from "@/lib/firestore-errors";
@@ -75,6 +81,7 @@ import {
 } from "@/repositories/products";
 import {
   DEFAULT_VARIANT_ID,
+  MAX_IMAGES,
   MAX_PRICE_MINOR,
   VARIANT_ID_PATTERN,
   imageCloudName,
@@ -206,6 +213,7 @@ function normalizeVariants(raw: unknown): ProductVariant[] {
  */
 function normalizeImages(orgId: string, raw: unknown): Fields[] {
   if (!Array.isArray(raw)) throw invalid("images", "Images must be a list");
+  if (raw.length > MAX_IMAGES) throw invalid("images", `Use at most ${MAX_IMAGES} images`);
   const prefix = productImagePrefix(orgId);
   const cloudName = isConfigured("cloudinary") ? getServerEnv().CLOUDINARY_CLOUD_NAME : undefined;
   const seen = new Set<string>();
@@ -226,6 +234,38 @@ function normalizeImages(orgId: string, raw: unknown): Fields[] {
     seen.add(publicId);
     return { url, publicId, width, height };
   });
+}
+
+const UNCONFIRMED_IMAGE = "Upload the image again: it was not confirmed for this organization";
+
+/**
+ * Replaces each requested image by its confirmed upload record (`snaps` are the record documents,
+ * same order). The client's `url` / `width` / `height` are discarded; a record that is missing,
+ * belongs to another organization, is not a product upload or has a malformed body is rejected.
+ */
+function resolveImages(orgId: string, requested: Fields[], snaps: DocumentSnapshot[]): Fields[] {
+  return requested.map((img, i) => {
+    const snap = snaps[i];
+    const publicId = img.publicId;
+    const rec = snap?.exists ? (snap.data() as Fields) : undefined;
+    if (
+      !rec ||
+      rec.organizationId !== orgId ||
+      rec.kind !== "products" ||
+      rec.publicId !== publicId ||
+      typeof rec.url !== "string" ||
+      !Number.isInteger(rec.width) ||
+      !Number.isInteger(rec.height)
+    ) {
+      throw invalid("images", UNCONFIRMED_IMAGE);
+    }
+    return { url: rec.url, publicId, width: rec.width, height: rec.height };
+  });
+}
+
+/** Reads the upload records of `images` (transactional; call before any write). */
+function readImageRecords(tx: Transaction, images: Fields[] | undefined): Promise<DocumentSnapshot[]> {
+  return Promise.all((images ?? []).map((img) => tx.get(uploadRecordRef(img.publicId as string))));
 }
 
 function normalizeSku(raw: unknown): string {
@@ -360,7 +400,9 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
         if (typeof fields.categoryId === "string") {
           assertCategorySnapshot(await tx.get(categoryRepo.docRef(fields.categoryId)), orgId);
         }
-        const { ref, data } = buildProduct(orgId, { ...fields, slug });
+        const requestedImages = fields.images as Fields[];
+        const images = resolveImages(orgId, requestedImages, await readImageRecords(tx, requestedImages));
+        const { ref, data } = buildProduct(orgId, { ...fields, images, slug });
         id = ref.id;
         tx.create(skuRef, newLockData(orgId, ref.id));
         tx.create(slugRef, newLockData(orgId, ref.id));
@@ -430,6 +472,7 @@ export async function updateProduct(
   assertEntityId(id);
   const orgId = ctx.organizationId;
   const next = patchFields(orgId, patch);
+  const requestedImages = next.images as Fields[] | undefined;
 
   try {
     await adminDb().runTransaction(async (tx) => {
@@ -464,7 +507,7 @@ export async function updateProduct(
       const removed = oldUnits.filter((u) => !newUnits.includes(u));
       const added = newUnits.filter((u) => !oldUnits.includes(u));
 
-      const [categorySnap, newSkuSnap, oldSkuSnap, removedSnaps, reservationSnaps, addedSnaps] =
+      const [categorySnap, newSkuSnap, oldSkuSnap, removedSnaps, reservationSnaps, addedSnaps, imageSnaps] =
         await Promise.all([
           typeof next.categoryId === "string" && next.categoryId !== current.categoryId
             ? tx.get(categoryRepo.docRef(next.categoryId))
@@ -476,10 +519,15 @@ export async function updateProduct(
             removed.map((u) => tx.get(inventoryRef(id, u).collection("reservations").limit(1))),
           ),
           Promise.all(added.map((u) => tx.get(inventoryRef(id, u)))),
+          readImageRecords(tx, requestedImages),
         ]);
 
       // ---- checks ----
       if (categorySnap) assertCategorySnapshot(categorySnap, orgId);
+      // Confirmed images only; the stored url / dimensions come from the records.
+      const effective: Fields = requestedImages
+        ? { ...next, images: resolveImages(orgId, requestedImages, imageSnaps) }
+        : next;
       if (newSkuSnap?.exists && !ownsLock(newSkuSnap, orgId, id))
         throw new ConflictError(DUPLICATE_SKU_MESSAGE);
       removedSnaps.forEach((snap, i) => {
@@ -507,7 +555,7 @@ export async function updateProduct(
       });
 
       const write: Fields = {};
-      for (const [key, value] of Object.entries(next))
+      for (const [key, value] of Object.entries(effective))
         write[key] = value === null ? FieldValue.delete() : value;
       write.updatedAt = FieldValue.serverTimestamp();
       tx.update(ref, write);
@@ -515,14 +563,14 @@ export async function updateProduct(
       // Audit: names of the fields that really changed, plus non-free-text before/after values.
       const changed = INPUT_KEYS.filter(
         (key) =>
-          next[key] !== undefined &&
-          stableJson(currentFields[key] ?? null) !== stableJson(next[key] ?? null),
+          effective[key] !== undefined &&
+          stableJson(currentFields[key] ?? null) !== stableJson(effective[key] ?? null),
       );
       const before: Fields = {};
       const after: Fields = {};
       for (const key of changed) {
         before[key] = currentFields[key];
-        after[key] = next[key];
+        after[key] = effective[key];
       }
       writeAuditInTransaction(tx, {
         organizationId: orgId,
