@@ -20,7 +20,12 @@ const serverShape = {
   FIREBASE_PRIVATE_KEY: z
     .string()
     .min(1)
-    .transform((key) => key.replace(/\\n/g, "\n"))
+    .transform((key) =>
+      key
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .replace(/\\n/g, "\n"),
+    )
     .optional(),
   FIRESTORE_EMULATOR_HOST: optional,
   FIREBASE_AUTH_EMULATOR_HOST: optional,
