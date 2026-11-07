@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Menu } from "lucide-react";
 
-import { Brand } from "@/components/auth/auth-shell";
+import { Brand } from "@/components/shared/logo";
 import { SidebarNav } from "@/components/dashboard/sidebar";
 import { Button } from "@/components/ui/button";
 import {

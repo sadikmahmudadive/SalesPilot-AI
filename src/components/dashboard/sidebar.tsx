@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import { Brand } from "@/components/auth/auth-shell";
+import { Brand, BrandMark } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isNavActive, type NavItem } from "@/config/nav";
@@ -114,10 +114,7 @@ export function DesktopSidebar({ items, collapsed, animate, onToggle }: DesktopS
         )}
       >
         {collapsed ? (
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-            <Compass className="size-4" aria-hidden="true" />
-            <span className="sr-only">SalesPilot AI</span>
-          </span>
+          <BrandMark size="sm" />
         ) : (
           <Brand />
         )}

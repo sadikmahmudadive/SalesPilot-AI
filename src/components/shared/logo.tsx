@@ -1,56 +1,114 @@
-import Image from "next/image";
-
 import { cn } from "@/lib/utils";
 
 export interface LogoProps {
   className?: string;
-  priority?: boolean;
   size?: "sm" | "md" | "lg";
+  variant?: "lockup" | "icon" | "wordmark";
 }
 
 const SIZES = {
-  sm: { height: 24, width: 105, className: "h-6 w-auto" },
-  md: { height: 32, width: 140, className: "h-8 w-auto" },
-  lg: { height: 40, width: 175, className: "h-10 w-auto" },
+  sm: {
+    iconSize: "size-7 rounded-[6px] text-[20px] pb-[2.5px]",
+    textClass: "text-lg tracking-[-0.045em]",
+    gapClass: "gap-2",
+  },
+  md: {
+    iconSize: "size-8.5 rounded-[8px] text-[24px] pb-[3px]",
+    textClass: "text-xl tracking-[-0.045em]",
+    gapClass: "gap-2.5",
+  },
+  lg: {
+    iconSize: "size-11 rounded-[10px] text-[30px] pb-[4px]",
+    textClass: "text-2xl tracking-[-0.045em]",
+    gapClass: "gap-3",
+  },
 } as const;
 
 /**
- * Responsive Brand Logo supporting Dark and Light modes.
- * - Light Mode: Displays the dark navy logo ("Sales Pilot AI dark.png")
- * - Dark Mode: Displays the white logo ("Sales Pilot AI light.png")
+ * App Icon ("s." mark) from Turn 2 of the SalesPilot AI Typography Logo Design System.
+ * - Background: Brand green (#1a8a5c)
+ * - Letter "s": Pure white (#ffffff)
+ * - Accent dot ".": Dark neutral (#0f1a14) in light mode, mint green (#4fd39a) in dark mode.
  */
-export function Logo({ className, priority = false, size = "md" }: LogoProps) {
-  const currentSize = SIZES[size];
+export function BrandMark({
+  size = "md",
+  className,
+}: {
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
+  const current = SIZES[size];
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center font-[family-name:var(--font-manrope)] font-extrabold leading-none tracking-[-0.06em] select-none text-white shadow-xs transition-colors",
+        "bg-[#1a8a5c] dark:bg-[#1a8a5c]",
+        current.iconSize,
+        className,
+      )}
+    >
+      s<span className="text-[#0f1a14] dark:text-[#4fd39a]">.</span>
+    </span>
+  );
+}
+
+/**
+ * Wordmark ("salespilot.ai") from the Typography Logo Design System.
+ * - "salespilot": Dark text in light mode, crisp white in dark mode.
+ * - ".ai": Brand green (#1a8a5c) in light mode, vibrant mint (#4fd39a) in dark mode.
+ */
+export function BrandWordmark({
+  size = "md",
+  className,
+}: {
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
+  const current = SIZES[size];
+  return (
+    <span
+      className={cn(
+        "font-[family-name:var(--font-manrope)] font-extrabold leading-none select-none text-[#141815] dark:text-white transition-colors",
+        current.textClass,
+        className,
+      )}
+    >
+      salespilot<span className="text-[#1a8a5c] dark:text-[#4fd39a]">.ai</span>
+    </span>
+  );
+}
+
+/**
+ * Full SalesPilot AI Brand Logo Lockup (Turn 2c: Icon + Wordmark).
+ * Pure scalable CSS & typography from the logo design system.
+ */
+export function Logo({ size = "md", variant = "lockup", className }: LogoProps) {
+  const current = SIZES[size];
+
+  if (variant === "icon") {
+    return <BrandMark size={size} className={className} />;
+  }
+
+  if (variant === "wordmark") {
+    return <BrandWordmark size={size} className={className} />;
+  }
 
   return (
-    <div className={cn("relative inline-flex items-center", className)}>
-      {/* Light theme: Dark text logo for light backgrounds */}
-      <Image
-        src="/logos/Sales Pilot AI dark.png"
-        alt="SalesPilot AI"
-        width={currentSize.width}
-        height={currentSize.height}
-        className={cn("block object-contain dark:hidden", currentSize.className)}
-        priority={priority}
-      />
-      {/* Dark theme: White logo for dark backgrounds */}
-      <Image
-        src="/logos/Sales Pilot AI light.png"
-        alt="SalesPilot AI"
-        width={currentSize.width}
-        height={currentSize.height}
-        className={cn("hidden object-contain dark:block", currentSize.className)}
-        priority={priority}
-      />
+    <div className={cn("inline-flex items-center", current.gapClass, className)}>
+      <BrandMark size={size} />
+      <BrandWordmark size={size} />
     </div>
   );
 }
 
-/** Standard Brand presentation used in Auth layouts, Sidebar, and Mobile navigation. */
-export function Brand({ className }: { className?: string }) {
+/**
+ * Standard brand logo for website header, sidebar, mobile navigation and auth shell.
+ */
+export function Brand({ className, size = "md" }: { className?: string; size?: "sm" | "md" | "lg" }) {
   return (
-    <div className={cn("flex items-center", className)}>
-      <Logo size="md" priority />
+    <div className={cn("inline-flex items-center", className)}>
+      <Logo size={size} variant="lockup" />
     </div>
   );
 }
