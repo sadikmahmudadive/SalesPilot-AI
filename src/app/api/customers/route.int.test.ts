@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Role } from "@/lib/security/permissions";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { DELETE, GET as GET_ONE, PATCH } from "./[id]/route";
 import { GET, POST } from "./route";
@@ -180,7 +181,9 @@ describe("POST /api/customers", () => {
     const owner = await seed("owner");
     signIn(owner.uid);
     const statuses: number[] = [];
-    for (let i = 0; i < 61; i++) statuses.push((await post(valid())).status);
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 61; i++) statuses.push((await post(valid())).status);
+    });
     expect(statuses.slice(0, 60).every((s) => s === 201)).toBe(true);
     expect(statuses[60]).toBe(429);
   }, 120_000);

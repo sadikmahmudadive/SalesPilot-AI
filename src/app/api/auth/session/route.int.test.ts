@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { adminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME, verifySessionValue } from "@/lib/auth/session";
 import { createEmulatorUser, sleep, type EmulatorUser } from "@/test/auth-emulator";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { DELETE, POST } from "./route";
 
@@ -111,31 +112,37 @@ describe("POST /api/auth/session", () => {
   });
 
   it("11th request in a minute from the same IP -> 429 with Retry-After", async () => {
-    const ip = uniqueIp();
-    const statuses: number[] = [];
-    for (let i = 0; i < 10; i++) statuses.push((await post({ idToken: "garbage" }, ip)).status);
-    expect(statuses.every((s) => s === 401)).toBe(true);
+    await withPinnedRateWindow(async () => {
+      const ip = uniqueIp();
+      const statuses: number[] = [];
+      for (let i = 0; i < 10; i++) statuses.push((await post({ idToken: "garbage" }, ip)).status);
+      expect(statuses.every((s) => s === 401)).toBe(true);
 
-    const res = await post({ idToken: "garbage" }, ip);
-    expect(res.status).toBe(429);
-    expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
-    const json = (await res.json()) as { error: { code: string } };
-    expect(json.error.code).toBe("RATE_LIMITED");
+      const res = await post({ idToken: "garbage" }, ip);
+      expect(res.status).toBe(429);
+      expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+      const json = (await res.json()) as { error: { code: string } };
+      expect(json.error.code).toBe("RATE_LIMITED");
+    });
   });
 
   it("limits per IP: another IP is unaffected", async () => {
-    const ipA = uniqueIp();
-    for (let i = 0; i < 11; i++) await post({ idToken: "garbage" }, ipA);
-    const res = await post({ idToken: "garbage" }, uniqueIp());
-    expect(res.status).toBe(401);
+    await withPinnedRateWindow(async () => {
+      const ipA = uniqueIp();
+      for (let i = 0; i < 11; i++) await post({ idToken: "garbage" }, ipA);
+      const res = await post({ idToken: "garbage" }, uniqueIp());
+      expect(res.status).toBe(401);
+    });
   });
 
   it("keys the limit on the first x-forwarded-for entry", async () => {
-    const client = uniqueIp();
-    for (let i = 0; i < 10; i++) {
-      await post({ idToken: "garbage" }, `${client}, 10.0.0.${i}`);
-    }
-    expect((await post({ idToken: "garbage" }, `${client}, 10.9.9.9`)).status).toBe(429);
+    await withPinnedRateWindow(async () => {
+      const client = uniqueIp();
+      for (let i = 0; i < 10; i++) {
+        await post({ idToken: "garbage" }, `${client}, 10.0.0.${i}`);
+      }
+      expect((await post({ idToken: "garbage" }, `${client}, 10.9.9.9`)).status).toBe(429);
+    });
   });
 
   it("falls back to x-real-ip when x-forwarded-for is absent", async () => {
@@ -148,8 +155,10 @@ describe("POST /api/auth/session", () => {
           body: JSON.stringify({ idToken: "garbage" }),
         }),
       );
-    for (let i = 0; i < 10; i++) await withReal();
-    expect((await withReal()).status).toBe(429);
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 10; i++) await withReal();
+      expect((await withReal()).status).toBe(429);
+    });
   });
 });
 
@@ -197,8 +206,10 @@ describe("POST /api/auth/session: login CSRF guard", () => {
 
   it("rejected requests do not consume the rate limit", async () => {
     const ip = uniqueIp();
-    for (let i = 0; i < 12; i++) await post({ idToken: "garbage" }, ip, { origin: "https://evil.com" });
-    expect((await post({ idToken: "garbage" }, ip)).status).toBe(401);
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 12; i++) await post({ idToken: "garbage" }, ip, { origin: "https://evil.com" });
+      expect((await post({ idToken: "garbage" }, ip)).status).toBe(401);
+    });
   });
 
   it("same-origin JSON POST works (Origin + Sec-Fetch-Site: same-origin)", async () => {

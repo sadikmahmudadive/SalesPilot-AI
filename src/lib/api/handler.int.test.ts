@@ -7,6 +7,7 @@ import { UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { logger } from "@/lib/logger";
 import type { Role } from "@/lib/security/permissions";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { withApi, withAuthOnlyApi } from "./handler";
 
@@ -266,15 +267,17 @@ describe("withApi: rate limit", () => {
     const a = await seedMember("owner");
     const b = await seedMember("owner");
     const h = withApi({ permission: "any-member", rateLimit: { name, limit: 2, windowSec: 60 } }, async () => ({ ok: 1 }));
-    signIn(a.uid);
-    expect((await h(get())).status).toBe(200);
-    expect((await h(get())).status).toBe(200);
-    const res = await h(get());
-    expect(res.status).toBe(429);
-    expect(res.headers.get("retry-after")).toBeTruthy();
-    expect((await errorOf(res)).code).toBe("RATE_LIMITED");
-    signIn(b.uid);
-    expect((await h(get())).status).toBe(200);
+    await withPinnedRateWindow(async () => {
+      signIn(a.uid);
+      expect((await h(get())).status).toBe(200);
+      expect((await h(get())).status).toBe(200);
+      const res = await h(get());
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBeTruthy();
+      expect((await errorOf(res)).code).toBe("RATE_LIMITED");
+      signIn(b.uid);
+      expect((await h(get())).status).toBe(200);
+    });
   });
 
   it("different limiter names do not share counters", async () => {
@@ -282,9 +285,11 @@ describe("withApi: rate limit", () => {
     signIn(uid);
     const one = withApi({ permission: "any-member", rateLimit: { name: `n1-${randomUUID()}`, limit: 1, windowSec: 60 } }, async () => ({}));
     const two = withApi({ permission: "any-member", rateLimit: { name: `n2-${randomUUID()}`, limit: 1, windowSec: 60 } }, async () => ({}));
-    expect((await one(get())).status).toBe(200);
-    expect((await two(get())).status).toBe(200);
-    expect((await one(get())).status).toBe(429);
+    await withPinnedRateWindow(async () => {
+      expect((await one(get())).status).toBe(200);
+      expect((await two(get())).status).toBe(200);
+      expect((await one(get())).status).toBe(429);
+    });
   });
 });
 
@@ -382,9 +387,11 @@ describe("withAuthOnlyApi", () => {
     expect((await h(post({ a: "x" }))).status).toBe(401);
     signIn(`uid-${randomUUID()}`);
     expect((await h(post({ a: "x" }, { "content-type": "application/json", origin: "https://evil.com" }))).status).toBe(403);
-    expect((await h(post({ a: 1 }))).status).toBe(400); // counts toward the limit (1 of 2)
-    expect((await h(post({ a: "x" }))).status).toBe(200);
-    expect((await h(post({ a: "x" }))).status).toBe(429);
+    await withPinnedRateWindow(async () => {
+      expect((await h(post({ a: 1 }))).status).toBe(400); // counts toward the limit (1 of 2)
+      expect((await h(post({ a: "x" }))).status).toBe(200);
+      expect((await h(post({ a: "x" }))).status).toBe(429);
+    });
   });
 });
 

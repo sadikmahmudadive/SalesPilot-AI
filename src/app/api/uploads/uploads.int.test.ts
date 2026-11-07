@@ -9,6 +9,7 @@ import { uploadRecordRef } from "@/lib/cloudinary/records";
 import { RateLimitedError, UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Role } from "@/lib/security/permissions";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { POST as CONFIRM } from "./confirm/route";
 import { POST as DELETE } from "./delete/route";
@@ -286,10 +287,12 @@ describe("POST /api/uploads/sign", () => {
   it("429 on the 31st request in a minute", async () => {
     const a = await seed("owner");
     signIn(a.uid);
-    for (let i = 0; i < 30; i++) expect((await sign(signBody)).status).toBe(200);
-    const res = await sign(signBody);
-    expect(res.status).toBe(429);
-    expect(res.headers.get("retry-after")).toBeTruthy();
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 30; i++) expect((await sign(signBody)).status).toBe(200);
+      const res = await sign(signBody);
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBeTruthy();
+    });
   });
 });
 

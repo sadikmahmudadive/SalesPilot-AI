@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getMe } from "@/app/api/me/route";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { POST } from "./route";
 
@@ -118,7 +119,9 @@ describe("POST /api/organizations/register", () => {
   it("is rate limited to 5 requests per minute per user", async () => {
     signIn();
     const statuses: number[] = [];
-    for (let i = 0; i < 7; i++) statuses.push((await post(valid)).status);
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 7; i++) statuses.push((await post(valid)).status);
+    });
     expect(statuses.slice(0, 5)).toEqual([201, 200, 200, 200, 200]);
     expect(statuses.slice(5)).toEqual([429, 429]);
     const owned = await adminDb().collection("organizations").where("ownerUid", "==", session!.uid).get();

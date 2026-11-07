@@ -9,6 +9,7 @@ import { productInputSchema } from "@/schemas/product";
 import { listInventory } from "@/services/inventory/inventory-list";
 import { reserveStock } from "@/services/inventory/stock";
 import { createProduct } from "@/services/products/products";
+import { withPinnedRateWindow } from "@/test/pin-clock";
 
 import { POST as ADJUST } from "./adjust/route";
 import { GET } from "./route";
@@ -284,10 +285,12 @@ describe("POST /api/inventory/adjust", () => {
     const { p } = await owner();
     const statuses: number[] = [];
     let last: Response | undefined;
-    for (let i = 0; i < 61; i++) {
-      last = await adjust(req(p, { delta: 1 }));
-      statuses.push(last.status);
-    }
+    await withPinnedRateWindow(async () => {
+      for (let i = 0; i < 61; i++) {
+        last = await adjust(req(p, { delta: 1 }));
+        statuses.push(last.status);
+      }
+    });
     expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
     expect(statuses[60]).toBe(429);
     expect(last!.headers.get("retry-after")).toBeTruthy();
