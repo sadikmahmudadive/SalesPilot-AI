@@ -23,7 +23,7 @@ function EditorSkeleton() {
 }
 
 /** Loads one product for the editor; renders the form once it is there. */
-function EditProduct({ id, canWrite }: { id: string; canWrite: boolean }) {
+function EditProduct({ id, canWrite, role }: { id: string; canWrite: boolean; role: Role }) {
   const query = useProduct(id);
   const product = query.data;
 
@@ -60,7 +60,7 @@ function EditProduct({ id, canWrite }: { id: string; canWrite: boolean }) {
     );
   }
 
-  return <ProductForm key={product.id} product={product} canWrite={canWrite} />;
+  return <ProductForm key={product.id} product={product} canWrite={canWrite} role={role} />;
 }
 
 /** The product editor page body: `/products/new` (no `id`) or `/products/[id]`. */
@@ -78,7 +78,7 @@ export function ProductEditor({ id, role }: { id?: string; role: Role }) {
         </div>
       );
     }
-    return <ProductForm canWrite />;
+    return <ProductForm canWrite role={role} />;
   }
-  return <EditProduct id={id} canWrite={canWrite} />;
+  return <EditProduct id={id} canWrite={canWrite} role={role} />;
 }

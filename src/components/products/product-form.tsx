@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArrowLeft, Loader2 } from "lucide-react";
-import { useForm, type FieldPath } from "react-hook-form";
+import { useForm, useWatch, type FieldPath } from "react-hook-form";
 import { toast } from "sonner";
 
 import { FormAlert } from "@/components/auth/form-alert";
@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { AvailabilityBadge } from "@/components/products/availability-badge";
 import { ArchiveProductDialog } from "@/components/products/archive-product-dialog";
 import { ImageGallery } from "@/components/products/image-gallery";
+import { useImageCleanup } from "@/components/products/use-image-cleanup";
 import { ProductContentSections } from "@/components/products/product-content-sections";
 import { AvailabilityField, BasicsFields, PricingFields } from "@/components/products/product-form-fields";
 import {
@@ -28,7 +29,9 @@ import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
 import { useRevealAlert } from "@/hooks/use-reveal-alert";
 import { useBeforeUnloadGuard } from "@/hooks/use-unsaved-changes";
 import { asApiError } from "@/lib/api/map-error";
+import type { Role } from "@/lib/security/permissions";
 import type { Product } from "@/schemas/product";
+import type { ConfirmedUpload } from "@/schemas/upload";
 
 const LIST_PATH = "/products";
 const LIST_ROOTS = new Set(["variants", "specs", "faqs"]);
@@ -38,6 +41,8 @@ interface ProductFormProps {
   /** Present when editing. */
   product?: Product;
   canWrite: boolean;
+  /** Decides whether the image uploader is offered (together with `canWrite`). */
+  role: Role;
 }
 
 /**
@@ -45,7 +50,7 @@ interface ProductFormProps {
  * people without write access see the same page read-only. Leaving with unsaved edits asks first
  * (in-app Cancel / Back) or relies on the browser prompt (closing or reloading the tab).
  */
-export function ProductForm({ product, canWrite }: ProductFormProps) {
+export function ProductForm({ product, canWrite, role }: ProductFormProps) {
   const router = useRouter();
   const create = useCreateProduct();
   const update = useUpdateProduct();
@@ -62,7 +67,9 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
     product ? productToFormValues(product) : EMPTY_PRODUCT_VALUES,
   );
   const form = useForm<ProductFormValues>({ resolver: productResolver, defaultValues: baseline });
-  const { handleSubmit, setError, setFocus, getValues, reset, formState } = form;
+  const { handleSubmit, setError, setFocus, getValues, setValue, reset, formState } = form;
+  const images = useWatch({ control: form.control, name: "images" });
+  const cleanup = useImageCleanup();
 
   const isEdit = product !== undefined;
   const dirty = formState.isDirty;
@@ -74,6 +81,23 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
   function requestLeave() {
     if (dirty && canWrite) setConfirmDiscard(true);
     else leave();
+  }
+
+  function addImage(image: ConfirmedUpload) {
+    cleanup.trackUpload(image.publicId);
+    setValue("images", [...getValues("images"), image], { shouldDirty: true });
+  }
+  function removeImage(index: number) {
+    const current = getValues("images");
+    const removed = current[index];
+    if (!removed) return;
+    setValue(
+      "images",
+      current.filter((_, i) => i !== index),
+      { shouldDirty: true },
+    );
+    // Form state only: a stored image the saved product uses is deleted after a successful save.
+    cleanup.imageRemoved(removed.publicId, baseline.images.map((image) => image.publicId));
   }
 
   function showServerError(error: unknown) {
@@ -105,6 +129,7 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
         }
         const saved = await update.mutateAsync({ id: product.id, body: patch });
         const next = productToFormValues(saved);
+        cleanup.saveSucceeded(baseline.images.map((image) => image.publicId), next.images.map((image) => image.publicId));
         setBaseline(next); // the server assigns ids to new variants: they must be sent from now on
         reset(next);
         toast.success("Product updated");
@@ -140,7 +165,7 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
               <span className="font-mono text-xs">{product.sku}</span>
             </span>
           ) : (
-            "Add a product to your catalogue. You can add images later."
+            "Add a product to your catalogue."
           )
         }
         actions={
@@ -192,7 +217,15 @@ export function ProductForm({ product, canWrite }: ProductFormProps) {
           </SectionCard>
           <ProductContentSections form={form} />
           <SectionCard title="Images">
-            <ImageGallery images={baseline.images} productName={name} />
+            <ImageGallery
+              images={images}
+              productName={name}
+              role={role}
+              canWrite={canWrite}
+              disabled={pending}
+              onUploaded={addImage}
+              onRemove={removeImage}
+            />
           </SectionCard>
         </fieldset>
 

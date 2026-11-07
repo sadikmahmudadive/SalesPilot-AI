@@ -1,50 +1,99 @@
-import { ImageOff, Upload } from "lucide-react";
+"use client";
 
-import { ProductThumb } from "@/components/products/product-thumb";
+import { useState } from "react";
+import { X } from "lucide-react";
+
+import { MediaUploader } from "@/components/uploads/media-uploader";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ProductImage } from "@/schemas/product";
+import { thumbUrl } from "@/lib/cloudinary/urls";
+import type { Role } from "@/lib/security/permissions";
+import { MAX_IMAGES, type ProductImage } from "@/schemas/product";
+import type { ConfirmedUpload } from "@/schemas/upload";
+
+const THUMB_PX = 96;
 
 interface ImageGalleryProps {
   images: readonly ProductImage[];
   productName: string;
+  role: Role;
+  /** Anyone without write access sees the images only: no remove buttons, no uploader. */
+  canWrite: boolean;
+  /** True while the product is being saved. */
+  disabled?: boolean;
+  onUploaded: (image: ConfirmedUpload) => void;
+  /** Removes the image at `index` from the form (the stored file is cleaned up after the save). */
+  onRemove: (index: number) => void;
 }
 
 /**
- * Images panel. Uploading is not available yet (the media uploader arrives with the media
- * storage setup), so the panel says so plainly and shows any images the product already has,
- * read-only. Saving the product leaves its images untouched.
+ * The product's images (the first one is the primary image) with a remove button each, and the
+ * uploader. Removing only changes the form; nothing is deleted from media storage until the
+ * product is saved (see `useImageCleanup`).
  */
-export function ImageGallery({ images, productName }: ImageGalleryProps) {
+export function ImageGallery({ images, productName, role, canWrite, disabled = false, onUploaded, onRemove }: ImageGalleryProps) {
+  const [announcement, setAnnouncement] = useState("");
+  const label = productName || "Product";
+
   return (
     <div className="space-y-4">
       {images.length > 0 ? (
         <ul className="flex flex-wrap gap-3" aria-label="Product images">
           {images.map((image, index) => (
-            <li key={image.publicId}>
-              <ProductThumb name={`${productName || "product"} (image ${index + 1})`} src={image.url} size={96} />
+            <li key={image.publicId} className="relative size-24 overflow-hidden rounded-md border bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary already delivers a resized copy */}
+              <img
+                src={thumbUrl(image.url, 160, 160)}
+                alt={`${label}, image ${index + 1}`}
+                width={THUMB_PX}
+                height={THUMB_PX}
+                loading="lazy"
+                decoding="async"
+                className="size-full object-cover"
+              />
+              {index === 0 ? (
+                <Badge variant="secondary" className="absolute bottom-1 left-1">
+                  Primary
+                </Badge>
+              ) : null}
+              {canWrite ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon-xs"
+                  className="absolute top-1 right-1"
+                  disabled={disabled}
+                  aria-label={`Remove image ${index + 1}`}
+                  onClick={() => {
+                    onRemove(index);
+                    setAnnouncement(`Image ${index + 1} removed. Save to keep this change.`);
+                  }}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{canWrite ? "No images yet." : "This product has no images."}</p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {images.length} of {MAX_IMAGES} images{images.length > 0 ? ". The first image is the primary one shown in lists." : "."}
+      </p>
+      {canWrite ? (
+        <MediaUploader
+          kind="products"
+          role={role}
+          maxFiles={MAX_IMAGES}
+          currentCount={images.length}
+          onUploaded={onUploaded}
+          disabled={disabled}
+        />
       ) : null}
-      <div
-        role="group"
-        aria-label="Image upload"
-        className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center"
-      >
-        <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-          <ImageOff className="size-5" aria-hidden="true" />
-        </span>
-        <div className="space-y-1">
-          <p className="text-sm font-medium">Media storage not configured</p>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Image uploads will be available once media storage is set up. Existing images stay as they are.
-          </p>
-        </div>
-        <Button type="button" variant="outline" size="sm" disabled>
-          <Upload aria-hidden="true" />
-          Upload images
-        </Button>
-      </div>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
     </div>
   );
 }

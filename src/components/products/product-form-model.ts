@@ -24,7 +24,7 @@ export interface FaqRow {
   a: string;
 }
 
-/** What the form edits. Prices are taka text; `categoryId` is "" for none; images are read-only here. */
+/** What the form edits. Prices are taka text; `categoryId` is "" for none. */
 export interface ProductFormValues {
   name: string;
   sku: string;
