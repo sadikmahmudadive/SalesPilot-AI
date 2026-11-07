@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseQuantity, previewAdjustment, stockStatus, toDelta } from "@/components/inventory/stock-model";
+import {
+  isLowStockParam,
+  parseQuantity,
+  previewAdjustment,
+  stockStatus,
+  toDelta,
+} from "@/components/inventory/stock-model";
 
 describe("previewAdjustment", () => {
   const record = { onHand: 12, reserved: 2 };
@@ -80,5 +86,17 @@ describe("stockStatus", () => {
     expect(stockStatus(1)).toBe("low");
     expect(stockStatus(5)).toBe("low");
     expect(stockStatus(6)).toBe("ok");
+  });
+});
+
+describe("isLowStockParam", () => {
+  it("is true only for the exact value 'true'", () => {
+    expect(isLowStockParam("true")).toBe(true);
+  });
+
+  it("is false for absent, false, other or repeated values", () => {
+    for (const v of [undefined, "", "false", "TRUE", "1", "yes", ["true"], ["true", "true"]]) {
+      expect(isLowStockParam(v), String(v)).toBe(false);
+    }
   });
 });

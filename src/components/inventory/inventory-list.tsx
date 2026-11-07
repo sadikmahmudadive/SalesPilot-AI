@@ -19,9 +19,9 @@ import type { InventoryListItem } from "@/schemas/inventory";
 
 const NOUN = { singular: "stock item", plural: "stock items" };
 
-export function InventoryList({ role }: { role: Role }) {
+export function InventoryList({ role, initialLowStock = false }: { role: Role; initialLowStock?: boolean }) {
   const canWrite = can(role, "inventory:write");
-  const [lowStock, setLowStock] = useState(false);
+  const [lowStock, setLowStock] = useState(initialLowStock);
   const [adjusting, setAdjusting] = useState<InventoryListItem | null>(null);
 
   const query = useInventory({ lowStock, limit: PAGE_SIZE });

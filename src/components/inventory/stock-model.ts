@@ -5,6 +5,14 @@
 import { LOW_STOCK_THRESHOLD, MAX_ADJUST_DELTA, MAX_ON_HAND } from "@/config/inventory";
 import { toAsciiDigits } from "@/lib/digits";
 
+/**
+ * Reads the `lowStock` search param of the inventory page. Only the exact single value "true"
+ * turns the filter on; anything else (absent, "false", repeated, other text) leaves it off.
+ */
+export function isLowStockParam(value: string | string[] | undefined): boolean {
+  return value === "true";
+}
+
 export type AdjustMode = "add" | "remove";
 
 export type StockStatus = "out" | "low" | "ok";

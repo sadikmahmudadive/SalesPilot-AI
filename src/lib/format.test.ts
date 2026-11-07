@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, formatDateTime, formatMoneyMinor, formatDateOr } from "@/lib/format";
+import { formatCount, formatDate, formatDateTime, formatMoneyMinor, formatDateOr } from "@/lib/format";
 
 describe("formatMoneyMinor", () => {
   it("converts minor units (poisha) to taka", () => {
@@ -46,5 +46,23 @@ describe("formatDateOr", () => {
     expect(formatDateOr("2026-11-06T20:30:00.000Z", "Never")).toBe("7 Nov 2026");
     expect(formatDateOr(null, "Never")).toBe("Never");
     expect(formatDateOr("garbage", "Never")).toBe("Never");
+  });
+});
+
+describe("formatCount", () => {
+  it("groups thousands the en-GB way", () => {
+    expect(formatCount(1234567)).toBe("1,234,567");
+  });
+
+  it("formats zero and small numbers plainly", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(42)).toBe("42");
+  });
+
+  it("falls back for non-finite or missing values", () => {
+    expect(formatCount(Number.NaN)).toBe("-");
+    expect(formatCount(Infinity)).toBe("-");
+    expect(formatCount(null)).toBe("-");
+    expect(formatCount(undefined)).toBe("-");
   });
 });

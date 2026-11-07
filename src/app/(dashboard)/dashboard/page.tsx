@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { Banknote, MessageSquare, Phone, ShoppingCart } from "lucide-react";
 
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import { KPI_GRID_CLASS, KpiGrid, KpiGridSkeleton } from "@/components/dashboard/kpi-grid";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireDashboardContext } from "@/lib/auth/dashboard-context";
 
 export const metadata: Metadata = { title: "Overview" };
 
-// Minimal placeholder: Task 22 replaces this with the real overview. No metrics are shown until they are real.
+// Reads the session (cookies) via requireDashboardContext, so this renders per request; the counts are
+// never cached. The header streams immediately and the live cards fill in behind a skeleton.
 export default async function DashboardPage() {
   const ctx = await requireDashboardContext();
   if (!ctx) return null;
@@ -14,24 +18,16 @@ export default async function DashboardPage() {
   const name = ctx.displayName ?? ctx.email ?? "there";
   return (
     <div>
-      <PageHeader
-        title={`Welcome, ${name}`}
-        description={`You are working in ${ctx.organizationName}. Your workspace is ready.`}
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2 className="text-base font-medium">Getting started</h2>
-          </CardTitle>
-          <CardDescription>
-            Your overview will summarise sales, conversations and stock here once there is real activity to show.
-            Until then, customers, products and inventory are the places to start.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Other sections in the sidebar are marked as coming soon and will appear in later releases.
-        </CardContent>
-      </Card>
+      <PageHeader title={`Welcome, ${name}`} description={`Here is where ${ctx.organizationName} stands today.`} />
+      <Suspense fallback={<KpiGridSkeleton />}>
+        <KpiGrid organizationId={ctx.organizationId} />
+      </Suspense>
+      <div className={`${KPI_GRID_CLASS} mt-4`}>
+        <KpiCard id="kpi-orders" title="Orders" icon={ShoppingCart} state={{ kind: "later", phase: 5 }} />
+        <KpiCard id="kpi-revenue" title="Revenue" icon={Banknote} state={{ kind: "later", phase: 5 }} />
+        <KpiCard id="kpi-conversations" title="Conversations" icon={MessageSquare} state={{ kind: "later", phase: 4 }} />
+        <KpiCard id="kpi-voice" title="Voice calls" icon={Phone} state={{ kind: "later", phase: 6 }} />
+      </div>
     </div>
   );
 }

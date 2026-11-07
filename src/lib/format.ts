@@ -1,5 +1,5 @@
 /**
- * Display formatting for money and dates. Locale and time zone are fixed (en-GB, Asia/Dhaka) so the
+ * Display formatting for money, counts and dates. Locale and time zone are fixed (en-GB, Asia/Dhaka) so the
  * server and every browser render the same text, whatever their own settings are.
  */
 
@@ -7,6 +7,7 @@ const TIME_ZONE = "Asia/Dhaka";
 const FALLBACK = "-";
 
 const moneyFormat = new Intl.NumberFormat("en-BD", { style: "currency", currency: "BDT" });
+const countFormat = new Intl.NumberFormat("en-GB");
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, dateStyle: "medium" });
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: TIME_ZONE,
@@ -19,6 +20,12 @@ const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
 export function formatMoneyMinor(minor: number | null | undefined): string {
   if (typeof minor !== "number" || !Number.isFinite(minor)) return FALLBACK;
   return moneyFormat.format(minor / 100);
+}
+
+/** A whole-number count with en-GB grouping (1,234). */
+export function formatCount(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return FALLBACK;
+  return countFormat.format(value);
 }
 
 function toDate(value: string | null | undefined): Date | null {
