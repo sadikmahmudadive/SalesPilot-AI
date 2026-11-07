@@ -1,23 +1,12 @@
-import { Compass } from "lucide-react";
+import { Brand } from "@/components/shared/logo";
 
-import { cn } from "@/lib/utils";
+export { Brand };
 
 const POINTS = [
   "Every customer conversation in one inbox",
   "Inventory and orders that stay in sync",
   "AI agents that handle the routine work",
 ];
-
-export function Brand({ className }: { className?: string }) {
-  return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-        <Compass className="size-4" aria-hidden="true" />
-      </span>
-      <span className="text-base font-semibold tracking-tight">SalesPilot AI</span>
-    </div>
-  );
-}
 
 /** Two-column auth layout: form on the left, a restrained brand panel on the right (hidden below lg). */
 export function AuthShell({ children }: { children: React.ReactNode }) {
