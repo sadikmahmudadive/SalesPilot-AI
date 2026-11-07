@@ -13,7 +13,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:unit": "vitest run --project unit",
     "test:int": "firebase emulators:exec --only firestore,auth --project demo-salespilot \"vitest run --project integration\"",
-    "emu": "firebase emulators:start --only firestore,auth --project demo-salespilot"
+    "emu": "firebase emulators:start --only firestore,auth --project demo-salespilot",
+    "check:bundle": "node scripts/check-bundle-secrets.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.3",
