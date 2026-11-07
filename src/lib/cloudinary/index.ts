@@ -10,9 +10,15 @@
  *                       flip `overwrite`, or add `folder` / `eager` / `notification_url` /
  *                       transformations. REPLAY: a signature is valid for about an hour and can be
  *                       posted repeatedly, but with `overwrite` off every post can only target
- *                       that one public id, so one signature yields at most one asset (a second
- *                       post returns the existing asset instead of creating another). Quota
- *                       exhaustion therefore needs one sign request (rate limited) per asset.
+ *                       that one public id, so one signature yields at most one asset PER RESOURCE
+ *                       TYPE (a replayed image post returns the existing asset instead of
+ *                       creating another). Residue: the upload URL here is `/image/upload`, but
+ *                       Cloudinary also accepts the same signed params at `/raw/upload` and
+ *                       `/video/upload`, so a replay could create one extra raw or video asset
+ *                       at the same public id; `confirmUpload` only accepts images, so such an
+ *                       asset can never be confirmed or referenced. Quota exhaustion therefore
+ *                       needs one sign request (rate limited) per asset, at most three assets
+ *                       per request.
  *   2. The browser posts `params`, `api_key`, `signature` and `file` to `uploadUrl`.
  *   3. `confirmUpload` - the server fetches the asset through the Admin API and verifies it (size,
  *                       format, resource type, URL host and cloud). Cloudinary has no signed size

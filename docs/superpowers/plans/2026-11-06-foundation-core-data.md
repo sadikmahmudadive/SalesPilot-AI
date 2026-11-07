@@ -4,7 +4,7 @@
 
 **Goal:** A secure, organization-scoped Next.js app where a user can register, log in, manage customers and products, adjust stock transactionally, and upload images to Cloudinary, with tenant isolation proven by tests.
 
-**Architecture:** Single npm package, Next.js App Router. Layers flow `app/ → services/ → repositories/ → lib/`; `schemas/` (Zod) is shared by API and forms; `config/env.ts` is the only reader of `process.env`. Browser sign-in uses Firebase Auth; the server exchanges the ID token for an httpOnly session cookie and does every write through the Admin SDK. Firestore rules give org members read-only client access.
+**Architecture:** Single npm package, Next.js App Router. Layers flow `app/ → services/ → repositories/ → lib/`; `schemas/` (Zod) is shared by API and forms; `src/config/env.ts` and `src/config/env.client.ts` are the only readers of `process.env`. Browser sign-in uses Firebase Auth; the server exchanges the ID token for an httpOnly session cookie and does every write through the Admin SDK. Firestore rules give org members read-only client access.
 
 **Tech Stack:** Next.js (latest stable), React, TypeScript strict, Tailwind, shadcn/ui, Lucide, React Hook Form, Zod, TanStack Query, Firebase Auth + Firestore + Admin SDK, Cloudinary SDK, Vitest, `@firebase/rules-unit-testing`, Firebase emulators.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - npm only (no pnpm/yarn); single package; `src/` layout; TypeScript `strict` plus `noUncheckedIndexedAccess`.
-- `process.env` is read only in `src/config/env.ts`. Server-only modules import `server-only`. No secret in any `NEXT_PUBLIC_*` variable or client bundle.
+- `process.env` is read only in `src/config/env.ts` and `src/config/env.client.ts`. Server-only modules import `server-only`. No secret in any `NEXT_PUBLIC_*` variable or client bundle.
 - Roles: `owner | admin | agent | viewer`. Money = integer minor units, currency `BDT`.
 - Every business doc has `organizationId`. All client writes to Firestore are denied by rules; all writes go through route handlers using the Admin SDK with Zod validation, permission check, rate limit, audit log.
 - Typed errors map to HTTP: Validation 400, Unauthenticated 401, Forbidden 403, NotFound 404, Conflict 409, InsufficientStock 409, RateLimited 429, IntegrationNotConfigured 503. Error responses are `{ error: { code, message, requestId } }` with no stack or secret.

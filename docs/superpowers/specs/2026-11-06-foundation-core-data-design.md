@@ -11,7 +11,7 @@ Assumptions (correct me): single npm package; roles `owner|admin|agent|viewer`; 
 
 ## 2. Architecture
 
-Layers, one direction of dependency: `app/` (routes, UI) → `services/` (business rules) → `repositories/` (Firestore access) → `lib/` (SDK wrappers: firebase, cloudinary, security). `schemas/` (Zod) is shared by API handlers and forms. `config/env.ts` is the only place `process.env` is read.
+Layers, one direction of dependency: `app/` (routes, UI) → `services/` (business rules) → `repositories/` (Firestore access) → `lib/` (SDK wrappers: firebase, cloudinary, security). `schemas/` (Zod) is shared by API handlers and forms. `src/config/env.ts` (server) and `src/config/env.client.ts` (public `NEXT_PUBLIC_*`) are the only places `process.env` is read.
 
 - **Reads vs writes.** Server Components and route handlers use the Admin SDK. The browser may read org-scoped lists directly under Firestore rules (for realtime later). All writes go through route handlers or Server Actions: Zod validation, permission check, rate limit, audit log.
 - **Auth.** Client signs in with Firebase Auth, posts the ID token to `/api/auth/session`, the server mints an httpOnly session cookie. `middleware.ts` only checks cookie presence for redirects; `getCurrentUser()` verifies the cookie with Admin SDK on every protected server call. Role and org come from the `organizationMembers` doc (source of truth), not from client-supplied data.
@@ -21,7 +21,7 @@ Layers, one direction of dependency: `app/` (routes, UI) → `services/` (busine
 
 | Unit | Purpose | Depends on |
 |---|---|---|
-| `config/env.ts` | Zod-validate client/server env; `isConfigured(integration)` | zod |
+| `config/env.ts`, `config/env.client.ts` | Zod-validate server env (server-only, `isConfigured(integration)`) and public env | zod |
 | `lib/firebase/{admin,client}` | Lazy SDK init, emulator-aware | env |
 | `lib/security/permissions` | Role → permission matrix, `can()` | — |
 | `lib/security/{rate-limit,audit}` | Firestore-backed limiter (swappable); audit writer | admin |
@@ -66,5 +66,5 @@ AI/RAG/tool calling, WhatsApp, inbox, orders, payments, courier, voice, follow-u
 
 ## 8. Open questions
 
-1. Reuse Firebase project `salespilot-ai-9b1cd` (asia-southeast1)
+1. Reuse Firebase project `salespilot-ai-9b1cd` (asia-southeast1), or create a new project for production? Development uses the emulators until this is decided.
 2. Cloudinary credentials will be provided by the user directly in `.env.local`.
