@@ -42,7 +42,9 @@ describe("NAV_ITEMS", () => {
   });
 
   it("assigns the planned phases", () => {
-    const phases = Object.fromEntries(NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]));
+    const phases = Object.fromEntries(
+      NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]),
+    );
     expect(phases).toEqual({
       "/inbox": 4,
       "/agents": 3,
@@ -55,7 +57,9 @@ describe("NAV_ITEMS", () => {
   });
 
   it("gates customers, products and inventory on their read permissions", () => {
-    const perms = Object.fromEntries(NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]));
+    const perms = Object.fromEntries(
+      NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]),
+    );
     expect(perms).toEqual({
       "/customers": "customers:read",
       "/products": "products:read",
@@ -67,7 +71,8 @@ describe("NAV_ITEMS", () => {
 describe("visibleNavItems", () => {
   it("shows a viewer the built pages plus the phase placeholders", () => {
     const labels = visibleNavItems("viewer").map((i) => i.label);
-    for (const l of ["Overview", "Customers", "Products", "Inventory", "Settings"]) expect(labels).toContain(l);
+    for (const l of ["Overview", "Customers", "Products", "Inventory", "Settings"])
+      expect(labels).toContain(l);
     expect(labels).toHaveLength(12);
   });
 
@@ -84,8 +89,16 @@ describe("visibleNavItems", () => {
     ];
     expect(visibleNavItems("viewer", items).map((i) => i.label)).toEqual(["Open", "Read"]);
     expect(visibleNavItems("agent", items).map((i) => i.label)).toEqual(["Open", "Read"]);
-    expect(visibleNavItems("admin", items).map((i) => i.label)).toEqual(["Open", "Admin only", "Read"]);
-    expect(visibleNavItems("owner", items).map((i) => i.label)).toEqual(["Open", "Admin only", "Read"]);
+    expect(visibleNavItems("admin", items).map((i) => i.label)).toEqual([
+      "Open",
+      "Admin only",
+      "Read",
+    ]);
+    expect(visibleNavItems("owner", items).map((i) => i.label)).toEqual([
+      "Open",
+      "Admin only",
+      "Read",
+    ]);
   });
 
   it("fails closed for an unknown role", () => {

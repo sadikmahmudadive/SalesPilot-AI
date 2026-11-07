@@ -57,9 +57,12 @@ describe("prepareCustomerBody", () => {
   });
 
   it("omits preferences when both parts are empty and keeps them otherwise", () => {
-    expect(prepareCustomerBody({ ...EMPTY_FORM_VALUES, preferences: { notes: "  " } }).preferences).toBeUndefined();
     expect(
-      prepareCustomerBody({ ...EMPTY_FORM_VALUES, preferences: { language: "en", notes: " hi " } }).preferences,
+      prepareCustomerBody({ ...EMPTY_FORM_VALUES, preferences: { notes: "  " } }).preferences,
+    ).toBeUndefined();
+    expect(
+      prepareCustomerBody({ ...EMPTY_FORM_VALUES, preferences: { language: "en", notes: " hi " } })
+        .preferences,
     ).toEqual({ language: "en", notes: "hi" });
   });
 
@@ -173,7 +176,9 @@ describe("mapApiError", () => {
 
   it("maps 409 CONFLICT onto the phone field", () => {
     const r = mapApiError(api({ status: 409, code: "CONFLICT", message: "dup" }));
-    expect(r.fields).toEqual([{ name: "phone", message: "A customer with this phone number already exists" }]);
+    expect(r.fields).toEqual([
+      { name: "phone", message: "A customer with this phone number already exists" },
+    ]);
     expect(r.formError).toBeNull();
   });
 
@@ -216,7 +221,9 @@ describe("mapApiError", () => {
   });
 
   it("gives a friendly message for 401 and 403", () => {
-    expect(mapApiError(api({ status: 401, code: "UNAUTHENTICATED" })).formError).toMatch(/sign in/i);
+    expect(mapApiError(api({ status: 401, code: "UNAUTHENTICATED" })).formError).toMatch(
+      /sign in/i,
+    );
     expect(mapApiError(api({ status: 403, code: "FORBIDDEN" })).formError).toMatch(/permission/i);
   });
 });
@@ -261,7 +268,9 @@ describe("tagsErrorMessage", () => {
   });
 
   it("reads a root message", () => {
-    expect(tagsErrorMessage({ root: { message: "Tags must be a list" } })).toBe("Tags must be a list");
+    expect(tagsErrorMessage({ root: { message: "Tags must be a list" } })).toBe(
+      "Tags must be a list",
+    );
   });
 
   it("surfaces the first nested per-item error (errors.tags[2])", () => {

@@ -39,7 +39,10 @@ function invalid(message: string): ValidationError {
 }
 
 export function encodeCursor(cursor: Cursor): string {
-  const token = Buffer.from(JSON.stringify({ t: cursor.t, v: cursor.v, id: cursor.id }), "utf8").toString("base64url");
+  const token = Buffer.from(
+    JSON.stringify({ t: cursor.t, v: cursor.v, id: cursor.id }),
+    "utf8",
+  ).toString("base64url");
   // Oversize here is a data/config fault (a stored key too large), not a caller error:
   // plain Error with a generic message, never a ValidationError.
   if (token.length > MAX_CURSOR_LENGTH) throw new Error("Cursor too large to encode");
@@ -48,7 +51,8 @@ export function encodeCursor(cursor: Cursor): string {
 
 export function decodeCursor(token: unknown): Cursor {
   if (typeof token !== "string") throw invalid("Cursor must be a string");
-  if (token.length === 0 || token.length > MAX_CURSOR_LENGTH) throw invalid("Cursor has an invalid length");
+  if (token.length === 0 || token.length > MAX_CURSOR_LENGTH)
+    throw invalid("Cursor has an invalid length");
   // Buffer's base64url decoder silently skips illegal characters, so check the alphabet.
   if (!BASE64URL.test(token)) throw invalid("Cursor is malformed");
 
@@ -58,7 +62,8 @@ export function decodeCursor(token: unknown): Cursor {
   } catch {
     throw invalid("Cursor is malformed");
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw invalid("Cursor is malformed");
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    throw invalid("Cursor is malformed");
 
   const keys = Object.keys(parsed);
   if (keys.length !== 3 || !keys.includes("t") || !keys.includes("v") || !keys.includes("id")) {

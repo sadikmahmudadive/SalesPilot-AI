@@ -4,7 +4,11 @@
  */
 import type { FieldErrors, Resolver, UseFormReturn } from "react-hook-form";
 
-import { prepareProductBody, type FormIssue, type ProductFormValues } from "@/components/products/product-form-model";
+import {
+  prepareProductBody,
+  type FormIssue,
+  type ProductFormValues,
+} from "@/components/products/product-form-model";
 import type { ProductCreateBody } from "@/hooks/use-products";
 import type { ApiError } from "@/lib/api/client";
 import { mapApiErrorWith, type MappedApiError } from "@/lib/api/map-error";
@@ -44,7 +48,11 @@ function toFormField(path: readonly (string | number)[]): string | null {
 }
 
 /** Maps a specification problem to its row when the offending key is known. */
-function specRowField(key: string | undefined, values: ProductFormValues, onValue: boolean): string {
+function specRowField(
+  key: string | undefined,
+  values: ProductFormValues,
+  onValue: boolean,
+): string {
   if (key === undefined) return "specs";
   const index = values.specs.findIndex((row) => row.key.trim() === key);
   if (index < 0) return "specs";
@@ -62,7 +70,10 @@ interface ZodLikeIssue {
  * Validates what the form would send. Returns the body when there are no issues; otherwise the
  * issues, each tied to a form field (conversion problems first, then schema problems).
  */
-export function validateProductForm(values: ProductFormValues): { body: ProductCreateBody | null; issues: FormIssue[] } {
+export function validateProductForm(values: ProductFormValues): {
+  body: ProductCreateBody | null;
+  issues: FormIssue[];
+} {
   const { body, issues } = prepareProductBody(values);
   const taken = new Set(issues.map((i) => i.name));
   const regularBroken = taken.has("regularPrice");

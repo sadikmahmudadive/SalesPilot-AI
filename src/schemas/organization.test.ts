@@ -4,7 +4,9 @@ import { registerOrganizationSchema } from "./organization";
 
 describe("registerOrganizationSchema", () => {
   it("trims and accepts valid input", () => {
-    expect(registerOrganizationSchema.parse({ organizationName: "  Acme Co  ", displayName: " Jo " })).toEqual({
+    expect(
+      registerOrganizationSchema.parse({ organizationName: "  Acme Co  ", displayName: " Jo " }),
+    ).toEqual({
       organizationName: "Acme Co",
       displayName: "Jo",
     });

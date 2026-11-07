@@ -26,7 +26,8 @@ vi.mock("@/lib/auth/session", () => ({
 // Admin API and uploader are mocked (nothing is sent to Cloudinary); signing stays real.
 vi.mock("cloudinary", async (importOriginal) => {
   const actual = await importOriginal<typeof import("cloudinary")>();
-  const real = (actual.v2 ?? (actual as unknown as { default: typeof actual }).default.v2) as typeof actual.v2;
+  const real = (actual.v2 ??
+    (actual as unknown as { default: typeof actual }).default.v2) as typeof actual.v2;
   return {
     v2: {
       config: vi.fn(real.config),
@@ -45,7 +46,8 @@ const destroy = vi.mocked(cloudinary.uploader.destroy);
 const signSpy = vi.mocked(cloudinary.utils.api_sign_request);
 
 /** A generated-form public id (what sign returns): organizations/{org}/{kind}/{24 hex}. */
-const pid = (org: string, kind = "products") => `organizations/${org}/${kind}/${randomBytes(12).toString("hex")}`;
+const pid = (org: string, kind = "products") =>
+  `organizations/${org}/${kind}/${randomBytes(12).toString("hex")}`;
 /** The error shape the real SDK rejects with (cloudinary/lib/api_client/execute_request.js). */
 const sdkError = (httpCode: number, message = "Cloudinary says no") => ({
   request_options: { method: "GET", host: "api.cloudinary.com", auth: `${KEY}:${SECRET}` },
@@ -63,7 +65,10 @@ async function seed(role: Role, organizationId = `org-${randomUUID()}`) {
     .collection("users")
     .doc(uid)
     .set({ uid, email: `${uid}@x.com`, defaultOrganizationId: organizationId });
-  await db.collection("organizationMembers").doc(`${organizationId}_${uid}`).set({ organizationId, uid, role });
+  await db
+    .collection("organizationMembers")
+    .doc(`${organizationId}_${uid}`)
+    .set({ organizationId, uid, role });
   orgs.add(organizationId);
   uids.push(uid);
   return { uid, organizationId };
@@ -73,16 +78,20 @@ const signIn = (uid: string) => {
 };
 
 function send(url: string, body?: unknown, headers: Record<string, string> = {}): Request {
-  const raw = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
+  const raw =
+    body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
   const h = new Headers(body === undefined ? {} : { "content-type": "application/json" });
   for (const [k, v] of Object.entries(headers)) h.set(k, v);
   if (raw !== undefined) h.set("content-length", String(Buffer.byteLength(raw)));
   return new Request(url, { method: "POST", headers: h, body: raw });
 }
 const BASE = "http://localhost/api/uploads";
-const sign = (body: unknown, headers?: Record<string, string>) => SIGN(send(`${BASE}/sign`, body, headers));
-const confirm = (body: unknown, headers?: Record<string, string>) => CONFIRM(send(`${BASE}/confirm`, body, headers));
-const del = (body: unknown, headers?: Record<string, string>) => DELETE(send(`${BASE}/delete`, body, headers));
+const sign = (body: unknown, headers?: Record<string, string>) =>
+  SIGN(send(`${BASE}/sign`, body, headers));
+const confirm = (body: unknown, headers?: Record<string, string>) =>
+  CONFIRM(send(`${BASE}/confirm`, body, headers));
+const del = (body: unknown, headers?: Record<string, string>) =>
+  DELETE(send(`${BASE}/delete`, body, headers));
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const json = async (res: Response) => (await res.json()) as Json;
@@ -157,7 +166,9 @@ const signBody = { kind: "products", contentType: "image/png", bytes: 1000 };
 describe("authentication, CSRF and content type", () => {
   it("401 without a session on all three routes", async () => {
     expect((await sign(signBody)).status).toBe(401);
-    expect((await confirm({ kind: "products", publicId: "organizations/o/products/x" })).status).toBe(401);
+    expect(
+      (await confirm({ kind: "products", publicId: "organizations/o/products/x" })).status,
+    ).toBe(401);
     expect((await del({ publicId: "organizations/o/products/x" })).status).toBe(401);
   });
 
@@ -170,7 +181,9 @@ describe("authentication, CSRF and content type", () => {
     const a = await seed("owner");
     signIn(a.uid);
     expect((await sign(signBody, { origin: "https://evil.example" })).status).toBe(403);
-    expect((await sign(JSON.stringify(signBody), { "content-type": "text/plain" })).status).toBe(415);
+    expect((await sign(JSON.stringify(signBody), { "content-type": "text/plain" })).status).toBe(
+      415,
+    );
     expect(signSpy).not.toHaveBeenCalled();
   });
 });
@@ -190,7 +203,9 @@ describe("POST /api/uploads/sign", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const out = await json(res);
-    expect(out.publicId).toMatch(new RegExp(`^organizations/${a.organizationId}/products/[a-f0-9]{24}$`));
+    expect(out.publicId).toMatch(
+      new RegExp(`^organizations/${a.organizationId}/products/[a-f0-9]{24}$`),
+    );
     expect(out.params).toEqual({
       public_id: out.publicId,
       timestamp: expect.stringMatching(/^\d{10}$/),
@@ -216,7 +231,9 @@ describe("POST /api/uploads/sign", () => {
     expect(first.publicId).not.toBe(second.publicId);
     expect(first.signature).not.toBe(second.signature);
     expect(first.publicId.startsWith(`organizations/${a.organizationId}/products/`)).toBe(true);
-    expect(customers.publicId.startsWith(`organizations/${a.organizationId}/customers/`)).toBe(true);
+    expect(customers.publicId.startsWith(`organizations/${a.organizationId}/customers/`)).toBe(
+      true,
+    );
   });
 
   it("signature changes when the organization changes", async () => {
@@ -338,15 +355,24 @@ describe("POST /api/uploads/confirm", () => {
     signIn(a.uid);
     expect((await confirm({ kind: "products", publicId: pid("other") })).status).toBe(403);
     expect(
-      (await confirm({ kind: "products", publicId: `organizations/${a.organizationId}/products/plain` })).status,
+      (
+        await confirm({
+          kind: "products",
+          publicId: `organizations/${a.organizationId}/products/plain`,
+        })
+      ).status,
     ).toBe(403);
     expect(
       (await confirm({ kind: "products", publicId: `${pid(a.organizationId)}.jpg` })).status,
     ).toBe(403);
-    expect((await confirm({ kind: "products", publicId: pid(a.organizationId, "customers") })).status).toBe(403);
+    expect(
+      (await confirm({ kind: "products", publicId: pid(a.organizationId, "customers") })).status,
+    ).toBe(403);
     const agent = await seed("agent");
     signIn(agent.uid);
-    expect((await confirm({ kind: "products", publicId: pid(agent.organizationId) })).status).toBe(403);
+    expect((await confirm({ kind: "products", publicId: pid(agent.organizationId) })).status).toBe(
+      403,
+    );
     expect(resource).not.toHaveBeenCalled();
   });
 
@@ -431,17 +457,25 @@ describe("confirm quotas (account-wide Admin API protection)", () => {
     const uid = `uid-${randomUUID()}`;
     const now = Date.UTC(2031, 0, 1, 0, 10);
     for (let i = 0; i < 120; i++) await assertConfirmQuota(uid, `org-${randomUUID()}`, now);
-    await expect(assertConfirmQuota(uid, `org-${randomUUID()}`, now)).rejects.toBeInstanceOf(RateLimitedError);
+    await expect(assertConfirmQuota(uid, `org-${randomUUID()}`, now)).rejects.toBeInstanceOf(
+      RateLimitedError,
+    );
     // The next hour is a fresh window.
-    await expect(assertConfirmQuota(uid, `org-${randomUUID()}`, now + 3_600_000)).resolves.toBeUndefined();
+    await expect(
+      assertConfirmQuota(uid, `org-${randomUUID()}`, now + 3_600_000),
+    ).resolves.toBeUndefined();
   }, 60_000);
 
   it("the 301st confirm in an hour for one organization is 429, whoever sends it", async () => {
     const org = `org-${randomUUID()}`;
     const now = Date.UTC(2031, 0, 1, 0, 10);
     for (let i = 0; i < 300; i++) await assertConfirmQuota(`uid-${randomUUID()}`, org, now);
-    await expect(assertConfirmQuota(`uid-${randomUUID()}`, org, now)).rejects.toBeInstanceOf(RateLimitedError);
-    await expect(assertConfirmQuota(`uid-${randomUUID()}`, `org-${randomUUID()}`, now)).resolves.toBeUndefined();
+    await expect(assertConfirmQuota(`uid-${randomUUID()}`, org, now)).rejects.toBeInstanceOf(
+      RateLimitedError,
+    );
+    await expect(
+      assertConfirmQuota(`uid-${randomUUID()}`, `org-${randomUUID()}`, now),
+    ).resolves.toBeUndefined();
   }, 60_000);
 
   it("the route enforces the hourly user quota before any SDK call", async () => {
@@ -482,7 +516,9 @@ describe("confirm quotas (account-wide Admin API protection)", () => {
     signIn(a.uid);
     for (let i = 0; i < 3; i++) {
       expect((await confirm({ kind: "products", publicId: pid("other") })).status).toBe(403);
-      expect((await confirm({ kind: "knowledge", publicId: pid(a.organizationId, "knowledge") })).status).toBe(400);
+      expect(
+        (await confirm({ kind: "knowledge", publicId: pid(a.organizationId, "knowledge") })).status,
+      ).toBe(400);
     }
     const id = pid(a.organizationId);
     resource.mockResolvedValue(asset(id));

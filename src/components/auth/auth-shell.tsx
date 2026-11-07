@@ -43,7 +43,10 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           <ul className="space-y-3 text-sm text-muted-foreground">
             {POINTS.map((point) => (
               <li key={point} className="flex items-start gap-3">
-                <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-foreground/40" />
+                <span
+                  aria-hidden="true"
+                  className="mt-2 size-1.5 shrink-0 rounded-full bg-foreground/40"
+                />
                 {point}
               </li>
             ))}

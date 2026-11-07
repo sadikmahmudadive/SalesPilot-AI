@@ -97,7 +97,9 @@ describe("checkRateLimit input validation", () => {
 
   it.each(cases)("rejects %s without writing", async (_label, field, override) => {
     const key = newKey("invalid");
-    const err = await checkRateLimit(key, { ...opts, ...override }, Date.now()).catch((e: unknown) => e);
+    const err = await checkRateLimit(key, { ...opts, ...override }, Date.now()).catch(
+      (e: unknown) => e,
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(JSON.stringify((err as ValidationError).details)).toContain(`opts.${field}`);
     expect((await docsFor(key)).empty).toBe(true);

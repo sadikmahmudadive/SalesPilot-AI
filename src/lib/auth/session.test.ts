@@ -43,9 +43,12 @@ describe("assertRecentAuth", () => {
     expect(() => assertRecentAuth(NOW / 1000 - 301, NOW)).toThrow(UnauthenticatedError);
   });
 
-  it.each([undefined, null, "123", NaN, Infinity])("rejects a missing or invalid auth_time (%s)", (v) => {
-    expect(() => assertRecentAuth(v, NOW)).toThrow(UnauthenticatedError);
-  });
+  it.each([undefined, null, "123", NaN, Infinity])(
+    "rejects a missing or invalid auth_time (%s)",
+    (v) => {
+      expect(() => assertRecentAuth(v, NOW)).toThrow(UnauthenticatedError);
+    },
+  );
 
   it("rejects an auth_time in the future beyond clock skew", () => {
     expect(() => assertRecentAuth(NOW / 1000 + 3600, NOW)).toThrow(UnauthenticatedError);
@@ -60,7 +63,9 @@ describe("createSessionCookie", () => {
       auth.createSessionCookie.mockResolvedValue("cookie-value");
       const out = await createSessionCookie("id-token");
       expect(auth.verifyIdToken).toHaveBeenCalledWith("id-token", true);
-      expect(auth.createSessionCookie).toHaveBeenCalledWith("id-token", { expiresIn: 5 * 86_400_000 });
+      expect(auth.createSessionCookie).toHaveBeenCalledWith("id-token", {
+        expiresIn: 5 * 86_400_000,
+      });
       expect(out).toEqual({ value: "cookie-value", maxAgeSec: 5 * 86_400 });
     } finally {
       vi.useRealTimers();
@@ -93,7 +98,9 @@ describe("createSessionCookie", () => {
   });
 
   it("maps verifyIdToken failures to UnauthenticatedError (never a raw SDK error)", async () => {
-    auth.verifyIdToken.mockRejectedValue(Object.assign(new Error("boom: secret"), { code: "auth/argument-error" }));
+    auth.verifyIdToken.mockRejectedValue(
+      Object.assign(new Error("boom: secret"), { code: "auth/argument-error" }),
+    );
     const err = await createSessionCookie("garbage").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnauthenticatedError);
     expect((err as Error).message).not.toContain("secret");
@@ -112,7 +119,9 @@ describe("createSessionCookie", () => {
   });
 
   it.each([undefined, null, "", 42])("rejects a non-string or empty token (%s)", async (v) => {
-    await expect(createSessionCookie(v as unknown as string)).rejects.toBeInstanceOf(UnauthenticatedError);
+    await expect(createSessionCookie(v as unknown as string)).rejects.toBeInstanceOf(
+      UnauthenticatedError,
+    );
     expect(auth.verifyIdToken).not.toHaveBeenCalled();
   });
 });
@@ -173,13 +182,26 @@ describe("cookie serialization", () => {
 
   it("sets exactly Path=/, Max-Age, HttpOnly and SameSite=Lax (no Secure in test)", () => {
     const attrs = serializeSessionCookie("abc.def", 432000).split("; ");
-    expect(attrs).toEqual(["__session=abc.def", "Path=/", "Max-Age=432000", "HttpOnly", "SameSite=Lax"]);
+    expect(attrs).toEqual([
+      "__session=abc.def",
+      "Path=/",
+      "Max-Age=432000",
+      "HttpOnly",
+      "SameSite=Lax",
+    ]);
   });
 
   it("adds exactly one Secure attribute in production", () => {
     envState.NODE_ENV = "production";
     const attrs = serializeSessionCookie("abc.def", 432000).split("; ");
-    expect(attrs).toEqual(["__session=abc.def", "Path=/", "Max-Age=432000", "HttpOnly", "SameSite=Lax", "Secure"]);
+    expect(attrs).toEqual([
+      "__session=abc.def",
+      "Path=/",
+      "Max-Age=432000",
+      "HttpOnly",
+      "SameSite=Lax",
+      "Secure",
+    ]);
   });
 
   it("omits Secure in development and test", () => {

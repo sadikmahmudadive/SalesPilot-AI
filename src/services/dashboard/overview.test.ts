@@ -26,7 +26,10 @@ describe("metricQueries", () => {
 
   it("defines the four documented queries", () => {
     const q = metricQueries(ORG);
-    expect(q.customers).toEqual({ collection: "customers", where: [["organizationId", "==", ORG]] });
+    expect(q.customers).toEqual({
+      collection: "customers",
+      where: [["organizationId", "==", ORG]],
+    });
     expect(q.leads).toEqual({
       collection: "customers",
       where: [
@@ -51,7 +54,9 @@ describe("metricQueries", () => {
   });
 
   it("uses the same low-stock predicate as the inventory list", () => {
-    expect(metricQueries(ORG).lowStock.where.slice(1)).toEqual(buildListPlan({ lowStock: true }).where);
+    expect(metricQueries(ORG).lowStock.where.slice(1)).toEqual(
+      buildListPlan({ lowStock: true }).where,
+    );
   });
 });
 

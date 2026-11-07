@@ -34,7 +34,10 @@ afterAll(async () => {
   await adminDb().recursiveDelete(adminDb().collection(COLLECTION));
 });
 
-async function expectRejects<E extends Error>(promise: Promise<unknown>, type: new (...args: never[]) => E): Promise<E> {
+async function expectRejects<E extends Error>(
+  promise: Promise<unknown>,
+  type: new (...args: never[]) => E,
+): Promise<E> {
   try {
     await promise;
   } catch (error) {
@@ -47,7 +50,11 @@ async function expectRejects<E extends Error>(promise: Promise<unknown>, type: n
 async function seed(orgId: string, count: number, rankOf: (i: number) => number = (i) => i) {
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
-    const item = await repo.create(orgId, { name: `n${i}`, rank: rankOf(i), status: i % 2 === 0 ? "open" : "closed" } as NewItem);
+    const item = await repo.create(orgId, {
+      name: `n${i}`,
+      rank: rankOf(i),
+      status: i % 2 === 0 ? "open" : "closed",
+    } as NewItem);
     ids.push(item.id);
   }
   return ids;
@@ -107,9 +114,15 @@ describe("create / get", () => {
     const id = `fixed-${randomUUID()}`;
     const created = await repo.create(orgId, { name: "a", rank: 1, status: "open" } as NewItem, id);
     expect(created.id).toBe(id);
-    await expectRejects(repo.create(orgId, { name: "b", rank: 2, status: "open" } as NewItem, id), ConflictError);
+    await expectRejects(
+      repo.create(orgId, { name: "b", rank: 2, status: "open" } as NewItem, id),
+      ConflictError,
+    );
     // A different org cannot take over the id either: still a conflict, original untouched.
-    await expectRejects(repo.create(newOrg(), { name: "c", rank: 3, status: "open" } as NewItem, id), ConflictError);
+    await expectRejects(
+      repo.create(newOrg(), { name: "c", rank: 3, status: "open" } as NewItem, id),
+      ConflictError,
+    );
     expect((await repo.get(orgId, id))?.name).toBe("a");
   });
 
@@ -155,14 +168,21 @@ describe("update / remove", () => {
     expect(updated.organizationId).toBe(orgId);
     expect(updated.id).toBe(created.id);
     expect(updated.createdAt).toBe(created.createdAt);
-    expect(new Date(updated.updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(created.updatedAt).getTime());
+    expect(new Date(updated.updatedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(created.updatedAt).getTime(),
+    );
     expect(await repo.get("org-evil", created.id)).toBeNull();
     expect((await repo.get(orgId, created.id))?.name).toBe("b");
   });
 
   it("treats dotted patch keys as literal field names", async () => {
     const orgId = newOrg();
-    const created = await repo.create(orgId, { name: "a", rank: 1, status: "open", meta: { keep: 1 } } as NewItem);
+    const created = await repo.create(orgId, {
+      name: "a",
+      rank: 1,
+      status: "open",
+      meta: { keep: 1 },
+    } as NewItem);
     await repo.update(orgId, created.id, { "meta.x": 5 } as Partial<Item>);
     const raw = (await adminDb().collection(COLLECTION).doc(created.id).get()).data()!;
     expect(raw["meta.x"]).toBe(5);
@@ -194,8 +214,14 @@ describe("id validation", () => {
     for (const bad of ["", "a/b", "..", ".", "x".repeat(1501)]) {
       await expectRejects(repo.get(bad, "id"), ValidationError);
       await expectRejects(repo.get(orgId, bad), ValidationError);
-      await expectRejects(repo.create(bad, { name: "a", rank: 1, status: "open" } as NewItem), ValidationError);
-      await expectRejects(repo.create(orgId, { name: "a", rank: 1, status: "open" } as NewItem, bad), ValidationError);
+      await expectRejects(
+        repo.create(bad, { name: "a", rank: 1, status: "open" } as NewItem),
+        ValidationError,
+      );
+      await expectRejects(
+        repo.create(orgId, { name: "a", rank: 1, status: "open" } as NewItem, bad),
+        ValidationError,
+      );
       await expectRejects(repo.update(orgId, bad, {}), ValidationError);
       await expectRejects(repo.update(bad, "id", {}), ValidationError);
       await expectRejects(repo.remove(orgId, bad), ValidationError);
@@ -215,7 +241,11 @@ describe("list", () => {
     await seed(a, 4);
     await seed(b, 5);
     await seed(c, 6);
-    for (const [org, n] of [[a, 4], [b, 5], [c, 6]] as const) {
+    for (const [org, n] of [
+      [a, 4],
+      [b, 5],
+      [c, 6],
+    ] as const) {
       const res = await repo.list(org, { orderBy: ["rank", "asc"], limit: 100 });
       expect(res.items).toHaveLength(n);
       expect(res.items.every((i) => i.organizationId === org)).toBe(true);
@@ -263,7 +293,8 @@ describe("list", () => {
     const flat = pages.flat();
     expect(flat).toHaveLength(25);
     expect(new Set(flat.map((i) => i.id)).size).toBe(25);
-    for (let i = 1; i < flat.length; i++) expect(flat[i - 1]!.rank).toBeGreaterThanOrEqual(flat[i]!.rank);
+    for (let i = 1; i < flat.length; i++)
+      expect(flat[i - 1]!.rank).toBeGreaterThanOrEqual(flat[i]!.rank);
   });
 
   it("paginates timestamps that differ by microseconds or are identical (nanosecond cursors + id tie-breaker)", async () => {
@@ -311,7 +342,11 @@ describe("list", () => {
     ];
     for (const v of forged) {
       const err = await expectRejects(
-        repo.list(orgId, { orderBy: ["createdAt", "asc"], limit: 5, cursor: encodeCursor({ t: "ts", v, id: "x" }) }),
+        repo.list(orgId, {
+          orderBy: ["createdAt", "asc"],
+          limit: 5,
+          cursor: encodeCursor({ t: "ts", v, id: "x" }),
+        }),
         ValidationError,
       );
       expect(JSON.stringify(err.details)).not.toContain(v);
@@ -335,7 +370,9 @@ describe("list", () => {
     for (const extra of cases) {
       const orgId = newOrg();
       for (let i = 0; i < 2; i++) {
-        await col.doc(`bad-${randomUUID()}`).set({ organizationId: orgId, rank: i, status: "open", ...extra });
+        await col
+          .doc(`bad-${randomUUID()}`)
+          .set({ organizationId: orgId, rank: i, status: "open", ...extra });
       }
       let thrown: unknown;
       try {
@@ -354,7 +391,9 @@ describe("list", () => {
     const orgId = newOrg();
     const col = adminDb().collection(COLLECTION);
     for (let i = 0; i < 3; i++) {
-      await col.doc(`long-${randomUUID()}`).set({ organizationId: orgId, rank: i, status: "open", name: `${"é".repeat(255)}${i}` });
+      await col
+        .doc(`long-${randomUUID()}`)
+        .set({ organizationId: orgId, rank: i, status: "open", name: `${"é".repeat(255)}${i}` });
     }
     const { pages } = await pageAll(orgId, { orderBy: ["name", "asc"], limit: 1 });
     expect(pages.map((p) => p.length)).toEqual([1, 1, 1]);
@@ -364,7 +403,11 @@ describe("list", () => {
     const orgId = newOrg();
     await seed(orgId, 25); // even index => open (13), odd => closed (12)
     await seed(newOrg(), 10);
-    const { pages } = await pageAll(orgId, { where: [["status", "==", "open"]], orderBy: ["rank", "asc"], limit: 5 });
+    const { pages } = await pageAll(orgId, {
+      where: [["status", "==", "open"]],
+      orderBy: ["rank", "asc"],
+      limit: 5,
+    });
     const flat = pages.flat();
     expect(flat).toHaveLength(13);
     expect(flat.every((i) => i.status === "open" && i.organizationId === orgId)).toBe(true);
@@ -374,16 +417,29 @@ describe("list", () => {
   it("supports the `in` operator within limits", async () => {
     const orgId = newOrg();
     await seed(orgId, 6);
-    const res = await repo.list(orgId, { where: [["rank", "in", [1, 3, 99]]], orderBy: ["rank", "asc"], limit: 10 });
+    const res = await repo.list(orgId, {
+      where: [["rank", "in", [1, 3, 99]]],
+      orderBy: ["rank", "asc"],
+      limit: 10,
+    });
     expect(res.items.map((i) => i.rank)).toEqual([1, 3]);
   });
 
   it("rejects `in` with an empty array, a non-array, or more than 30 values", async () => {
     const orgId = newOrg();
-    await expectRejects(repo.list(orgId, { where: [["rank", "in", []]], orderBy: ["rank", "asc"], limit: 5 }), ValidationError);
+    await expectRejects(
+      repo.list(orgId, { where: [["rank", "in", []]], orderBy: ["rank", "asc"], limit: 5 }),
+      ValidationError,
+    );
     const many = Array.from({ length: 31 }, (_, i) => i);
-    await expectRejects(repo.list(orgId, { where: [["rank", "in", many]], orderBy: ["rank", "asc"], limit: 5 }), ValidationError);
-    await expectRejects(repo.list(orgId, { where: [["rank", "in", 5]], orderBy: ["rank", "asc"], limit: 5 }), ValidationError);
+    await expectRejects(
+      repo.list(orgId, { where: [["rank", "in", many]], orderBy: ["rank", "asc"], limit: 5 }),
+      ValidationError,
+    );
+    await expectRejects(
+      repo.list(orgId, { where: [["rank", "in", 5]], orderBy: ["rank", "asc"], limit: 5 }),
+      ValidationError,
+    );
     const ok = Array.from({ length: 30 }, (_, i) => i);
     await repo.list(orgId, { where: [["rank", "in", ok]], orderBy: ["rank", "asc"], limit: 5 });
   });
@@ -400,17 +456,45 @@ describe("list", () => {
       expect(JSON.stringify(err.details)).not.toContain(secret);
       expect(err.message).not.toContain(secret);
     }
-    const err = await expectRejects(repo.list(orgId, { orderBy: ["status", "asc"], limit: 5 }), ValidationError);
+    const err = await expectRejects(
+      repo.list(orgId, { orderBy: ["status", "asc"], limit: 5 }),
+      ValidationError,
+    );
     expect(JSON.stringify(err.details)).toContain("status");
-    await expectRejects(repo.list(orgId, { orderBy: ["rank", "sideways" as "asc"], limit: 5 }), ValidationError);
-    await expectRejects(repo.list(orgId, { where: [["status", "like" as "==", "x"]], orderBy: ["rank", "asc"], limit: 5 }), ValidationError);
-    await expectRejects(repo.list(orgId, { where: "nope" as never, orderBy: ["rank", "asc"], limit: 5 }), ValidationError);
-    await expectRejects(repo.list(orgId, { orderBy: undefined as never, limit: 5 }), ValidationError);
+    await expectRejects(
+      repo.list(orgId, { orderBy: ["rank", "sideways" as "asc"], limit: 5 }),
+      ValidationError,
+    );
+    await expectRejects(
+      repo.list(orgId, {
+        where: [["status", "like" as "==", "x"]],
+        orderBy: ["rank", "asc"],
+        limit: 5,
+      }),
+      ValidationError,
+    );
+    await expectRejects(
+      repo.list(orgId, { where: "nope" as never, orderBy: ["rank", "asc"], limit: 5 }),
+      ValidationError,
+    );
+    await expectRejects(
+      repo.list(orgId, { orderBy: undefined as never, limit: 5 }),
+      ValidationError,
+    );
   });
 
   it("validates limit as an integer in 1..100", async () => {
     const orgId = newOrg();
-    for (const limit of [0, -1, 101, Number.NaN, 1.5, Infinity, "10" as unknown as number, undefined as unknown as number]) {
+    for (const limit of [
+      0,
+      -1,
+      101,
+      Number.NaN,
+      1.5,
+      Infinity,
+      "10" as unknown as number,
+      undefined as unknown as number,
+    ]) {
       await expectRejects(repo.list(orgId, { orderBy: ["rank", "asc"], limit }), ValidationError);
     }
     await repo.list(orgId, { orderBy: ["rank", "asc"], limit: 1 });
@@ -420,8 +504,17 @@ describe("list", () => {
   it("rejects garbage cursors with ValidationError", async () => {
     const orgId = newOrg();
     await seed(orgId, 3);
-    for (const cursor of ["garbage", "!!!", "e30", encodeCursor({ t: "ts", v: "not-a-date", id: "x" }), 5 as unknown as string]) {
-      await expectRejects(repo.list(orgId, { orderBy: ["rank", "asc"], limit: 5, cursor }), ValidationError);
+    for (const cursor of [
+      "garbage",
+      "!!!",
+      "e30",
+      encodeCursor({ t: "ts", v: "not-a-date", id: "x" }),
+      5 as unknown as string,
+    ]) {
+      await expectRejects(
+        repo.list(orgId, { orderBy: ["rank", "asc"], limit: 5, cursor }),
+        ValidationError,
+      );
     }
   });
 
@@ -431,7 +524,11 @@ describe("list", () => {
     const bIds = await seed(b, 8, (i) => 10 + i); // ranks 10..17: all sort after A's cursor position
     const pageA = await repo.list(a, { orderBy: ["rank", "asc"], limit: 3 });
     expect(pageA.nextCursor).not.toBeNull();
-    const res = await repo.list(b, { orderBy: ["rank", "asc"], limit: 100, cursor: pageA.nextCursor! });
+    const res = await repo.list(b, {
+      orderBy: ["rank", "asc"],
+      limit: 100,
+      cursor: pageA.nextCursor!,
+    });
     expect(res.items.map((i) => i.id)).toEqual(bIds); // exactly B's 8 docs, none of A's
   });
 
@@ -464,7 +561,15 @@ describe("helpers for service transactions", () => {
     const orgId = newOrg();
     const built = repo.build(
       orgId,
-      { name: "a", rank: 1, status: "open", organizationId: "org-evil", id: "evil", createdAt: "x", updatedAt: "y" } as NewItem,
+      {
+        name: "a",
+        rank: 1,
+        status: "open",
+        organizationId: "org-evil",
+        id: "evil",
+        createdAt: "x",
+        updatedAt: "y",
+      } as NewItem,
       `built-${randomUUID()}`,
     );
     expect((await built.ref.get()).exists).toBe(false);

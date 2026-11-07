@@ -32,7 +32,9 @@ export function DetailsCard({ customer: c }: { customer: Customer }) {
         <Fact label="Assigned agent ID">
           {c.assignedAgentId ?? <span className="text-muted-foreground">Unassigned</span>}
         </Fact>
-        <Fact label="Preferred language">{language ? LANGUAGE_LABELS[language] : NOT_PROVIDED}</Fact>
+        <Fact label="Preferred language">
+          {language ? LANGUAGE_LABELS[language] : NOT_PROVIDED}
+        </Fact>
         <Fact label="Notes">{c.preferences?.notes ?? NOT_PROVIDED}</Fact>
       </dl>
     </Section>

@@ -29,7 +29,8 @@ import { guardOpenChange, pendingDismissProps } from "@/lib/dialog-guard";
 import { MAX_REASON_LENGTH } from "@/config/inventory";
 import { reasonSchema, type InventoryListItem } from "@/schemas/inventory";
 
-const UNCONFIRMED_MESSAGE = "We couldn't confirm the change. Check the current stock before trying again.";
+const UNCONFIRMED_MESSAGE =
+  "We couldn't confirm the change. Check the current stock before trying again.";
 
 interface AdjustFormProps {
   item: InventoryListItem;
@@ -80,7 +81,12 @@ function AdjustForm({ item, onClose, onPendingChange }: AdjustFormProps) {
     onPendingChange(true);
     setFormError(null);
     try {
-      await adjust.mutateAsync({ productId: item.productId, variantId: item.variantId, delta, reason: why.data });
+      await adjust.mutateAsync({
+        productId: item.productId,
+        variantId: item.variantId,
+        delta,
+        reason: why.data,
+      });
       toast.success(`Stock updated for ${item.productName}`);
       onClose();
     } catch (error) {
@@ -92,10 +98,16 @@ function AdjustForm({ item, onClose, onPendingChange }: AdjustFormProps) {
       } else if (error instanceof ApiError && error.details.length > 0) {
         const byPath = (p: string) => error.details.find((d) => d.path === p)?.message;
         setErrors({ quantity: byPath("delta"), reason: byPath("reason") });
-        setFormError(error.details.some((d) => d.path !== "delta" && d.path !== "reason") ? error.message : null);
+        setFormError(
+          error.details.some((d) => d.path !== "delta" && d.path !== "reason")
+            ? error.message
+            : null,
+        );
       } else {
         // e.g. 409 "Inventory is busy, please try again": safe to retry by hand, nothing was applied.
-        setFormError(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
+        setFormError(
+          error instanceof ApiError ? error.message : "Something went wrong. Please try again.",
+        );
       }
     } finally {
       lock.current = false;
@@ -116,7 +128,8 @@ function AdjustForm({ item, onClose, onPendingChange }: AdjustFormProps) {
       <FormAlert message={formError}>
         {unconfirmed ? (
           <p className="text-xs">
-            Current stock: on hand {item.onHand}, reserved {item.reserved}, available {item.available}.
+            Current stock: on hand {item.onHand}, reserved {item.reserved}, available{" "}
+            {item.available}.
           </p>
         ) : null}
       </FormAlert>
@@ -168,7 +181,10 @@ function AdjustForm({ item, onClose, onPendingChange }: AdjustFormProps) {
           }}
           error={errors.quantity}
         />
-        <p aria-live="polite" className={`min-h-5 text-sm ${problem ? "text-destructive" : "text-muted-foreground"}`}>
+        <p
+          aria-live="polite"
+          className={`min-h-5 text-sm ${problem ? "text-destructive" : "text-muted-foreground"}`}
+        >
           {previewText}
         </p>
 
@@ -222,10 +238,19 @@ export function AdjustDialog({ item, onOpenChange }: AdjustDialogProps) {
         <DialogHeader>
           <DialogTitle>Adjust stock</DialogTitle>
           <DialogDescription>
-            {shown ? `${shown.productName} (${shown.variantLabel}${shown.sku ? `, ${shown.sku}` : ""})` : ""}
+            {shown
+              ? `${shown.productName} (${shown.variantLabel}${shown.sku ? `, ${shown.sku}` : ""})`
+              : ""}
           </DialogDescription>
         </DialogHeader>
-        {item ? <AdjustForm key={item.id} item={item} onClose={() => onOpenChange(false)} onPendingChange={setPending} /> : null}
+        {item ? (
+          <AdjustForm
+            key={item.id}
+            item={item}
+            onClose={() => onOpenChange(false)}
+            onPendingChange={setPending}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );

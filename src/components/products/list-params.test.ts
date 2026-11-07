@@ -8,14 +8,29 @@ import {
   type ProductFilterState,
 } from "@/components/products/list-params";
 
-const state = (patch: Partial<ProductFilterState>): ProductFilterState => ({ ...DEFAULT_FILTERS, ...patch });
+const state = (patch: Partial<ProductFilterState>): ProductFilterState => ({
+  ...DEFAULT_FILTERS,
+  ...patch,
+});
 
 describe("toListParams", () => {
   it("maps each sort option to sort and dir", () => {
-    expect(toListParams(state({ sortKey: "newest" }))).toMatchObject({ sort: "createdAt", dir: "desc" });
-    expect(toListParams(state({ sortKey: "name-asc" }))).toMatchObject({ sort: "name", dir: "asc" });
-    expect(toListParams(state({ sortKey: "name-desc" }))).toMatchObject({ sort: "name", dir: "desc" });
-    expect(toListParams(state({ sortKey: "updated" }))).toMatchObject({ sort: "updatedAt", dir: "desc" });
+    expect(toListParams(state({ sortKey: "newest" }))).toMatchObject({
+      sort: "createdAt",
+      dir: "desc",
+    });
+    expect(toListParams(state({ sortKey: "name-asc" }))).toMatchObject({
+      sort: "name",
+      dir: "asc",
+    });
+    expect(toListParams(state({ sortKey: "name-desc" }))).toMatchObject({
+      sort: "name",
+      dir: "desc",
+    });
+    expect(toListParams(state({ sortKey: "updated" }))).toMatchObject({
+      sort: "updatedAt",
+      dir: "desc",
+    });
   });
 
   it("always sets a page size", () => {
@@ -35,17 +50,24 @@ describe("toListParams", () => {
   });
 
   it("drops filters while a search is active (one criterion at a time)", () => {
-    const p = toListParams(state({ search: "shirt", filterBy: "availability", availability: "active" }));
+    const p = toListParams(
+      state({ search: "shirt", filterBy: "availability", availability: "active" }),
+    );
     expect(p.q).toBe("shirt");
     expect(p.availability).toBeUndefined();
     expect(p.categoryId).toBeUndefined();
   });
 
   it("sends the one chosen filter", () => {
-    expect(toListParams(state({ filterBy: "availability", availability: "draft" })).availability).toBe("draft");
+    expect(
+      toListParams(state({ filterBy: "availability", availability: "draft" })).availability,
+    ).toBe("draft");
     expect(toListParams(state({ filterBy: "category", categoryId: "c1" })).categoryId).toBe("c1");
     // A stale value of the other filter is not sent.
-    expect(toListParams(state({ filterBy: "category", categoryId: "c1", availability: "draft" })).availability).toBeUndefined();
+    expect(
+      toListParams(state({ filterBy: "category", categoryId: "c1", availability: "draft" }))
+        .availability,
+    ).toBeUndefined();
   });
 
   it("sends nothing for a filter without a value", () => {
@@ -56,8 +78,13 @@ describe("toListParams", () => {
   it("asks for archived products, which cannot also be filtered by availability", () => {
     expect(toListParams(state({ archived: true })).archived).toBe(true);
     expect(toListParams(state({ archived: false })).archived).toBe(false);
-    expect(toListParams(state({ archived: true, filterBy: "availability", availability: "active" })).availability).toBeUndefined();
-    expect(toListParams(state({ archived: true, filterBy: "category", categoryId: "c1" })).categoryId).toBe("c1");
+    expect(
+      toListParams(state({ archived: true, filterBy: "availability", availability: "active" }))
+        .availability,
+    ).toBeUndefined();
+    expect(
+      toListParams(state({ archived: true, filterBy: "category", categoryId: "c1" })).categoryId,
+    ).toBe("c1");
   });
 });
 

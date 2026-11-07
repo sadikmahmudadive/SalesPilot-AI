@@ -40,12 +40,16 @@ describe("toListParams", () => {
   });
 
   it("sends only the selected filter's value", () => {
-    expect(toListParams(state({ filterBy: "segment", segment: "converted", tag: "vip" }))).toMatchObject({
+    expect(
+      toListParams(state({ filterBy: "segment", segment: "converted", tag: "vip" })),
+    ).toMatchObject({
       segment: "converted",
     });
     expect(toListParams(state({ filterBy: "segment", segment: "converted" })).tag).toBeUndefined();
     expect(toListParams(state({ filterBy: "tag", tag: " vip " })).tag).toBe("vip");
-    expect(toListParams(state({ filterBy: "customerType", customerType: "wholesale" })).customerType).toBe("wholesale");
+    expect(
+      toListParams(state({ filterBy: "customerType", customerType: "wholesale" })).customerType,
+    ).toBe("wholesale");
   });
 
   it("drops the filter while a search is active", () => {

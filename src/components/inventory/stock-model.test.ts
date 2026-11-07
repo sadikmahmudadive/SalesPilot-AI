@@ -22,7 +22,11 @@ describe("previewAdjustment", () => {
 
   it("removes stock", () => {
     const p = previewAdjustment(record, -4);
-    expect(p).toMatchObject({ ok: true, onHand: { from: 12, to: 8 }, available: { from: 10, to: 6 } });
+    expect(p).toMatchObject({
+      ok: true,
+      onHand: { from: 12, to: 8 },
+      available: { from: 10, to: 6 },
+    });
   });
 
   it("allows dropping exactly to the reserved quantity", () => {
@@ -53,7 +57,10 @@ describe("previewAdjustment", () => {
   it("treats zero and non-integers as no adjustment", () => {
     expect(previewAdjustment(record, 0)).toMatchObject({ ok: false, problem: "no-change" });
     expect(previewAdjustment(record, 1.5)).toMatchObject({ ok: false, problem: "no-change" });
-    expect(previewAdjustment(record, Number.NaN)).toMatchObject({ ok: false, problem: "no-change" });
+    expect(previewAdjustment(record, Number.NaN)).toMatchObject({
+      ok: false,
+      problem: "no-change",
+    });
   });
 });
 
@@ -65,7 +72,19 @@ describe("parseQuantity", () => {
   });
 
   it("rejects empty, zero, signs, decimals, letters and huge numbers", () => {
-    for (const bad of ["", "  ", "0", "-3", "+3", "2.5", "abc", "1e3", "1,000", "1000001", "99999999999999999999"]) {
+    for (const bad of [
+      "",
+      "  ",
+      "0",
+      "-3",
+      "+3",
+      "2.5",
+      "abc",
+      "1e3",
+      "1,000",
+      "1000001",
+      "99999999999999999999",
+    ]) {
       expect(parseQuantity(bad).ok, bad).toBe(false);
     }
     expect(parseQuantity("1000000")).toEqual({ ok: true, value: 1_000_000 });

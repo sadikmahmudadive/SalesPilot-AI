@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-const email = z.string().trim().min(1, "Enter your email address").pipe(z.email("Enter a valid email address"));
-const displayName = z.string().trim().min(1, "Enter your name").max(80, "Use 80 characters or fewer");
+const email = z
+  .string()
+  .trim()
+  .min(1, "Enter your email address")
+  .pipe(z.email("Enter a valid email address"));
+const displayName = z
+  .string()
+  .trim()
+  .min(1, "Enter your name")
+  .max(80, "Use 80 characters or fewer");
 const organizationName = z
   .string()
   .trim()

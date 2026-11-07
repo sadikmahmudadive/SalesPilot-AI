@@ -10,7 +10,10 @@ function fromWords(words: string[]): string | null {
   return usable.length === 1 ? firstChar(first) : firstChar(first) + firstChar(last);
 }
 
-export function initialsFor(displayName: string | null | undefined, email: string | null | undefined): string {
+export function initialsFor(
+  displayName: string | null | undefined,
+  email: string | null | undefined,
+): string {
   const fromName = displayName ? fromWords(displayName.trim().split(/\s+/)) : null;
   if (fromName) return fromName;
   const local = email ? (email.split("@")[0] ?? "") : "";

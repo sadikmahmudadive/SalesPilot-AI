@@ -31,7 +31,10 @@ export default async function SettingsPage() {
         <CardContent>
           <dl className="divide-y text-sm">
             {rows.map(([label, value]) => (
-              <div key={label} className="grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
+              <div
+                key={label}
+                className="grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4"
+              >
                 <dt className="text-muted-foreground">{label}</dt>
                 <dd className="min-w-0 font-medium break-words">{value}</dd>
               </div>

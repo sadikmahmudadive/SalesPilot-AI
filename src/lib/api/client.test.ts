@@ -52,7 +52,9 @@ describe("apiFetch", () => {
         { status: 400 },
       ),
     );
-    const err = await apiFetch("/api/customers", { method: "POST", body: {} }).catch((e: unknown) => e);
+    const err = await apiFetch("/api/customers", { method: "POST", body: {} }).catch(
+      (e: unknown) => e,
+    );
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({
       status: 400,
@@ -84,7 +86,13 @@ describe("apiFetch", () => {
   it("ignores malformed details entries", async () => {
     stubFetch(async () =>
       Response.json(
-        { error: { code: "X", message: "m", details: [{ path: 1 }, null, { path: "a", message: "b" }] } },
+        {
+          error: {
+            code: "X",
+            message: "m",
+            details: [{ path: 1 }, null, { path: "a", message: "b" }],
+          },
+        },
         { status: 400 },
       ),
     );
@@ -109,7 +117,9 @@ describe("apiFetch", () => {
       return Response.json({});
     });
     controller.abort();
-    const err = await apiFetch("/api/customers", { signal: controller.signal }).catch((e: unknown) => e);
+    const err = await apiFetch("/api/customers", { signal: controller.signal }).catch(
+      (e: unknown) => e,
+    );
     expect(fetchFn.mock.calls[0]![1].signal).toBe(controller.signal);
     expect(err).not.toBeInstanceOf(ApiError);
     expect((err as DOMException).name).toBe("AbortError");

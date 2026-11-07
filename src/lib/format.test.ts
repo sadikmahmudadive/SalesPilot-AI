@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCount, formatDate, formatDateTime, formatMoneyMinor, formatDateOr } from "@/lib/format";
+import {
+  formatCount,
+  formatDate,
+  formatDateTime,
+  formatMoneyMinor,
+  formatDateOr,
+} from "@/lib/format";
 
 describe("formatMoneyMinor", () => {
   it("converts minor units (poisha) to taka", () => {

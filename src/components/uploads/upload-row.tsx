@@ -28,7 +28,13 @@ interface UploadRowProps {
 export function UploadRow({ item, status, progress, onCancel }: UploadRowProps) {
   const failed = item.phase === "error";
   const active = item.phase === "active";
-  const percent = active ? (status === "uploading" ? progress : status === "confirming" ? 100 : 0) : 0;
+  const percent = active
+    ? status === "uploading"
+      ? progress
+      : status === "confirming"
+        ? 100
+        : 0
+    : 0;
   // Once the file is being confirmed, aborting cannot undo it, so there is nothing to cancel.
   const canDismiss = failed || !(active && status === "confirming");
   const text = active ? (STATUS_TEXT[status] ?? `Uploading ${percent}%`) : "Waiting";
@@ -54,7 +60,10 @@ export function UploadRow({ item, status, progress, onCancel }: UploadRowProps) 
             aria-valuenow={percent}
             className="h-1.5 overflow-hidden rounded-full bg-muted"
           >
-            <div className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${percent}%` }} />
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none"
+              style={{ width: `${percent}%` }}
+            />
           </div>
         )}
       </div>

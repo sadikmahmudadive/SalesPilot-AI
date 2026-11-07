@@ -1,5 +1,5 @@
-import { isAppError } from '../errors';
-import { logger } from '../logger';
+import { isAppError } from "../errors";
+import { logger } from "../logger";
 
 /** Generates a request correlation id. */
 export function newRequestId(): string {
@@ -16,22 +16,24 @@ export function newRequestId(): string {
  */
 export function toErrorResponse(err: unknown, requestId: string): Response {
   if (isAppError(err)) {
-    const message = typeof err.message === 'string' ? err.message : 'Request failed';
+    const message = typeof err.message === "string" ? err.message : "Request failed";
     const error: Record<string, unknown> = { code: err.code, message, requestId };
-    if (err.code === 'VALIDATION_ERROR' && Array.isArray(err.details)) error.details = err.details;
+    if (err.code === "VALIDATION_ERROR" && Array.isArray(err.details)) error.details = err.details;
 
     const headers: Record<string, string> = {};
-    if (err.code === 'RATE_LIMITED') {
+    if (err.code === "RATE_LIMITED") {
       const sec = err.retryAfterSec;
-      headers['Retry-After'] = String(typeof sec === 'number' && Number.isFinite(sec) && sec >= 0 ? Math.ceil(sec) : 1);
+      headers["Retry-After"] = String(
+        typeof sec === "number" && Number.isFinite(sec) && sec >= 0 ? Math.ceil(sec) : 1,
+      );
     }
 
     return Response.json({ error }, { status: err.status, headers });
   }
 
-  logger.error('unhandled_error', { requestId, err });
+  logger.error("unhandled_error", { requestId, err });
   return Response.json(
-    { error: { code: 'INTERNAL_ERROR', message: 'Internal server error', requestId } },
+    { error: { code: "INTERNAL_ERROR", message: "Internal server error", requestId } },
     { status: 500 },
   );
 }

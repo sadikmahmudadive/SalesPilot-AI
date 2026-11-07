@@ -1,6 +1,11 @@
 "use client";
 
-import { keepPreviousData, useInfiniteQuery, type InfiniteData, type QueryKey } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  type InfiniteData,
+  type QueryKey,
+} from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api/client";
 
@@ -21,7 +26,13 @@ export function usePagedList<TItem, TParams extends object>(
   params: TParams,
   queryString: (params: TParams & { cursor?: string }) => URLSearchParams,
 ) {
-  return useInfiniteQuery<Page<TItem>, Error, InfiniteData<Page<TItem>, string | undefined>, QueryKey, string | undefined>({
+  return useInfiniteQuery<
+    Page<TItem>,
+    Error,
+    InfiniteData<Page<TItem>, string | undefined>,
+    QueryKey,
+    string | undefined
+  >({
     queryKey: key,
     initialPageParam: undefined,
     queryFn: ({ pageParam, signal }) => {

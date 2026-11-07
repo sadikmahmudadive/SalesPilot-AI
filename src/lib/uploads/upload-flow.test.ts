@@ -4,7 +4,13 @@ import { ApiError } from "@/lib/api/client";
 import { MAX_IMAGE_BYTES, type UploadKind } from "@/lib/cloudinary/folders";
 import type { ConfirmedUpload, SignedUpload } from "@/schemas/upload";
 
-import { precheckFile, runUpload, UploadFlowError, type UploadDeps, type UploadOutcome } from "./upload-flow";
+import {
+  precheckFile,
+  runUpload,
+  UploadFlowError,
+  type UploadDeps,
+  type UploadOutcome,
+} from "./upload-flow";
 
 const PUBLIC_ID = "organizations/org1/products/0123456789abcdef01234567";
 
@@ -31,14 +37,17 @@ const CONFIRMED: ConfirmedUpload = {
   height: 600,
 };
 
-const png = (bytes = 1024, name = "shirt.png", type = "image/png") => new File([new Uint8Array(bytes)], name, { type });
+const png = (bytes = 1024, name = "shirt.png", type = "image/png") =>
+  new File([new Uint8Array(bytes)], name, { type });
 
 function makeDeps(overrides: Partial<UploadDeps> = {}) {
   const calls: string[] = [];
-  const post = vi.fn<(path: string, body?: unknown, signal?: AbortSignal) => Promise<never>>(async (path) => {
-    calls.push(path);
-    return (path === "/api/uploads/sign" ? SIGNED : CONFIRMED) as never;
-  });
+  const post = vi.fn<(path: string, body?: unknown, signal?: AbortSignal) => Promise<never>>(
+    async (path) => {
+      calls.push(path);
+      return (path === "/api/uploads/sign" ? SIGNED : CONFIRMED) as never;
+    },
+  );
   const xhrUpload = vi.fn<UploadDeps["xhrUpload"]>(async () => {
     calls.push("xhr");
     return { public_id: "attacker/chosen/id", secure_url: "https://evil.example/x.png" };
@@ -47,7 +56,8 @@ function makeDeps(overrides: Partial<UploadDeps> = {}) {
   return { deps, post, xhrUpload, calls };
 }
 
-const apiError = (status: number, code = "HTTP_ERROR") => new ApiError({ status, code, message: "server text" });
+const apiError = (status: number, code = "HTTP_ERROR") =>
+  new ApiError({ status, code, message: "server text" });
 
 async function outcomeOf(promise: Promise<unknown>): Promise<UploadOutcome> {
   try {
@@ -86,7 +96,11 @@ describe("runUpload", () => {
     const { deps, post } = makeDeps();
     await runUpload(deps, "products", png(2048));
     expect(post.mock.calls[0]?.[0]).toBe("/api/uploads/sign");
-    expect(post.mock.calls[0]?.[1]).toEqual({ kind: "products", contentType: "image/png", bytes: 2048 });
+    expect(post.mock.calls[0]?.[1]).toEqual({
+      kind: "products",
+      contentType: "image/png",
+      bytes: 2048,
+    });
   });
 
   it("builds the multipart body from exactly params + api_key + signature + file", async () => {
@@ -94,7 +108,9 @@ describe("runUpload", () => {
     await runUpload(deps, "products", png());
     const [url, body] = xhrUpload.mock.calls[0] as unknown as [string, FormData];
     expect(url).toBe(SIGNED.uploadUrl);
-    expect([...body.keys()].sort()).toEqual([...Object.keys(SIGNED.params), "api_key", "signature", "file"].sort());
+    expect([...body.keys()].sort()).toEqual(
+      [...Object.keys(SIGNED.params), "api_key", "signature", "file"].sort(),
+    );
     for (const [key, value] of Object.entries(SIGNED.params)) expect(body.get(key)).toBe(value);
     expect(body.get("api_key")).toBe("key-123");
     expect(body.get("signature")).toBe("sig-abc");
@@ -118,7 +134,10 @@ describe("runUpload", () => {
         return {};
       },
     });
-    await runUpload(deps, "products", png(), { onStage: (s) => stages.push(s), onProgress: (p) => progress.push(p) });
+    await runUpload(deps, "products", png(), {
+      onStage: (s) => stages.push(s),
+      onProgress: (p) => progress.push(p),
+    });
     expect(stages).toEqual(["signing", "uploading", "confirming"]);
     expect(progress).toEqual([40, 100]);
   });
@@ -135,8 +154,12 @@ describe("runUpload", () => {
 
   describe("error mapping", () => {
     it("503 on sign -> not-configured", async () => {
-      const { deps } = makeDeps({ post: async () => Promise.reject(apiError(503, "INTEGRATION_NOT_CONFIGURED")) });
-      expect(await outcomeOf(runUpload(deps, "products", png()))).toEqual({ kind: "not-configured" });
+      const { deps } = makeDeps({
+        post: async () => Promise.reject(apiError(503, "INTEGRATION_NOT_CONFIGURED")),
+      });
+      expect(await outcomeOf(runUpload(deps, "products", png()))).toEqual({
+        kind: "not-configured",
+      });
     });
     it("403 -> permission message", async () => {
       const { deps } = makeDeps({ post: async () => Promise.reject(apiError(403, "FORBIDDEN")) });
@@ -144,14 +167,18 @@ describe("runUpload", () => {
       expect(outcome).toEqual({ kind: "error", message: expect.stringMatching(/permission/i) });
     });
     it("429 -> too many uploads", async () => {
-      const { deps } = makeDeps({ post: async () => Promise.reject(apiError(429, "RATE_LIMITED")) });
+      const { deps } = makeDeps({
+        post: async () => Promise.reject(apiError(429, "RATE_LIMITED")),
+      });
       expect(await outcomeOf(runUpload(deps, "products", png()))).toEqual({
         kind: "error",
         message: "Too many uploads, try again later",
       });
     });
     it("400 on sign -> a static message, not the server text", async () => {
-      const { deps } = makeDeps({ post: async () => Promise.reject(apiError(400, "VALIDATION_ERROR")) });
+      const { deps } = makeDeps({
+        post: async () => Promise.reject(apiError(400, "VALIDATION_ERROR")),
+      });
       const outcome = await outcomeOf(runUpload(deps, "products", png()));
       expect(outcome.kind).toBe("error");
       expect(JSON.stringify(outcome)).not.toContain("server text");
@@ -187,12 +214,16 @@ describe("runUpload", () => {
       });
     });
     it("a malformed confirm response -> a generic error", async () => {
-      const post = vi.fn(async (path: string) => (path === "/api/uploads/sign" ? SIGNED : { nope: true }) as never);
+      const post = vi.fn(
+        async (path: string) => (path === "/api/uploads/sign" ? SIGNED : { nope: true }) as never,
+      );
       const { deps } = makeDeps({ post });
       expect((await outcomeOf(runUpload(deps, "products", png()))).kind).toBe("error");
     });
     it("an unexpected error -> a generic message, never the raw text", async () => {
-      const { deps } = makeDeps({ post: async () => Promise.reject(new Error("secret internals")) });
+      const { deps } = makeDeps({
+        post: async () => Promise.reject(new Error("secret internals")),
+      });
       const outcome = await outcomeOf(runUpload(deps, "products", png()));
       expect(outcome.kind).toBe("error");
       expect(JSON.stringify(outcome)).not.toContain("secret");
@@ -214,7 +245,9 @@ describe("runUpload", () => {
       const { deps, post } = makeDeps();
       const controller = new AbortController();
       controller.abort();
-      expect(await outcomeOf(runUpload(deps, "products", png(), { signal: controller.signal }))).toEqual({ kind: "aborted" });
+      expect(
+        await outcomeOf(runUpload(deps, "products", png(), { signal: controller.signal })),
+      ).toEqual({ kind: "aborted" });
       expect(post).not.toHaveBeenCalled();
     });
     it("aborting during the upload stops before confirm", async () => {
@@ -225,7 +258,9 @@ describe("runUpload", () => {
           return {};
         },
       });
-      expect(await outcomeOf(runUpload(deps, "products", png(), { signal: controller.signal }))).toEqual({ kind: "aborted" });
+      expect(
+        await outcomeOf(runUpload(deps, "products", png(), { signal: controller.signal })),
+      ).toEqual({ kind: "aborted" });
       expect(post).toHaveBeenCalledTimes(1);
     });
     it("passes the signal to sign, upload and confirm", async () => {

@@ -14,7 +14,11 @@ interface ArchiveProductDialogProps {
 }
 
 /** Confirmation before archiving. Archiving is a soft delete: the product can be restored later. */
-export function ArchiveProductDialog({ product, onOpenChange, onArchived }: ArchiveProductDialogProps) {
+export function ArchiveProductDialog({
+  product,
+  onOpenChange,
+  onArchived,
+}: ArchiveProductDialogProps) {
   const archive = useArchiveProduct();
   // Keep the last product so the title does not change while the dialog animates closed.
   const [last, setLast] = useState(product);

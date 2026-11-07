@@ -18,15 +18,38 @@ export default async function DashboardPage() {
   const name = ctx.displayName ?? ctx.email ?? "there";
   return (
     <div>
-      <PageHeader title={`Welcome, ${name}`} description={`Here is where ${ctx.organizationName} stands today.`} />
+      <PageHeader
+        title={`Welcome, ${name}`}
+        description={`Here is where ${ctx.organizationName} stands today.`}
+      />
       <Suspense fallback={<KpiGridSkeleton />}>
         <KpiGrid organizationId={ctx.organizationId} />
       </Suspense>
       <div className={`${KPI_GRID_CLASS} mt-4`}>
-        <KpiCard id="kpi-orders" title="Orders" icon={ShoppingCart} state={{ kind: "later", phase: 5 }} />
-        <KpiCard id="kpi-revenue" title="Revenue" icon={Banknote} state={{ kind: "later", phase: 5 }} />
-        <KpiCard id="kpi-conversations" title="Conversations" icon={MessageSquare} state={{ kind: "later", phase: 4 }} />
-        <KpiCard id="kpi-voice" title="Voice calls" icon={Phone} state={{ kind: "later", phase: 6 }} />
+        <KpiCard
+          id="kpi-orders"
+          title="Orders"
+          icon={ShoppingCart}
+          state={{ kind: "later", phase: 5 }}
+        />
+        <KpiCard
+          id="kpi-revenue"
+          title="Revenue"
+          icon={Banknote}
+          state={{ kind: "later", phase: 5 }}
+        />
+        <KpiCard
+          id="kpi-conversations"
+          title="Conversations"
+          icon={MessageSquare}
+          state={{ kind: "later", phase: 4 }}
+        />
+        <KpiCard
+          id="kpi-voice"
+          title="Voice calls"
+          icon={Phone}
+          state={{ kind: "later", phase: 6 }}
+        />
       </div>
     </div>
   );

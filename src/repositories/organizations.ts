@@ -30,7 +30,9 @@ function isRole(value: unknown): value is Role {
 
 /** A usable Firestore doc-id segment: non-empty string without path separators. */
 function isIdSegment(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 1500 && !value.includes("/");
+  return (
+    typeof value === "string" && value.length > 0 && value.length <= 1500 && !value.includes("/")
+  );
 }
 
 /**
@@ -43,7 +45,10 @@ function isIdSegment(value: unknown): value is string {
  * without a matching member doc grants nothing, and a member doc with an unknown role string
  * or with `organizationId` / `uid` fields that disagree with its id is treated as no membership.
  */
-export async function getMembership(uid: string, organizationId?: string): Promise<Membership | null> {
+export async function getMembership(
+  uid: string,
+  organizationId?: string,
+): Promise<Membership | null> {
   if (!isIdSegment(uid)) return null;
   const db = adminDb();
 

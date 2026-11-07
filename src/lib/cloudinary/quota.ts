@@ -20,7 +20,11 @@ export const CONFIRM_QUOTA = {
   windowSec: 3600,
 };
 
-export async function assertConfirmQuota(uid: string, orgId: string, now: number = Date.now()): Promise<void> {
+export async function assertConfirmQuota(
+  uid: string,
+  orgId: string,
+  now: number = Date.now(),
+): Promise<void> {
   const { userPerHour, orgPerHour, windowSec } = CONFIRM_QUOTA;
   await assertRateLimit(`uploads.confirm.user:${uid}:h`, { limit: userPerHour, windowSec }, now);
   await assertRateLimit(`uploads.confirm.org:${orgId}:h`, { limit: orgPerHour, windowSec }, now);

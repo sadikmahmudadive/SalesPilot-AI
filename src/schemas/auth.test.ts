@@ -22,37 +22,58 @@ describe("registerSchema", () => {
   });
 
   it("rejects a password shorter than 10 characters", () => {
-    const result = registerSchema.safeParse({ ...validRegister, password: "short1234", confirmPassword: "short1234" });
+    const result = registerSchema.safeParse({
+      ...validRegister,
+      password: "short1234",
+      confirmPassword: "short1234",
+    });
     expect(result.success).toBe(false);
   });
 
   it("accepts a password of exactly 10 and rejects one over 128", () => {
     const ten = "a".repeat(10);
-    expect(registerSchema.safeParse({ ...validRegister, password: ten, confirmPassword: ten }).success).toBe(true);
+    expect(
+      registerSchema.safeParse({ ...validRegister, password: ten, confirmPassword: ten }).success,
+    ).toBe(true);
     const long = "a".repeat(129);
-    expect(registerSchema.safeParse({ ...validRegister, password: long, confirmPassword: long }).success).toBe(false);
+    expect(
+      registerSchema.safeParse({ ...validRegister, password: long, confirmPassword: long }).success,
+    ).toBe(false);
   });
 
   it("rejects a whitespace-only organization name", () => {
-    expect(registerSchema.safeParse({ ...validRegister, organizationName: "     " }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...validRegister, organizationName: "     " }).success).toBe(
+      false,
+    );
   });
 
   it("rejects a one-character organization name and one over 80", () => {
-    expect(registerSchema.safeParse({ ...validRegister, organizationName: "A" }).success).toBe(false);
-    expect(registerSchema.safeParse({ ...validRegister, organizationName: "A".repeat(81) }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...validRegister, organizationName: "A" }).success).toBe(
+      false,
+    );
+    expect(
+      registerSchema.safeParse({ ...validRegister, organizationName: "A".repeat(81) }).success,
+    ).toBe(false);
   });
 
   it("rejects a whitespace-only or overlong display name", () => {
     expect(registerSchema.safeParse({ ...validRegister, displayName: "   " }).success).toBe(false);
-    expect(registerSchema.safeParse({ ...validRegister, displayName: "A".repeat(81) }).success).toBe(false);
+    expect(
+      registerSchema.safeParse({ ...validRegister, displayName: "A".repeat(81) }).success,
+    ).toBe(false);
   });
 
   it("rejects an invalid email", () => {
-    expect(registerSchema.safeParse({ ...validRegister, email: "not-an-email" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...validRegister, email: "not-an-email" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects a mismatched confirmation and reports it on confirmPassword", () => {
-    const result = registerSchema.safeParse({ ...validRegister, confirmPassword: "different-password" });
+    const result = registerSchema.safeParse({
+      ...validRegister,
+      confirmPassword: "different-password",
+    });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues.some((i) => i.path[0] === "confirmPassword")).toBe(true);
@@ -79,8 +100,14 @@ describe("forgotSchema", () => {
 
 describe("onboardingSchema", () => {
   it("requires trimmed display and organization names", () => {
-    expect(onboardingSchema.safeParse({ displayName: "Ada", organizationName: "Acme" }).success).toBe(true);
-    expect(onboardingSchema.safeParse({ displayName: "Ada", organizationName: "  " }).success).toBe(false);
-    expect(onboardingSchema.safeParse({ displayName: " ", organizationName: "Acme" }).success).toBe(false);
+    expect(
+      onboardingSchema.safeParse({ displayName: "Ada", organizationName: "Acme" }).success,
+    ).toBe(true);
+    expect(onboardingSchema.safeParse({ displayName: "Ada", organizationName: "  " }).success).toBe(
+      false,
+    );
+    expect(onboardingSchema.safeParse({ displayName: " ", organizationName: "Acme" }).success).toBe(
+      false,
+    );
   });
 });

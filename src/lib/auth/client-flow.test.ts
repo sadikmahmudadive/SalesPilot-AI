@@ -13,7 +13,10 @@ import {
 } from "./client-flow";
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 function envelope(code: string, message = "server message", status = 400): Response {
   return json({ error: { code, message, requestId: "r1" } }, status);
@@ -35,23 +38,37 @@ describe("exchangeSession", () => {
   });
 
   it("maps 401 to unauthenticated and 429 to rate_limited", async () => {
-    const r401 = await exchangeSession("t", asFetch(vi.fn().mockResolvedValue(envelope("UNAUTHENTICATED", "x", 401))));
+    const r401 = await exchangeSession(
+      "t",
+      asFetch(vi.fn().mockResolvedValue(envelope("UNAUTHENTICATED", "x", 401))),
+    );
     expect(r401.status).toBe("unauthenticated");
-    const r429 = await exchangeSession("t", asFetch(vi.fn().mockResolvedValue(envelope("RATE_LIMITED", "x", 429))));
+    const r429 = await exchangeSession(
+      "t",
+      asFetch(vi.fn().mockResolvedValue(envelope("RATE_LIMITED", "x", 429))),
+    );
     expect(r429.status).toBe("rate_limited");
   });
 
   it("maps other failures to error without throwing, with a safe message", async () => {
-    const result = await exchangeSession("t", asFetch(vi.fn().mockResolvedValue(envelope("INTERNAL", "secret stack", 500))));
+    const result = await exchangeSession(
+      "t",
+      asFetch(vi.fn().mockResolvedValue(envelope("INTERNAL", "secret stack", 500))),
+    );
     expect(result.status).toBe("error");
     expect(JSON.stringify(result)).not.toContain("secret stack");
   });
 
   it("maps a network failure and a non-JSON body to typed results, never throwing", async () => {
-    const net = await exchangeSession("t", asFetch(vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))));
+    const net = await exchangeSession(
+      "t",
+      asFetch(vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))),
+    );
     expect(net.status).toBe("network");
     const html = new Response("<html>bad gateway</html>", { status: 502 });
-    expect((await exchangeSession("t", asFetch(vi.fn().mockResolvedValue(html)))).status).toBe("error");
+    expect((await exchangeSession("t", asFetch(vi.fn().mockResolvedValue(html)))).status).toBe(
+      "error",
+    );
   });
 });
 
@@ -74,8 +91,12 @@ describe("fetchMe", () => {
   });
 
   it("treats a malformed 200 body as an error and a network failure as network", async () => {
-    expect((await fetchMe(asFetch(vi.fn().mockResolvedValue(json({ nope: 1 }))))).status).toBe("error");
-    expect((await fetchMe(asFetch(vi.fn().mockRejectedValue(new Error("offline"))))).status).toBe("network");
+    expect((await fetchMe(asFetch(vi.fn().mockResolvedValue(json({ nope: 1 }))))).status).toBe(
+      "error",
+    );
+    expect((await fetchMe(asFetch(vi.fn().mockRejectedValue(new Error("offline"))))).status).toBe(
+      "network",
+    );
   });
 });
 
@@ -103,14 +124,18 @@ describe("registerOrganizationRequest", () => {
   });
 
   it("maps 401, 429, validation 400 and server errors without throwing", async () => {
-    const run = (r: Response) => registerOrganizationRequest(body, asFetch(vi.fn().mockResolvedValue(r)));
+    const run = (r: Response) =>
+      registerOrganizationRequest(body, asFetch(vi.fn().mockResolvedValue(r)));
     expect((await run(envelope("UNAUTHENTICATED", "x", 401))).status).toBe("unauthenticated");
     expect((await run(envelope("RATE_LIMITED", "x", 429))).status).toBe("rate_limited");
     expect((await run(envelope("VALIDATION_ERROR", "x", 400))).status).toBe("invalid");
     const server = await run(envelope("INTERNAL", "db exploded", 500));
     expect(server.status).toBe("error");
     expect(JSON.stringify(server)).not.toContain("db exploded");
-    const net = await registerOrganizationRequest(body, asFetch(vi.fn().mockRejectedValue(new TypeError("x"))));
+    const net = await registerOrganizationRequest(
+      body,
+      asFetch(vi.fn().mockRejectedValue(new TypeError("x"))),
+    );
     expect(net.status).toBe("network");
   });
 });
@@ -119,7 +144,10 @@ describe("resolvePostSignIn", () => {
   const me = { uid: "u1", email: "a@b.co", organizationId: "o1", role: "owner" };
 
   it("exchanges the session then routes members to the app", async () => {
-    const fetchFn = vi.fn().mockResolvedValueOnce(json({ ok: true })).mockResolvedValueOnce(json(me));
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(json({ ok: true }))
+      .mockResolvedValueOnce(json(me));
     expect(await resolvePostSignIn("tok", asFetch(fetchFn))).toEqual({ to: "app" });
     expect(fetchFn.mock.calls.map((c) => c[0])).toEqual(["/api/auth/session", "/api/me"]);
   });
@@ -156,17 +184,23 @@ describe("endSession", () => {
     expect(url).toBe("/api/auth/session");
     expect(init.method).toBe("DELETE");
     expect(init.credentials).toBe("same-origin");
-    await expect(endSession(asFetch(vi.fn().mockRejectedValue(new Error("offline"))))).resolves.toBe(false);
+    await expect(
+      endSession(asFetch(vi.fn().mockRejectedValue(new Error("offline")))),
+    ).resolves.toBe(false);
   });
 
   it("reports whether the server cleared the session", async () => {
     expect(await endSession(asFetch(vi.fn().mockResolvedValue(json({ ok: true }))))).toBe(true);
-    expect(await endSession(asFetch(vi.fn().mockResolvedValue(envelope("FORBIDDEN", "x", 403))))).toBe(false);
+    expect(
+      await endSession(asFetch(vi.fn().mockResolvedValue(envelope("FORBIDDEN", "x", 403)))),
+    ).toBe(false);
   });
 });
 
 describe("signOutEverywhere", () => {
-  function setup(opts: { serverStatus?: number; serverThrows?: boolean; firebaseThrows?: boolean } = {}) {
+  function setup(
+    opts: { serverStatus?: number; serverThrows?: boolean; firebaseThrows?: boolean } = {},
+  ) {
     const calls: string[] = [];
     const fetchFn = vi.fn(async () => {
       calls.push("server");
@@ -214,8 +248,14 @@ describe("signOutEverywhere", () => {
   });
 
   it("reports serverCleared separately from the Firebase outcome", async () => {
-    expect(await signOutEverywhere(setup({ firebaseThrows: true }).deps)).toMatchObject({ ok: false, serverCleared: true });
-    expect(await signOutEverywhere(setup({ serverStatus: 500 }).deps)).toMatchObject({ ok: false, serverCleared: false });
+    expect(await signOutEverywhere(setup({ firebaseThrows: true }).deps)).toMatchObject({
+      ok: false,
+      serverCleared: true,
+    });
+    expect(await signOutEverywhere(setup({ serverStatus: 500 }).deps)).toMatchObject({
+      ok: false,
+      serverCleared: false,
+    });
   });
 });
 
@@ -249,7 +289,10 @@ describe("mapAuthError", () => {
     ["auth/invalid-credential", GENERIC_CREDS],
     ["auth/invalid-login-credentials", GENERIC_CREDS],
     ["auth/user-disabled", GENERIC_CREDS],
-    ["auth/email-already-in-use", "An account with this email already exists. Try signing in instead."],
+    [
+      "auth/email-already-in-use",
+      "An account with this email already exists. Try signing in instead.",
+    ],
     [
       "auth/account-exists-with-different-credential",
       "This email is already linked to a different sign-in method. Use the method you originally signed up with.",
@@ -272,7 +315,13 @@ describe("mapAuthError", () => {
   });
 
   it("never reveals account existence through the credential errors", () => {
-    const codes = ["wrong-password", "user-not-found", "invalid-credential", "invalid-login-credentials", "user-disabled"];
+    const codes = [
+      "wrong-password",
+      "user-not-found",
+      "invalid-credential",
+      "invalid-login-credentials",
+      "user-disabled",
+    ];
     expect(new Set(codes.map((c) => mapAuthError(`auth/${c}`))).size).toBe(1);
   });
 
@@ -298,7 +347,11 @@ describe("registerAccount", () => {
   }
 
   function makeDeps(
-    overrides: { create?: () => Promise<void>; profile?: () => Promise<void>; token?: () => Promise<string> } = {},
+    overrides: {
+      create?: () => Promise<void>;
+      profile?: () => Promise<void>;
+      token?: () => Promise<string>;
+    } = {},
   ) {
     const calls: string[] = [];
     const user: FakeUser = { uid: "u1" };
@@ -331,39 +384,64 @@ describe("registerAccount", () => {
 
   it("succeeds in the documented order and returns the safe next path", async () => {
     const { deps, calls, user } = makeDeps();
-    const inner = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
+    const inner = fetchSequence(
+      json({ ok: true }),
+      json({ organizationId: "o1", created: true }, 201),
+    );
     const tracked = vi.fn(async (url: string, init: RequestInit) => {
       calls.push(url);
       return inner(url, init);
     });
     const result = await registerAccount({ ...deps, fetch: asFetch(tracked) }, input);
     expect(result).toEqual({ outcome: "success", path: "/orders" });
-    expect(calls).toEqual(["createUser", "updateProfile", "getIdToken", "/api/auth/session", "/api/organizations/register"]);
+    expect(calls).toEqual([
+      "createUser",
+      "updateProfile",
+      "getIdToken",
+      "/api/auth/session",
+      "/api/organizations/register",
+    ]);
     expect(deps.createUser).toHaveBeenCalledWith("ada@example.com", "correct-horse-battery");
     expect(deps.updateProfile).toHaveBeenCalledWith(user, "Ada");
     expect(deps.getIdToken).toHaveBeenCalledWith(user);
     expect(JSON.parse(inner.mock.calls[0]![1].body)).toEqual({ idToken: "id-token" });
-    expect(JSON.parse(inner.mock.calls[1]![1].body)).toEqual({ organizationName: "Acme", displayName: "Ada" });
+    expect(JSON.parse(inner.mock.calls[1]![1].body)).toEqual({
+      organizationName: "Acme",
+      displayName: "Ada",
+    });
   });
 
   it.each(["//evil.com", "https://evil.com/x", "/\\evil.com", undefined])(
     "falls back to /dashboard for hostile or missing next (%s)",
     async (next) => {
       const { deps } = makeDeps();
-      const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
-      const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, { ...input, next });
+      const fetchFn = fetchSequence(
+        json({ ok: true }),
+        json({ organizationId: "o1", created: true }, 201),
+      );
+      const result = await registerAccount(
+        { ...deps, fetch: asFetch(fetchFn) },
+        { ...input, next },
+      );
       expect(result).toEqual({ outcome: "success", path: "/dashboard" });
     },
   );
 
   it("treats an already-existing organization (200) as success", async () => {
     const { deps } = makeDeps();
-    const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: false }, 200));
-    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("success");
+    const fetchFn = fetchSequence(
+      json({ ok: true }),
+      json({ organizationId: "o1", created: false }, 200),
+    );
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe(
+      "success",
+    );
   });
 
   it("returns auth-failed with the mapped message when creating the user fails, and does nothing else", async () => {
-    const { deps } = makeDeps({ create: () => Promise.reject({ code: "auth/email-already-in-use" }) });
+    const { deps } = makeDeps({
+      create: () => Promise.reject({ code: "auth/email-already-in-use" }),
+    });
     const fetchFn = vi.fn();
     const result = await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input);
     expect(result).toEqual({
@@ -377,8 +455,13 @@ describe("registerAccount", () => {
 
   it("keeps going when updateProfile fails (cosmetic)", async () => {
     const { deps } = makeDeps({ profile: () => Promise.reject(new Error("profile down")) });
-    const fetchFn = fetchSequence(json({ ok: true }), json({ organizationId: "o1", created: true }, 201));
-    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("success");
+    const fetchFn = fetchSequence(
+      json({ ok: true }),
+      json({ organizationId: "o1", created: true }, 201),
+    );
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe(
+      "success",
+    );
   });
 
   it("returns session-failed (account exists, never re-register) when the session exchange fails", async () => {
@@ -414,6 +497,8 @@ describe("registerAccount", () => {
   it("returns onboarding when organization registration hits a network failure", async () => {
     const { deps } = makeDeps();
     const fetchFn = fetchSequence(json({ ok: true }), new TypeError("Failed to fetch"));
-    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe("onboarding");
+    expect((await registerAccount({ ...deps, fetch: asFetch(fetchFn) }, input)).outcome).toBe(
+      "onboarding",
+    );
   });
 });

@@ -7,7 +7,12 @@ import { inventoryKeys, productKeys } from "@/hooks/query-keys";
 import { usePagedList, type Page } from "@/hooks/use-paged-list";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { clean, setPaging } from "@/lib/api/query-string";
-import type { Availability, Product, productInputSchema, productPatchSchema } from "@/schemas/product";
+import type {
+  Availability,
+  Product,
+  productInputSchema,
+  productPatchSchema,
+} from "@/schemas/product";
 
 export type ProductSortName = "createdAt" | "name" | "updatedAt";
 
@@ -80,16 +85,19 @@ export function useProducts(params: Omit<ProductListParams, "cursor">) {
 export function useProduct(id: string) {
   return useQuery({
     queryKey: productKeys.detail(id),
-    queryFn: ({ signal }) => apiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, { signal }),
+    queryFn: ({ signal }) =>
+      apiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, { signal }),
     // A missing product will not appear on retry.
-    retry: (count, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 1,
+    retry: (count, error) =>
+      !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 1,
   });
 }
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: ProductCreateBody) => apiFetch<Product>("/api/products", { method: "POST", body }),
+    mutationFn: (body: ProductCreateBody) =>
+      apiFetch<Product>("/api/products", { method: "POST", body }),
     onSuccess: (product) => {
       queryClient.setQueryData(productKeys.detail(product.id), product);
       return Promise.all([
@@ -120,7 +128,8 @@ export function useUpdateProduct() {
 export function useArchiveProduct() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) =>
+      apiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" }),
     onSuccess: (product, id) => {
       queryClient.setQueryData(productKeys.detail(id), product);
       return queryClient.invalidateQueries({ queryKey: productKeys.lists() });

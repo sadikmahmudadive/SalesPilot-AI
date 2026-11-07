@@ -50,10 +50,16 @@ export function ProductList({ role }: { role: Role }) {
   const query = useProducts(params);
   const categories = useCategories();
   const products = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
-  const categoryNames = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c.name])), [categories.data]);
+  const categoryNames = useMemo(
+    () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+    [categories.data],
+  );
 
   const empty = criteriaActive ? (
-    <PlaceholderCard icon={SearchX} heading={filters.archived && !search ? "No archived products" : "No products match"}>
+    <PlaceholderCard
+      icon={SearchX}
+      heading={filters.archived && !search ? "No archived products" : "No products match"}
+    >
       {filters.archived && !search
         ? "Archived products appear here. Turn off the archived view to see your catalogue."
         : "Try a different search or filter."}
@@ -84,7 +90,13 @@ export function ProductList({ role }: { role: Role }) {
         actions={canWrite ? <AddProductButton /> : null}
       />
       <ProductFilters value={filters} onChange={setFilters} categories={categories.data} />
-      <PagedListView query={query} items={products} noun={NOUN} skeleton={<ListSkeleton />} empty={empty}>
+      <PagedListView
+        query={query}
+        items={products}
+        noun={NOUN}
+        skeleton={<ListSkeleton />}
+        empty={empty}
+      >
         {(rows) => {
           const table = {
             products: rows,

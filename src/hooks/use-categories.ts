@@ -13,14 +13,16 @@ export type CategoryCreateBody = z.input<typeof categoryInputSchema>;
 export function useCategories() {
   return useQuery({
     queryKey: categoryKeys.all,
-    queryFn: async ({ signal }) => (await apiFetch<{ items: Category[] }>("/api/categories", { signal })).items,
+    queryFn: async ({ signal }) =>
+      (await apiFetch<{ items: Category[] }>("/api/categories", { signal })).items,
   });
 }
 
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CategoryCreateBody) => apiFetch<Category>("/api/categories", { method: "POST", body }),
+    mutationFn: (body: CategoryCreateBody) =>
+      apiFetch<Category>("/api/categories", { method: "POST", body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: categoryKeys.all }),
   });
 }

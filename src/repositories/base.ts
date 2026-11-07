@@ -63,8 +63,22 @@ type Managed = "id" | "organizationId" | "createdAt" | "updatedAt";
 export type OrgCreateInput<T> = Omit<T, Managed>;
 export type OrgPatch<T> = Partial<Omit<T, Managed>>;
 
-const MANAGED_KEYS: ReadonlySet<string> = new Set<Managed>(["id", "organizationId", "createdAt", "updatedAt"]);
-const OPS: ReadonlySet<string> = new Set<WhereOp>(["==", "!=", "<", "<=", ">", ">=", "in", "array-contains"]);
+const MANAGED_KEYS: ReadonlySet<string> = new Set<Managed>([
+  "id",
+  "organizationId",
+  "createdAt",
+  "updatedAt",
+]);
+const OPS: ReadonlySet<string> = new Set<WhereOp>([
+  "==",
+  "!=",
+  "<",
+  "<=",
+  ">",
+  ">=",
+  "in",
+  "array-contains",
+]);
 const MAX_LIMIT = 100;
 const MAX_IN_VALUES = 30;
 const MAX_WHERE_CLAUSES = 10;
@@ -114,7 +128,8 @@ function cursorStringToTimestamp(value: string): Timestamp {
     throw invalid("cursor", "Cursor is malformed");
   }
   const seconds = ms / 1000;
-  if (seconds < MIN_TIMESTAMP_SECONDS || seconds > MAX_TIMESTAMP_SECONDS) throw invalid("cursor", "Cursor is malformed");
+  if (seconds < MIN_TIMESTAMP_SECONDS || seconds > MAX_TIMESTAMP_SECONDS)
+    throw invalid("cursor", "Cursor is malformed");
   try {
     return new Timestamp(seconds, Number(match[2]));
   } catch {
@@ -129,8 +144,10 @@ function cursorStringToTimestamp(value: string): Timestamp {
  */
 function cursorFor(sortValue: unknown, id: string): Cursor {
   if (sortValue instanceof Timestamp) return { t: "ts", v: timestampToCursorString(sortValue), id };
-  if (typeof sortValue === "string" && sortValue.length <= MAX_SORT_STRING_LENGTH) return { t: "s", v: sortValue, id };
-  if (typeof sortValue === "number" && Number.isFinite(sortValue)) return { t: "n", v: sortValue, id };
+  if (typeof sortValue === "string" && sortValue.length <= MAX_SORT_STRING_LENGTH)
+    return { t: "s", v: sortValue, id };
+  if (typeof sortValue === "number" && Number.isFinite(sortValue))
+    return { t: "n", v: sortValue, id };
   if (typeof sortValue === "boolean") return { t: "b", v: sortValue, id };
   if (sortValue === null) return { t: "null", v: null, id };
   throw new Error("OrgRepository: stored sort value is not a supported cursor key");
@@ -159,7 +176,9 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
       throw new Error("OrgRepository: collection must be a non-empty top-level collection name");
     }
     if (opts.filterable?.includes("organizationId")) {
-      throw new Error("OrgRepository: organizationId can never be filterable (it is always forced)");
+      throw new Error(
+        "OrgRepository: organizationId can never be filterable (it is always forced)",
+      );
     }
     this.filterable = new Set(opts.filterable ?? []);
     this.sortable = new Set(opts.sortable ?? []);
@@ -188,12 +207,17 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
    * can `tx.create(ref, data)` atomically with other docs (e.g. lock docs). `organizationId`
    * is forced; `id`/`organizationId`/`createdAt`/`updatedAt` in `data` are ignored.
    */
-  build(orgId: string, data: OrgCreateInput<T>, id?: string): { ref: DocumentReference; data: Record<string, unknown> } {
+  build(
+    orgId: string,
+    data: OrgCreateInput<T>,
+    id?: string,
+  ): { ref: DocumentReference; data: Record<string, unknown> } {
     assertId(orgId, "organizationId");
     if (id !== undefined) assertId(id, "id");
     const payload: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-      if (!MANAGED_KEYS.has(key) && key !== "__proto__" && value !== undefined) payload[key] = value;
+      if (!MANAGED_KEYS.has(key) && key !== "__proto__" && value !== undefined)
+        payload[key] = value;
     }
     payload.organizationId = orgId;
     payload.createdAt = FieldValue.serverTimestamp();
@@ -321,24 +345,28 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
       throw invalid("limit", `Limit must be an integer between 1 and ${MAX_LIMIT}`);
     }
 
-    if (!Array.isArray(q.orderBy) || q.orderBy.length !== 2) throw invalid("orderBy", "Invalid sort");
+    if (!Array.isArray(q.orderBy) || q.orderBy.length !== 2)
+      throw invalid("orderBy", "Invalid sort");
     const [sortField, dir] = q.orderBy;
     if (typeof sortField !== "string" || !this.sortable.has(sortField)) {
       throw invalid("orderBy", `Cannot sort by field: ${String(sortField)}`);
     }
-    if (dir !== "asc" && dir !== "desc") throw invalid("orderBy", "Sort direction must be asc or desc");
+    if (dir !== "asc" && dir !== "desc")
+      throw invalid("orderBy", "Sort direction must be asc or desc");
 
     let query: Query = this.col().where("organizationId", "==", orgId);
 
     if (q.where !== undefined) {
-      if (!Array.isArray(q.where) || q.where.length > MAX_WHERE_CLAUSES) throw invalid("where", "Invalid filters");
+      if (!Array.isArray(q.where) || q.where.length > MAX_WHERE_CLAUSES)
+        throw invalid("where", "Invalid filters");
       for (const clause of q.where) {
         if (!Array.isArray(clause) || clause.length !== 3) throw invalid("where", "Invalid filter");
         const [field, op, value] = clause;
         if (typeof field !== "string" || !this.filterable.has(field)) {
           throw invalid("where", `Cannot filter by field: ${String(field)}`);
         }
-        if (typeof op !== "string" || !OPS.has(op)) throw invalid(field, "Unsupported filter operator");
+        if (typeof op !== "string" || !OPS.has(op))
+          throw invalid(field, "Unsupported filter operator");
         if (op === "in") {
           if (!Array.isArray(value) || value.length === 0 || value.length > MAX_IN_VALUES) {
             throw invalid(field, `"in" requires between 1 and ${MAX_IN_VALUES} values`);
@@ -361,7 +389,9 @@ export class OrgRepository<T extends { id: string; organizationId: string }> {
 
     const snap = await query.limit(limit + 1).get();
     const page = snap.docs.slice(0, limit);
-    const items = page.map((doc) => this.fromSnapshot(doc, orgId)).filter((item): item is T => item !== null);
+    const items = page
+      .map((doc) => this.fromSnapshot(doc, orgId))
+      .filter((item): item is T => item !== null);
 
     let nextCursor: string | null = null;
     if (snap.docs.length > limit) {

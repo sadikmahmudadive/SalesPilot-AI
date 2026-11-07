@@ -101,7 +101,10 @@ describe("variant ids in the product form", () => {
     const { api, form, rows } = mount(productToFormValues(product));
     api.append(blank);
     // The server assigns an id to the new variant; the form is reset with the saved product.
-    const saved: Product = { ...product, variants: [...product.variants, { id: "v-dddd", size: "S" }] };
+    const saved: Product = {
+      ...product,
+      variants: [...product.variants, { id: "v-dddd", size: "S" }],
+    };
     form.reset(productToFormValues(saved));
     expect(ids(rows())).toEqual(["v-aaaa", "v-bbbb", "v-cccc", "v-dddd"]);
   });

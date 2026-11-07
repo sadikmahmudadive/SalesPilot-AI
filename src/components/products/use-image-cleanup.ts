@@ -11,11 +11,16 @@ import { plannedDeletes } from "@/lib/uploads/planned-deletes";
  * console in development only, and without anything but the status.
  */
 function deleteAssetQuietly(publicId: string): void {
-  apiFetch("/api/uploads/delete", { method: "POST", body: { publicId } }).catch((error: unknown) => {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("Could not delete an uploaded image", error instanceof ApiError ? error.status : "network");
-    }
-  });
+  apiFetch("/api/uploads/delete", { method: "POST", body: { publicId } }).catch(
+    (error: unknown) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(
+          "Could not delete an uploaded image",
+          error instanceof ApiError ? error.status : "network",
+        );
+      }
+    },
+  );
 }
 
 /**

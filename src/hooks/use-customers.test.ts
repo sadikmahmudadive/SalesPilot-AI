@@ -40,12 +40,16 @@ describe("buildCustomersQuery", () => {
       assignedAgentId: "u1",
     });
     expect([...q.keys()]).toEqual(["segment"]);
-    expect([...buildCustomersQuery({ customerType: "retail", tag: "vip" }).keys()]).toEqual(["customerType"]);
+    expect([...buildCustomersQuery({ customerType: "retail", tag: "vip" }).keys()]).toEqual([
+      "customerType",
+    ]);
     expect([...buildCustomersQuery({ tag: "vip", assignedAgentId: "u1" }).keys()]).toEqual(["tag"]);
   });
 
   it("falls through to the next filter when the higher-priority one is empty", () => {
-    expect([...buildCustomersQuery({ segment: "", customerType: "wholesale" }).keys()]).toEqual(["customerType"]);
+    expect([...buildCustomersQuery({ segment: "", customerType: "wholesale" }).keys()]).toEqual([
+      "customerType",
+    ]);
   });
 
   it("keeps a filter when q is blank", () => {

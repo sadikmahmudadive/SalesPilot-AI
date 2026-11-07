@@ -15,7 +15,9 @@ const redirect = vi.fn((url: string): never => {
   throw new RedirectSignal(url);
 });
 
-vi.mock("next/headers", () => ({ headers: async () => ({ get: (name: string) => headerStore.get(name) ?? null }) }));
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (name: string) => headerStore.get(name) ?? null }),
+}));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => redirect(url) }));
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: () => getCurrentUser() }));
 vi.mock("@/repositories/organizations", () => ({
@@ -24,7 +26,11 @@ vi.mock("@/repositories/organizations", () => ({
   getUserDisplayName: (uid: string) => getUserDisplayName(uid),
 }));
 
-import { loadDashboardContext, redirectToExpiredSession, requireDashboardContext } from "./dashboard-context";
+import {
+  loadDashboardContext,
+  redirectToExpiredSession,
+  requireDashboardContext,
+} from "./dashboard-context";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,7 +83,11 @@ describe("loadDashboardContext", () => {
     getOrganization.mockResolvedValue(null);
     getUserDisplayName.mockResolvedValue(null);
     const ctx = await loadDashboardContext();
-    expect(ctx).toMatchObject({ status: "ready", organizationName: "Your organization", displayName: null });
+    expect(ctx).toMatchObject({
+      status: "ready",
+      organizationName: "Your organization",
+      displayName: null,
+    });
   });
 });
 
@@ -93,13 +103,16 @@ describe("redirectToExpiredSession", () => {
     expect(await redirectUrl(redirectToExpiredSession)).toBe("/api/auth/expired?next=%2Fdashboard");
   });
 
-  it.each(["//evil.com", "https://evil.com", "/ok\r\nSet-Cookie: x=1", "/\\evil.com", "javascript:alert(1)"])(
-    "replaces a hostile x-sp-path (%j) with /dashboard",
-    async (hostile) => {
-      headerStore.set("x-sp-path", hostile);
-      expect(await redirectUrl(redirectToExpiredSession)).toBe("/api/auth/expired?next=%2Fdashboard");
-    },
-  );
+  it.each([
+    "//evil.com",
+    "https://evil.com",
+    "/ok\r\nSet-Cookie: x=1",
+    "/\\evil.com",
+    "javascript:alert(1)",
+  ])("replaces a hostile x-sp-path (%j) with /dashboard", async (hostile) => {
+    headerStore.set("x-sp-path", hostile);
+    expect(await redirectUrl(redirectToExpiredSession)).toBe("/api/auth/expired?next=%2Fdashboard");
+  });
 });
 
 describe("requireDashboardContext", () => {

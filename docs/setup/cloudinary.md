@@ -9,11 +9,11 @@ The Cloudinary integration has been tested only with the SDK mocked. It has neve
 1. Sign up at cloudinary.com (the free plan is enough to start).
 2. In the console, open Settings > API Keys (or the dashboard "Product Environment Credentials" panel) and copy:
 
-   | Variable | What it is | Visible to the browser |
-   |---|---|---|
-   | `CLOUDINARY_CLOUD_NAME` | Your cloud name | No (it appears in upload URLs the server returns) |
-   | `CLOUDINARY_API_KEY` | API key | Returned to the uploader with each signature (Cloudinary requires it in the upload form) |
-   | `CLOUDINARY_API_SECRET` | API secret | Never. Server only. |
+   | Variable                | What it is      | Visible to the browser                                                                   |
+   | ----------------------- | --------------- | ---------------------------------------------------------------------------------------- |
+   | `CLOUDINARY_CLOUD_NAME` | Your cloud name | No (it appears in upload URLs the server returns)                                        |
+   | `CLOUDINARY_API_KEY`    | API key         | Returned to the uploader with each signature (Cloudinary requires it in the upload form) |
+   | `CLOUDINARY_API_SECRET` | API secret      | Never. Server only.                                                                      |
 
 3. Put them in `.env.local` for local runs or in the Vercel project settings for deployments. Do not commit them, and do not paste them into chat, issues, pull requests or logs. If a secret leaks, regenerate it in the Cloudinary console and update every place it is stored.
 

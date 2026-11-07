@@ -113,7 +113,9 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
         <StatsCard customer={customer} />
         <LaterPanels />
       </div>
-      {canWrite ? <CustomerFormDialog open={editing} onOpenChange={setEditing} customer={customer} /> : null}
+      {canWrite ? (
+        <CustomerFormDialog open={editing} onOpenChange={setEditing} customer={customer} />
+      ) : null}
       <DeleteCustomerDialog
         customer={deleting ? customer : null}
         onOpenChange={setDeleting}

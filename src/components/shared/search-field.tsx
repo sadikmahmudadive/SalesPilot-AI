@@ -18,7 +18,13 @@ interface SearchFieldProps {
 }
 
 /** Labelled search box with a magnifier and a "Clear search" button. Debouncing is the caller's job. */
-export function SearchField({ label = "Search", value, onChange, placeholder, describedBy }: SearchFieldProps) {
+export function SearchField({
+  label = "Search",
+  value,
+  onChange,
+  placeholder,
+  describedBy,
+}: SearchFieldProps) {
   const id = useId();
   return (
     <div className="min-w-0 flex-1 space-y-1.5 sm:min-w-64">

@@ -14,11 +14,11 @@ This deployment has not been performed yet.
 
 ## 2. Build settings
 
-| Setting | Value |
-|---|---|
-| Build command | `npm run build` (default `next build`) |
-| Output directory | default (leave empty for Next.js) |
-| Install command | `npm install` |
+| Setting          | Value                                  |
+| ---------------- | -------------------------------------- |
+| Build command    | `npm run build` (default `next build`) |
+| Output directory | default (leave empty for Next.js)      |
+| Install command  | `npm install`                          |
 
 `NEXT_PUBLIC_*` values are inlined into the browser bundle at build time. Set them before the first build and redeploy after changing any of them.
 
@@ -28,30 +28,30 @@ Optional extra check: run `npm run check:bundle` after a local `npm run build` (
 
 Add these in Project Settings > Environment Variables, choosing the environments (Production, Preview, Development) deliberately. This mirrors `.env.example`. "Public" means it is shipped to the browser; "secret" means server-only and must never use a `NEXT_PUBLIC_` prefix.
 
-| Name | Required | Public / secret | Where to get it |
-|---|---|---|---|
-| `NEXT_PUBLIC_APP_URL` | required | public | The deployed base URL, no trailing slash (for example your production domain) |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | required | public | Firebase console > Project settings > Your apps > web app config |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | required | public | Same; keep it `<project-id>.firebaseapp.com` (see CSP note) |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | required | public | Same |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | required | public | Same |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | required | public | Same |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | required | public | Same |
-| `NEXT_PUBLIC_USE_EMULATORS` | optional | public | Leave unset or `false` |
-| `FIREBASE_PROJECT_ID` | required | secret | Service account JSON `project_id` |
-| `FIREBASE_CLIENT_EMAIL` | required (outside emulators) | secret | Service account JSON `client_email` |
-| `FIREBASE_PRIVATE_KEY` | required (outside emulators) | secret | Service account JSON `private_key`, see below |
-| `SESSION_COOKIE_MAX_DAYS` | optional | secret | Integer 1 to 14, default 5 |
-| `CLOUDINARY_CLOUD_NAME` | optional (uploads) | secret | Cloudinary console |
-| `CLOUDINARY_API_KEY` | optional (uploads) | secret | Cloudinary console |
-| `CLOUDINARY_API_SECRET` | optional (uploads) | secret | Cloudinary console |
-| `ENCRYPTION_KEY` | optional now | secret | Reserved for storing integration credentials; generate 32 random bytes, base64 |
-| `CRON_SECRET` | optional now | secret | Reserved for cron endpoints; generate a long random string |
-| `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_REALTIME_MODEL` | optional | secret | Not used yet (sub-project 3) |
-| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `META_GRAPH_API_VERSION` | optional | secret | Not used yet (sub-project 4) |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_WEBHOOK_SECRET` | optional | secret | Not used yet (sub-project 6) |
-| `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_IS_LIVE` | optional | secret | Not used yet (sub-project 5) |
-| `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRET` | optional | secret | Not used yet (sub-project 7) |
+| Name                                                                                                                                                          | Required                     | Public / secret | Where to get it                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------- | ------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_APP_URL`                                                                                                                                         | required                     | public          | The deployed base URL, no trailing slash (for example your production domain)  |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`                                                                                                                                | required                     | public          | Firebase console > Project settings > Your apps > web app config               |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`                                                                                                                            | required                     | public          | Same; keep it `<project-id>.firebaseapp.com` (see CSP note)                    |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`                                                                                                                             | required                     | public          | Same                                                                           |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`                                                                                                                         | required                     | public          | Same                                                                           |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`                                                                                                                    | required                     | public          | Same                                                                           |
+| `NEXT_PUBLIC_FIREBASE_APP_ID`                                                                                                                                 | required                     | public          | Same                                                                           |
+| `NEXT_PUBLIC_USE_EMULATORS`                                                                                                                                   | optional                     | public          | Leave unset or `false`                                                         |
+| `FIREBASE_PROJECT_ID`                                                                                                                                         | required                     | secret          | Service account JSON `project_id`                                              |
+| `FIREBASE_CLIENT_EMAIL`                                                                                                                                       | required (outside emulators) | secret          | Service account JSON `client_email`                                            |
+| `FIREBASE_PRIVATE_KEY`                                                                                                                                        | required (outside emulators) | secret          | Service account JSON `private_key`, see below                                  |
+| `SESSION_COOKIE_MAX_DAYS`                                                                                                                                     | optional                     | secret          | Integer 1 to 14, default 5                                                     |
+| `CLOUDINARY_CLOUD_NAME`                                                                                                                                       | optional (uploads)           | secret          | Cloudinary console                                                             |
+| `CLOUDINARY_API_KEY`                                                                                                                                          | optional (uploads)           | secret          | Cloudinary console                                                             |
+| `CLOUDINARY_API_SECRET`                                                                                                                                       | optional (uploads)           | secret          | Cloudinary console                                                             |
+| `ENCRYPTION_KEY`                                                                                                                                              | optional now                 | secret          | Reserved for storing integration credentials; generate 32 random bytes, base64 |
+| `CRON_SECRET`                                                                                                                                                 | optional now                 | secret          | Reserved for cron endpoints; generate a long random string                     |
+| `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_REALTIME_MODEL`                                                                                                | optional                     | secret          | Not used yet (sub-project 3)                                                   |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `META_GRAPH_API_VERSION` | optional                     | secret          | Not used yet (sub-project 4)                                                   |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_WEBHOOK_SECRET`                                                                     | optional                     | secret          | Not used yet (sub-project 6)                                                   |
+| `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_IS_LIVE`                                                                                      | optional                     | secret          | Not used yet (sub-project 5)                                                   |
+| `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRET`                                                                                                                       | optional                     | secret          | Not used yet (sub-project 7)                                                   |
 
 Mark every secret variable as Sensitive in Vercel where the option is offered. Do not set variables for features that are not built; they have no effect.
 

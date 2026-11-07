@@ -6,16 +6,16 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 Sub-projects 1 and 2 of 8 are implemented. Nothing from sub-projects 3 to 8 exists yet; their dashboard pages show an explicit "coming later" state, not mock data.
 
-| # | Sub-project | State |
-|---|---|---|
-| 1 | Foundation: auth, organizations, roles, security baseline, dashboard shell | done |
-| 2 | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs | done |
-| 3 | AI agents (RAG, tool calling) | roadmap |
-| 4 | WhatsApp and unified inbox | roadmap |
-| 5 | Orders, payments, courier | roadmap |
-| 6 | Voice calls | roadmap |
-| 7 | Follow-ups and automations (n8n) | roadmap |
-| 8 | Analytics and integrations settings | roadmap |
+| #   | Sub-project                                                                | State   |
+| --- | -------------------------------------------------------------------------- | ------- |
+| 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | done    |
+| 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | done    |
+| 3   | AI agents (RAG, tool calling)                                              | roadmap |
+| 4   | WhatsApp and unified inbox                                                 | roadmap |
+| 5   | Orders, payments, courier                                                  | roadmap |
+| 6   | Voice calls                                                                | roadmap |
+| 7   | Follow-ups and automations (n8n)                                           | roadmap |
+| 8   | Analytics and integrations settings                                        | roadmap |
 
 The design is in [docs/superpowers/specs/2026-11-06-foundation-core-data-design.md](docs/superpowers/specs/2026-11-06-foundation-core-data-design.md). What has and has not been verified is in [docs/CHECKLIST.md](docs/CHECKLIST.md).
 
@@ -39,11 +39,11 @@ Image uploads stay disabled ("Media storage not configured", API answers 503) un
 
 ## Environment variables
 
-| File | Committed | Purpose |
-|---|---|---|
-| `.env.example` | yes | Every variable the app knows, with a legend. Template only. |
-| `.env.development` | yes | Demo values for the emulators (`demo-salespilot`). No secrets. Loaded by `next dev`. |
-| `.env.local` | no (git-ignored) | Your real credentials. Never commit it, never paste it into chat, issues or logs. |
+| File               | Committed        | Purpose                                                                              |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------ |
+| `.env.example`     | yes              | Every variable the app knows, with a legend. Template only.                          |
+| `.env.development` | yes              | Demo values for the emulators (`demo-salespilot`). No secrets. Loaded by `next dev`. |
+| `.env.local`       | no (git-ignored) | Your real credentials. Never commit it, never paste it into chat, issues or logs.    |
 
 Two kinds of variable:
 
@@ -54,17 +54,17 @@ Validation errors list variable names, never values. Emulator mode needs both `F
 
 ## Scripts
 
-| Script | What it does |
-|---|---|
-| `npm run dev` | Next.js dev server on port 3000 (uses `.env.development`). |
-| `npm run build` | Production build. |
-| `npm run start` | Serve the production build. |
-| `npm run lint` | ESLint over the repo. |
-| `npm run typecheck` | `next typegen` then `tsc --noEmit`. |
-| `npm run test:unit` | Vitest unit project. No emulator needed. |
-| `npm run test:int` | Starts the Firestore and Auth emulators (`firebase emulators:exec`, project `demo-salespilot`), then runs the Vitest integration project and the Firestore rules tests. Needs Java and free ports 8085 and 9199. |
-| `npm run emu` | Starts the emulators for manual work (`npm run dev`). |
-| `npm run check:bundle` | Scans `.next/static` for server-only variable names, their values (when set in the current environment) and PEM private key markers. Exits 1 on any hit. Run `npm run build` first. |
+| Script                 | What it does                                                                                                                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`          | Next.js dev server on port 3000 (uses `.env.development`).                                                                                                                                                       |
+| `npm run build`        | Production build.                                                                                                                                                                                                |
+| `npm run start`        | Serve the production build.                                                                                                                                                                                      |
+| `npm run lint`         | ESLint over the repo.                                                                                                                                                                                            |
+| `npm run typecheck`    | `next typegen` then `tsc --noEmit`.                                                                                                                                                                              |
+| `npm run test:unit`    | Vitest unit project. No emulator needed.                                                                                                                                                                         |
+| `npm run test:int`     | Starts the Firestore and Auth emulators (`firebase emulators:exec`, project `demo-salespilot`), then runs the Vitest integration project and the Firestore rules tests. Needs Java and free ports 8085 and 9199. |
+| `npm run emu`          | Starts the emulators for manual work (`npm run dev`).                                                                                                                                                            |
+| `npm run check:bundle` | Scans `.next/static` for server-only variable names, their values (when set in the current environment) and PEM private key markers. Exits 1 on any hit. Run `npm run build` first.                              |
 
 Release gate, in order: `typecheck`, `lint`, `test:unit`, `test:int`, `build`, `check:bundle`.
 
@@ -89,11 +89,11 @@ src/app (routes, UI) -> src/services (business rules) -> src/repositories (Fires
 
 Nothing is faked in the UI. Integrations are either real or absent.
 
-| Service | Local development | Real |
-|---|---|---|
-| Firebase Auth and Firestore | Emulators (`npm run emu`), project `demo-salespilot`. | Only after the setup in [docs/setup/firebase.md](docs/setup/firebase.md). Not done yet. |
-| Cloudinary | Not configured until `CLOUDINARY_*` are set; uploads answer 503 and the UI says so. Integration tests mock the SDK. | Set the three variables ([docs/setup/cloudinary.md](docs/setup/cloudinary.md)). Never exercised against a real account yet. |
-| WhatsApp, OpenAI, Twilio, SSLCommerz, n8n | Not built. The variables exist in `.env.example` for later sub-projects. | Sub-projects 3 to 7. |
+| Service                                   | Local development                                                                                                   | Real                                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Firebase Auth and Firestore               | Emulators (`npm run emu`), project `demo-salespilot`.                                                               | Only after the setup in [docs/setup/firebase.md](docs/setup/firebase.md). Not done yet.                                     |
+| Cloudinary                                | Not configured until `CLOUDINARY_*` are set; uploads answer 503 and the UI says so. Integration tests mock the SDK. | Set the three variables ([docs/setup/cloudinary.md](docs/setup/cloudinary.md)). Never exercised against a real account yet. |
+| WhatsApp, OpenAI, Twilio, SSLCommerz, n8n | Not built. The variables exist in `.env.example` for later sub-projects.                                            | Sub-projects 3 to 7.                                                                                                        |
 
 ## Windows notes
 

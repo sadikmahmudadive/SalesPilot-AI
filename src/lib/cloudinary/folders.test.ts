@@ -19,9 +19,12 @@ describe("orgFolder", () => {
     expect(orgFolder("org_1-x", "campaigns")).toBe("organizations/org_1-x/campaigns");
   });
 
-  it.each(["", "a/b", "..", ".", "a b", "a%2e", "a\\b", "__x__", "a\x00b"])("rejects org id %j", (id) => {
-    expect(() => orgFolder(id, "products")).toThrow();
-  });
+  it.each(["", "a/b", "..", ".", "a b", "a%2e", "a\\b", "__x__", "a\x00b"])(
+    "rejects org id %j",
+    (id) => {
+      expect(() => orgFolder(id, "products")).toThrow();
+    },
+  );
 });
 
 describe("kindPermission", () => {
@@ -140,7 +143,8 @@ describe("assertOwnedPublicId", () => {
       height: 10,
     };
     expect(
-      productInputSchema.safeParse({ name: "P", sku: "P1", regularPriceMinor: 1, images: [image] }).success,
+      productInputSchema.safeParse({ name: "P", sku: "P1", regularPriceMinor: 1, images: [image] })
+        .success,
     ).toBe(true);
     assertOwnedPublicId("org-A", id);
   });
@@ -149,7 +153,11 @@ describe("assertOwnedPublicId", () => {
 describe("assertOwnedPublicIdOfKind", () => {
   it("passes for the matching kind and forbids a mismatch", () => {
     expect(() => assertOwnedPublicIdOfKind("A", "products", ok("A", "products"))).not.toThrow();
-    expect(() => assertOwnedPublicIdOfKind("A", "products", ok("A", "customers"))).toThrow(ForbiddenError);
-    expect(() => assertOwnedPublicIdOfKind("A", "products", ok("B", "products"))).toThrow(ForbiddenError);
+    expect(() => assertOwnedPublicIdOfKind("A", "products", ok("A", "customers"))).toThrow(
+      ForbiddenError,
+    );
+    expect(() => assertOwnedPublicIdOfKind("A", "products", ok("B", "products"))).toThrow(
+      ForbiddenError,
+    );
   });
 });

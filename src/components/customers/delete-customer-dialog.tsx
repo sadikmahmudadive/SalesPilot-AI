@@ -13,7 +13,11 @@ interface DeleteCustomerDialogProps {
   onDeleted?: (id: string) => void;
 }
 
-export function DeleteCustomerDialog({ customer, onOpenChange, onDeleted }: DeleteCustomerDialogProps) {
+export function DeleteCustomerDialog({
+  customer,
+  onOpenChange,
+  onDeleted,
+}: DeleteCustomerDialogProps) {
   const remove = useDeleteCustomer();
   // Keep the last customer so the title does not change while the dialog animates closed.
   const [lastCustomer, setLastCustomer] = useState(customer);

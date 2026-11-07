@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { productToFormValues, type ProductFormValues } from "@/components/products/product-form-model";
+import {
+  productToFormValues,
+  type ProductFormValues,
+} from "@/components/products/product-form-model";
 import {
   errorMessageAt,
   mapProductApiError,
@@ -48,9 +51,9 @@ describe("validateProductForm", () => {
   it("maps price fields back to the form's taka fields", () => {
     expect(names(values({ regularPrice: "" }))).toEqual(["regularPrice"]);
     expect(names(values({ regularPrice: "100", salePrice: "150" }))).toEqual(["salePrice"]);
-    expect(validateProductForm(values({ regularPrice: "100", salePrice: "150" })).issues[0]!.message).toMatch(
-      /sale price/i,
-    );
+    expect(
+      validateProductForm(values({ regularPrice: "100", salePrice: "150" })).issues[0]!.message,
+    ).toMatch(/sale price/i);
   });
 
   it("checks sale <= regular using exact minor units", () => {
@@ -69,18 +72,36 @@ describe("validateProductForm", () => {
 
   it("points FAQ problems at the row and field", () => {
     // A row with only one side filled is invalid; a fully blank row is dropped.
-    expect(names(values({ faqs: [{ q: "Q?", a: "A" }, { q: "Only a question", a: "" }] }))).toEqual(["faqs.1.a"]);
+    expect(
+      names(
+        values({
+          faqs: [
+            { q: "Q?", a: "A" },
+            { q: "Only a question", a: "" },
+          ],
+        }),
+      ),
+    ).toEqual(["faqs.1.a"]);
     expect(names(values({ faqs: [{ q: "", a: "" }] }))).toEqual([]);
     expect(names(values({ faqs: [{ q: "Q?", a: "" }] }))).toEqual(["faqs.0.a"]);
     expect(names(values({ faqs: [{ q: "", a: "A" }] }))).toEqual(["faqs.0.q"]);
   });
 
   it("points a too-long specification value at the row", () => {
-    expect(names(values({ specs: [{ key: "Note", value: "x".repeat(301) }] }))).toEqual(["specs.0.value"]);
+    expect(names(values({ specs: [{ key: "Note", value: "x".repeat(301) }] }))).toEqual([
+      "specs.0.value",
+    ]);
   });
 
   it("points an invalid specification name at its row, with the schema's message", () => {
-    const r = validateProductForm(values({ specs: [{ key: "x".repeat(61), value: "1" }, { key: "a.b", value: "2" }] }));
+    const r = validateProductForm(
+      values({
+        specs: [
+          { key: "x".repeat(61), value: "1" },
+          { key: "a.b", value: "2" },
+        ],
+      }),
+    );
     expect(r.issues).toEqual([
       { name: "specs.0.key", message: "Use 60 characters or fewer" },
       { name: "specs.1.key", message: "This specification name is not allowed" },
@@ -118,7 +139,9 @@ describe("mapProductApiError", () => {
     new ApiError({ status: 400, code: "VALIDATION_ERROR", message: "Invalid request", ...init });
 
   it("maps a duplicate SKU conflict onto the sku field", () => {
-    const r = mapProductApiError(api({ status: 409, code: "CONFLICT", message: "A product with this SKU already exists" }));
+    const r = mapProductApiError(
+      api({ status: 409, code: "CONFLICT", message: "A product with this SKU already exists" }),
+    );
     expect(r.fields).toEqual([{ name: "sku", message: "A product with this SKU already exists" }]);
     expect(r.formError).toBeNull();
   });
@@ -136,7 +159,11 @@ describe("mapProductApiError", () => {
     expect(stock.formError).toMatch(/stock or reservations/);
     expect(stock.requestId).toBe("r-1");
     const busy = mapProductApiError(
-      api({ status: 409, code: "CONFLICT", message: "The product could not be saved because of a concurrent change; please try again" }),
+      api({
+        status: 409,
+        code: "CONFLICT",
+        message: "The product could not be saved because of a concurrent change; please try again",
+      }),
     );
     expect(busy.fields).toEqual([]);
     expect(busy.formError).toMatch(/concurrent change/);
@@ -147,7 +174,10 @@ describe("mapProductApiError", () => {
       api({
         details: [
           { path: "regularPriceMinor", message: "Enter a whole number of paisa (0 or more)" },
-          { path: "salePriceMinor", message: "The sale price cannot be higher than the regular price" },
+          {
+            path: "salePriceMinor",
+            message: "The sale price cannot be higher than the regular price",
+          },
           { path: "variants.2.sku", message: "Use letters, numbers" },
           { path: "variants.0", message: "Enter a size or a color" },
           { path: "specifications", message: "Use at most 30 specifications" },
@@ -170,14 +200,26 @@ describe("mapProductApiError", () => {
 
   it("sends images and unknown paths to the banner", () => {
     const r = mapProductApiError(
-      api({ details: [{ path: "images.0.url", message: "Use an image uploaded through the product image uploader" }, { path: "body", message: "Bad" }] }),
+      api({
+        details: [
+          {
+            path: "images.0.url",
+            message: "Use an image uploaded through the product image uploader",
+          },
+          { path: "body", message: "Bad" },
+        ],
+      }),
     );
     expect(r.fields).toEqual([]);
     expect(r.formError).toMatch(/image uploader/);
   });
 
   it("gives friendly messages for 401 and 403", () => {
-    expect(mapProductApiError(api({ status: 401, code: "UNAUTHENTICATED" })).formError).toMatch(/sign in/i);
-    expect(mapProductApiError(api({ status: 403, code: "FORBIDDEN" })).formError).toMatch(/permission/i);
+    expect(mapProductApiError(api({ status: 401, code: "UNAUTHENTICATED" })).formError).toMatch(
+      /sign in/i,
+    );
+    expect(mapProductApiError(api({ status: 403, code: "FORBIDDEN" })).formError).toMatch(
+      /permission/i,
+    );
   });
 });

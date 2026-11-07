@@ -24,8 +24,8 @@ export function ComingLater({ phase, title, description, icon = Clock }: ComingL
         badge={<Badge variant="secondary">Coming in phase {phase}</Badge>}
         heading={`${title} is not available yet`}
       >
-        {description ?? `This section will be available in phase ${phase} of the roadmap.`} Nothing is shown here
-        until it works with your real data.
+        {description ?? `This section will be available in phase ${phase} of the roadmap.`} Nothing
+        is shown here until it works with your real data.
       </PlaceholderCard>
     </div>
   );

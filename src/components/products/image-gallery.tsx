@@ -56,7 +56,10 @@ export function ImageGallery({
     const target = pendingFocus.current;
     if (target === null) return;
     pendingFocus.current = null;
-    const button = typeof target === "number" ? list.current?.querySelectorAll<HTMLButtonElement>("button")[target] : undefined;
+    const button =
+      typeof target === "number"
+        ? list.current?.querySelectorAll<HTMLButtonElement>("button")[target]
+        : undefined;
     (button ?? uploaderInput.current ?? root.current)?.focus();
   }, [images]);
 
@@ -67,7 +70,10 @@ export function ImageGallery({
       {images.length > 0 ? (
         <ul ref={list} className="flex flex-wrap gap-3" aria-label="Product images">
           {images.map((image, index) => (
-            <li key={image.publicId} className="relative size-24 overflow-hidden rounded-md border bg-muted">
+            <li
+              key={image.publicId}
+              className="relative size-24 overflow-hidden rounded-md border bg-muted"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary already delivers a resized copy */}
               <img
                 src={thumbUrl(image.url, 160, 160)}
@@ -104,10 +110,13 @@ export function ImageGallery({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">{canWrite ? "No images yet." : "This product has no images."}</p>
+        <p className="text-sm text-muted-foreground">
+          {canWrite ? "No images yet." : "This product has no images."}
+        </p>
       )}
       <p className="text-xs text-muted-foreground">
-        {images.length} of {MAX_IMAGES} images{images.length > 0 ? ". The first image is the primary one shown in lists." : "."}
+        {images.length} of {MAX_IMAGES} images
+        {images.length > 0 ? ". The first image is the primary one shown in lists." : "."}
       </p>
       {canWrite ? (
         <MediaUploader

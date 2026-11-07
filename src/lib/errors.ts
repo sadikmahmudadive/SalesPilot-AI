@@ -8,7 +8,7 @@
  * Brand shared across module copies (Symbol.for) so errors can still be recognised
  * if the bundler ends up with more than one instance of this module.
  */
-export const APP_ERROR_BRAND: unique symbol = Symbol.for('salespilot.appError');
+export const APP_ERROR_BRAND: unique symbol = Symbol.for("salespilot.appError");
 
 export abstract class AppError extends Error {
   readonly [APP_ERROR_BRAND] = true;
@@ -23,54 +23,54 @@ export interface ValidationDetail {
 }
 
 export class ValidationError extends AppError {
-  readonly code = 'VALIDATION_ERROR';
+  readonly code = "VALIDATION_ERROR";
   readonly status = 400;
   readonly details?: ReadonlyArray<ValidationDetail>;
 
-  constructor(details?: ReadonlyArray<ValidationDetail>, message = 'Invalid request') {
+  constructor(details?: ReadonlyArray<ValidationDetail>, message = "Invalid request") {
     super(message);
-    this.name = 'ValidationError';
+    this.name = "ValidationError";
     this.details = details;
   }
 }
 
 export class UnauthenticatedError extends AppError {
-  readonly code = 'UNAUTHENTICATED';
+  readonly code = "UNAUTHENTICATED";
   readonly status = 401;
 
-  constructor(message = 'Authentication required') {
+  constructor(message = "Authentication required") {
     super(message);
-    this.name = 'UnauthenticatedError';
+    this.name = "UnauthenticatedError";
   }
 }
 
 export class ForbiddenError extends AppError {
-  readonly code = 'FORBIDDEN';
+  readonly code = "FORBIDDEN";
   readonly status = 403;
 
-  constructor(message = 'You do not have permission to perform this action') {
+  constructor(message = "You do not have permission to perform this action") {
     super(message);
-    this.name = 'ForbiddenError';
+    this.name = "ForbiddenError";
   }
 }
 
 export class NotFoundError extends AppError {
-  readonly code = 'NOT_FOUND';
+  readonly code = "NOT_FOUND";
   readonly status = 404;
 
-  constructor(message = 'Resource not found') {
+  constructor(message = "Resource not found") {
     super(message);
-    this.name = 'NotFoundError';
+    this.name = "NotFoundError";
   }
 }
 
 export class ConflictError extends AppError {
-  readonly code = 'CONFLICT';
+  readonly code = "CONFLICT";
   readonly status = 409;
 
-  constructor(message = 'Request conflicts with the current state of the resource') {
+  constructor(message = "Request conflicts with the current state of the resource") {
     super(message);
-    this.name = 'ConflictError';
+    this.name = "ConflictError";
   }
 }
 
@@ -81,52 +81,53 @@ export class ConflictError extends AppError {
  */
 export class InventoryBusyError extends ConflictError {
   constructor() {
-    super('Inventory is busy, please try again');
-    this.name = 'InventoryBusyError';
+    super("Inventory is busy, please try again");
+    this.name = "InventoryBusyError";
   }
 }
 
 export class InsufficientStockError extends AppError {
-  readonly code = 'INSUFFICIENT_STOCK';
+  readonly code = "INSUFFICIENT_STOCK";
   readonly status = 409;
 
-  constructor(message = 'Insufficient stock') {
+  constructor(message = "Insufficient stock") {
     super(message);
-    this.name = 'InsufficientStockError';
+    this.name = "InsufficientStockError";
   }
 }
 
 export class UnsupportedMediaTypeError extends AppError {
-  readonly code = 'UNSUPPORTED_MEDIA_TYPE';
+  readonly code = "UNSUPPORTED_MEDIA_TYPE";
   readonly status = 415;
 
-  constructor(message = 'Content-Type must be application/json') {
+  constructor(message = "Content-Type must be application/json") {
     super(message);
-    this.name = 'UnsupportedMediaTypeError';
+    this.name = "UnsupportedMediaTypeError";
   }
 }
 
 export class RateLimitedError extends AppError {
-  readonly code = 'RATE_LIMITED';
+  readonly code = "RATE_LIMITED";
   readonly status = 429;
 
   /** Whole seconds; non-finite or negative input is coerced to 1, fractions round up. */
   readonly retryAfterSec: number;
 
-  constructor(retryAfterSec: number, message = 'Too many requests') {
+  constructor(retryAfterSec: number, message = "Too many requests") {
     super(message);
-    this.retryAfterSec = Number.isFinite(retryAfterSec) && retryAfterSec >= 0 ? Math.ceil(retryAfterSec) : 1;
-    this.name = 'RateLimitedError';
+    this.retryAfterSec =
+      Number.isFinite(retryAfterSec) && retryAfterSec >= 0 ? Math.ceil(retryAfterSec) : 1;
+    this.name = "RateLimitedError";
   }
 }
 
 export class IntegrationNotConfiguredError extends AppError {
-  readonly code = 'INTEGRATION_NOT_CONFIGURED';
+  readonly code = "INTEGRATION_NOT_CONFIGURED";
   readonly status = 503;
 
   constructor(readonly integration: string) {
     super(`Integration not configured: ${integration}`);
-    this.name = 'IntegrationNotConfiguredError';
+    this.name = "IntegrationNotConfiguredError";
   }
 }
 
@@ -141,13 +142,13 @@ export interface AppErrorLike {
 
 /** True for AppError instances and for branded objects from another copy of this module. */
 export function isAppError(err: unknown): err is AppErrorLike {
-  if (typeof err !== 'object' || err === null) return false;
+  if (typeof err !== "object" || err === null) return false;
   try {
     const e = err as Record<PropertyKey, unknown>;
     return (
       e[APP_ERROR_BRAND] === true &&
-      typeof e.code === 'string' &&
-      typeof e.status === 'number' &&
+      typeof e.code === "string" &&
+      typeof e.status === "number" &&
       Number.isInteger(e.status) &&
       e.status >= 400 &&
       e.status <= 599

@@ -47,7 +47,12 @@ const POLICIES: Readonly<Record<UploadKind, UploadPolicy | null>> = {
 /** The policy for `kind`; knowledge throws a static ValidationError. */
 export function uploadPolicy(kind: UploadKind): UploadPolicy {
   const policy = POLICIES[kind];
-  if (!policy) throw invalid("kind", "Knowledge uploads are not available yet", "Knowledge uploads are not available yet");
+  if (!policy)
+    throw invalid(
+      "kind",
+      "Knowledge uploads are not available yet",
+      "Knowledge uploads are not available yet",
+    );
   return policy;
 }
 
@@ -71,7 +76,8 @@ const MAX_PUBLIC_ID_LENGTH = 255;
 
 /** `organizations/{orgId}/{kind}`. Throws (a programming error) for an org id that is not one safe segment. */
 export function orgFolder(orgId: string, kind: UploadKind): string {
-  if (!isValidIdSegment(orgId) || !ORG_SEGMENT.test(orgId)) throw new Error("Invalid organization id for an upload folder");
+  if (!isValidIdSegment(orgId) || !ORG_SEGMENT.test(orgId))
+    throw new Error("Invalid organization id for an upload folder");
   return `organizations/${orgId}/${kind}`;
 }
 
@@ -86,7 +92,11 @@ const KIND_SET: ReadonlySet<string> = new Set(UPLOAD_KINDS);
  * matches "A". Failure is a `ForbiddenError` with a static message: the id is never echoed.
  */
 export function assertOwnedPublicId(orgId: string, publicId: string): UploadKind {
-  if (typeof publicId !== "string" || publicId.length === 0 || publicId.length > MAX_PUBLIC_ID_LENGTH) {
+  if (
+    typeof publicId !== "string" ||
+    publicId.length === 0 ||
+    publicId.length > MAX_PUBLIC_ID_LENGTH
+  ) {
     throw new ForbiddenError();
   }
   const segments = publicId.split("/");

@@ -69,7 +69,26 @@ describe("parseTakaToMinor", () => {
   });
 
   it("rejects letters, symbols and malformed numbers", () => {
-    for (const bad of ["abc", "12a", "1e3", "1.2.3", "1..2", "5.", ".5", "$5", "1 000", "1,2", ",100", "1,2345", "12,34,56", "1,000,00", "NaN", "Infinity", "0x10", "+5"]) {
+    for (const bad of [
+      "abc",
+      "12a",
+      "1e3",
+      "1.2.3",
+      "1..2",
+      "5.",
+      ".5",
+      "$5",
+      "1 000",
+      "1,2",
+      ",100",
+      "1,2345",
+      "12,34,56",
+      "1,000,00",
+      "NaN",
+      "Infinity",
+      "0x10",
+      "+5",
+    ]) {
       expect(parseTakaToMinor(bad).ok, bad).toBe(false);
     }
   });

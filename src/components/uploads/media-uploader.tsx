@@ -34,7 +34,10 @@ let nextItemId = 0;
 
 function NotConfigured({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="status" className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center">
+    <div
+      role="status"
+      className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center"
+    >
       <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
         <ImageOff className="size-5" aria-hidden="true" />
       </span>
@@ -42,7 +45,8 @@ function NotConfigured({ onRetry }: { onRetry: () => void }) {
         <p className="text-sm font-medium">Media storage not configured</p>
         <p className="max-w-md text-sm text-muted-foreground">
           Image uploads need media storage. An owner or admin can set it up by following{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{SETUP_GUIDE_PATH}</code>. Existing images stay as they are.
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{SETUP_GUIDE_PATH}</code>
+          . Existing images stay as they are.
         </p>
       </div>
       <Button type="button" variant="outline" size="sm" onClick={onRetry}>
@@ -133,7 +137,10 @@ export function MediaUploader({
           drop(id);
           announce(`${file.name} uploaded`);
         } catch (error) {
-          const outcome = error instanceof UploadFlowError ? error.outcome : { kind: "error" as const, message: MESSAGES.generic };
+          const outcome =
+            error instanceof UploadFlowError
+              ? error.outcome
+              : { kind: "error" as const, message: MESSAGES.generic };
           if (outcome.kind === "aborted") {
             drop(id);
           } else if (outcome.kind === "not-configured") {
@@ -162,7 +169,13 @@ export function MediaUploader({
     const rejected: UploadItem[] = [];
     for (const file of list) {
       const problem = precheckFile(kind, file);
-      if (problem) rejected.push({ id: `upload-${nextItemId++}`, name: file.name, phase: "error", message: problem });
+      if (problem)
+        rejected.push({
+          id: `upload-${nextItemId++}`,
+          name: file.name,
+          phase: "error",
+          message: problem,
+        });
       else valid.push(file);
     }
 
@@ -230,7 +243,9 @@ export function MediaUploader({
         <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
           <Upload className="size-5" aria-hidden="true" />
         </span>
-        <span className="text-sm font-medium">{dragging ? "Drop images to upload" : "Choose images or drop them here"}</span>
+        <span className="text-sm font-medium">
+          {dragging ? "Drop images to upload" : "Choose images or drop them here"}
+        </span>
         <span id={hintId} className="text-xs text-muted-foreground">
           {remaining === 0
             ? `You have reached the maximum of ${maxFiles} images.`
@@ -257,7 +272,13 @@ export function MediaUploader({
       {items.length > 0 ? (
         <ul className="space-y-2" aria-label="Uploads">
           {items.map((item) => (
-            <UploadRow key={item.id} item={item} status={status} progress={progress} onCancel={cancel} />
+            <UploadRow
+              key={item.id}
+              item={item}
+              status={status}
+              progress={progress}
+              onCancel={cancel}
+            />
           ))}
         </ul>
       ) : null}

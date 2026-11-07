@@ -22,7 +22,8 @@ type SafeBool = { as_safe_bool: (value: unknown) => unknown };
 
 vi.mock("cloudinary", async (importOriginal) => {
   const actual = await importOriginal<typeof import("cloudinary")>();
-  const real = (actual.v2 ?? (actual as unknown as { default: typeof actual }).default.v2) as typeof actual.v2;
+  const real = (actual.v2 ??
+    (actual as unknown as { default: typeof actual }).default.v2) as typeof actual.v2;
   return {
     v2: {
       config: vi.fn(real.config),
@@ -113,8 +114,14 @@ function sdkError(httpCode: number, message = "Cloudinary says no") {
 
 describe("signature algorithm reference", () => {
   it("the independent helper agrees with the SDK on a multi-param example", () => {
-    const params = { eager: "w_400,h_300,c_pad|w_260,h_200,c_crop", public_id: "sample", timestamp: "1315060510" };
-    expect(expectedSignature(params, "abcd")).toBe(cloudinary.utils.api_sign_request(params, "abcd"));
+    const params = {
+      eager: "w_400,h_300,c_pad|w_260,h_200,c_crop",
+      public_id: "sample",
+      timestamp: "1315060510",
+    };
+    expect(expectedSignature(params, "abcd")).toBe(
+      cloudinary.utils.api_sign_request(params, "abcd"),
+    );
     expect(expectedSignature(params, "abcd")).toMatch(/^[0-9a-f]{40}$/);
   });
 });
@@ -138,7 +145,13 @@ describe("signUpload", () => {
       overwrite: "0",
       type: "upload",
     });
-    expect(Object.keys(out.params).sort()).toEqual(["allowed_formats", "overwrite", "public_id", "timestamp", "type"]);
+    expect(Object.keys(out.params).sort()).toEqual([
+      "allowed_formats",
+      "overwrite",
+      "public_id",
+      "timestamp",
+      "type",
+    ]);
     // No folder / unique_filename / use_filename: the id is fully determined by the server.
     expect(out.params).not.toHaveProperty("folder");
     expect(out.params).not.toHaveProperty("unique_filename");
@@ -171,7 +184,8 @@ describe("signUpload", () => {
       height: 10,
     };
     expect(
-      productInputSchema.safeParse({ name: "P", sku: "P1", regularPriceMinor: 1, images: [image] }).success,
+      productInputSchema.safeParse({ name: "P", sku: "P1", regularPriceMinor: 1, images: [image] })
+        .success,
     ).toBe(true);
   });
 
@@ -226,25 +240,43 @@ describe("signUpload", () => {
     expect(() => signUpload(ORG, "customers", { contentType, bytes: 10 })).not.toThrow();
   });
 
-  it.each(["image/svg+xml", "application/pdf", "image/gif", "text/html", "IMAGE/PNG", "image/png; charset=x", ""])(
-    "rejects content type %j",
-    (contentType) => {
-      expect(() => signUpload(ORG, "products", { contentType, bytes: 10 })).toThrow(ValidationError);
-    },
-  );
+  it.each([
+    "image/svg+xml",
+    "application/pdf",
+    "image/gif",
+    "text/html",
+    "IMAGE/PNG",
+    "image/png; charset=x",
+    "",
+  ])("rejects content type %j", (contentType) => {
+    expect(() => signUpload(ORG, "products", { contentType, bytes: 10 })).toThrow(ValidationError);
+  });
 
   it("accepts exactly 5 MB and 1 byte; rejects more, zero, negative, fractional and unsafe sizes", () => {
-    expect(() => signUpload(ORG, "products", { contentType: "image/png", bytes: 5_242_880 })).not.toThrow();
+    expect(() =>
+      signUpload(ORG, "products", { contentType: "image/png", bytes: 5_242_880 }),
+    ).not.toThrow();
     expect(() => signUpload(ORG, "products", { contentType: "image/png", bytes: 1 })).not.toThrow();
-    for (const bytes of [5_242_881, 6 * 1024 * 1024, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 60]) {
-      expect(() => signUpload(ORG, "products", { contentType: "image/png", bytes })).toThrow(ValidationError);
+    for (const bytes of [
+      5_242_881,
+      6 * 1024 * 1024,
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      2 ** 60,
+    ]) {
+      expect(() => signUpload(ORG, "products", { contentType: "image/png", bytes })).toThrow(
+        ValidationError,
+      );
     }
   });
 
   it("rejects knowledge uploads", () => {
-    expect(() => signUpload(ORG, "knowledge", { contentType: "application/pdf", bytes: 10 })).toThrow(
-      "Knowledge uploads are not available yet",
-    );
+    expect(() =>
+      signUpload(ORG, "knowledge", { contentType: "application/pdf", bytes: 10 }),
+    ).toThrow("Knowledge uploads are not available yet");
   });
 
   it("throws IntegrationNotConfiguredError without signing when credentials are missing", () => {
@@ -294,7 +326,12 @@ describe("confirmUpload", () => {
       bytes: 1234,
     });
     expect(
-      productInputSchema.safeParse({ name: "P", sku: "P1", regularPriceMinor: 100, images: [image] }).success,
+      productInputSchema.safeParse({
+        name: "P",
+        sku: "P1",
+        regularPriceMinor: 100,
+        images: [image],
+      }).success,
     ).toBe(true);
     expect(JSON.stringify(image)).not.toContain(SECRET);
   });
@@ -378,9 +415,15 @@ describe("confirmUpload", () => {
 
   it.each([
     ["foreign cloud", { secure_url: `https://res.cloudinary.com/evil/image/upload/v1/${OWN}.jpg` }],
-    ["foreign host", { secure_url: `https://evil.example.com/${CLOUD}/image/upload/v1/${OWN}.jpg` }],
+    [
+      "foreign host",
+      { secure_url: `https://evil.example.com/${CLOUD}/image/upload/v1/${OWN}.jpg` },
+    ],
     ["http url", { secure_url: `http://res.cloudinary.com/${CLOUD}/image/upload/v1/${OWN}.jpg` }],
-    ["url for a different asset", { secure_url: `https://res.cloudinary.com/${CLOUD}/image/upload/v1/other.jpg` }],
+    [
+      "url for a different asset",
+      { secure_url: `https://res.cloudinary.com/${CLOUD}/image/upload/v1/other.jpg` },
+    ],
     ["no url", { secure_url: undefined }],
     ["public id mismatch", { public_id: `organizations/${ORG}/products/ffffffffffffffffffffffff` }],
   ])("is a generic 500 and does NOT destroy on %s (deployment mismatch)", async (_name, over) => {
@@ -406,7 +449,10 @@ describe("confirmUpload", () => {
 
   it("turns other Cloudinary errors (real nested shape with auth) into a generic error; code-only logging", async () => {
     resource.mockRejectedValue(
-      sdkError(401, `Invalid signature for https://api.cloudinary.com/?api_key=${KEY}&signature=deadbeef ${SECRET}`),
+      sdkError(
+        401,
+        `Invalid signature for https://api.cloudinary.com/?api_key=${KEY}&signature=deadbeef ${SECRET}`,
+      ),
     );
     const err = (await confirmUpload(ORG, "products", OWN).catch((e: unknown) => e)) as Error;
     expect(err).toBeInstanceOf(Error);
@@ -421,7 +467,9 @@ describe("confirmUpload", () => {
   it("throws IntegrationNotConfiguredError without calling the SDK when unconfigured", async () => {
     vi.stubEnv("CLOUDINARY_API_KEY", "");
     __resetEnvCacheForTests();
-    await expect(confirmUpload(ORG, "products", OWN)).rejects.toThrow(IntegrationNotConfiguredError);
+    await expect(confirmUpload(ORG, "products", OWN)).rejects.toThrow(
+      IntegrationNotConfiguredError,
+    );
     expect(resource).not.toHaveBeenCalled();
   });
 });
@@ -432,7 +480,9 @@ describe("deleteAsset", () => {
     await expect(deleteAsset(ORG, OWN)).resolves.toBeUndefined();
     expect(destroy).toHaveBeenCalledWith(OWN, { resource_type: "image", invalidate: true });
     expect(deleteRecord).toHaveBeenCalledWith(OWN);
-    expect(deleteRecord.mock.invocationCallOrder[0]!).toBeLessThan(destroy.mock.invocationCallOrder[0]!);
+    expect(deleteRecord.mock.invocationCallOrder[0]!).toBeLessThan(
+      destroy.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("is idempotent when the asset is already gone", async () => {
@@ -443,12 +493,12 @@ describe("deleteAsset", () => {
   });
 
   it("forbids foreign ids without calling Cloudinary or touching records", async () => {
-    await expect(deleteAsset(ORG, "organizations/other/products/0123456789abcdef01234567")).rejects.toThrow(
-      ForbiddenError,
-    );
-    await expect(deleteAsset(ORG, "organizations/org-AB/products/0123456789abcdef01234567")).rejects.toThrow(
-      ForbiddenError,
-    );
+    await expect(
+      deleteAsset(ORG, "organizations/other/products/0123456789abcdef01234567"),
+    ).rejects.toThrow(ForbiddenError);
+    await expect(
+      deleteAsset(ORG, "organizations/org-AB/products/0123456789abcdef01234567"),
+    ).rejects.toThrow(ForbiddenError);
     expect(destroy).not.toHaveBeenCalled();
     expect(deleteRecord).not.toHaveBeenCalled();
   });

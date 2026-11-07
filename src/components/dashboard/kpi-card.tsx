@@ -55,7 +55,11 @@ export function KpiCard({ id, title, icon: Icon, state, subtext, href, linkLabel
 
   const failed = state.kind === "error";
   return (
-    <section aria-labelledby={titleId} aria-describedby={failed ? detailId : undefined} className="h-full">
+    <section
+      aria-labelledby={titleId}
+      aria-describedby={failed ? detailId : undefined}
+      className="h-full"
+    >
       <Card size="sm" className="h-full">
         <CardContent className="flex h-full flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
@@ -68,11 +72,14 @@ export function KpiCard({ id, title, icon: Icon, state, subtext, href, linkLabel
             <div id={detailId}>
               <p className="text-lg font-semibold">Couldn&apos;t load</p>
               <p className="text-xs text-muted-foreground">
-                The {title.toLowerCase()} figure is unavailable right now. Refresh the page to try again.
+                The {title.toLowerCase()} figure is unavailable right now. Refresh the page to try
+                again.
               </p>
             </div>
           ) : (
-            <p className="text-3xl font-semibold tracking-tight tabular-nums">{formatCount(state.value)}</p>
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              {formatCount(state.value)}
+            </p>
           )}
           {subtext ? <p className="text-xs text-muted-foreground">{subtext}</p> : null}
           {href && linkLabel ? (

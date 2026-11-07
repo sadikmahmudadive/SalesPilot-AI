@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { assertValidRateLimitSpec, isNextControlFlowError, withApi, withAuthOnlyApi, zodIssuesToDetails } from "./handler";
+import {
+  assertValidRateLimitSpec,
+  isNextControlFlowError,
+  withApi,
+  withAuthOnlyApi,
+  zodIssuesToDetails,
+} from "./handler";
 
 describe("zodIssuesToDetails", () => {
   it("maps issues to field paths with static messages and never echoes input", () => {
@@ -22,7 +28,9 @@ describe("zodIssuesToDetails", () => {
     const result = z.string().safeParse(5);
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(zodIssuesToDetails(result.error.issues)).toEqual([{ path: "body", message: "Invalid type" }]);
+    expect(zodIssuesToDetails(result.error.issues)).toEqual([
+      { path: "body", message: "Invalid type" },
+    ]);
   });
 });
 
@@ -50,7 +58,9 @@ describe("rate limit spec validation (at construction time)", () => {
     ["name with colon", { name: "a:b" }],
   ])("throws when defining a route with %s", (_label, patch) => {
     const spec = { ...ok, ...patch };
-    expect(() => withApi({ permission: "any-member", rateLimit: spec }, fn)).toThrow(/withApi: rateLimit/);
+    expect(() => withApi({ permission: "any-member", rateLimit: spec }, fn)).toThrow(
+      /withApi: rateLimit/,
+    );
     expect(() => withAuthOnlyApi({ rateLimit: spec }, fn)).toThrow(/withApi: rateLimit/);
   });
 });

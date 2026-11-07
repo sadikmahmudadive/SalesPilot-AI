@@ -14,12 +14,22 @@ const options = {
 describe("mapApiErrorWith", () => {
   it("delegates conflicts and keeps the request id", () => {
     const r = mapApiErrorWith(api({ status: 409, code: "CONFLICT", requestId: "r1" }), options);
-    expect(r).toEqual({ fields: [{ name: "name", message: "taken" }], formError: null, requestId: "r1" });
+    expect(r).toEqual({
+      fields: [{ name: "name", message: "taken" }],
+      formError: null,
+      requestId: "r1",
+    });
   });
 
   it("maps known detail paths and joins the unknown ones", () => {
     const r = mapApiErrorWith(
-      api({ details: [{ path: "name", message: "Required" }, { path: "x", message: "A" }, { path: "y", message: "B" }] }),
+      api({
+        details: [
+          { path: "name", message: "Required" },
+          { path: "x", message: "A" },
+          { path: "y", message: "B" },
+        ],
+      }),
       options,
     );
     expect(r.fields).toEqual([{ name: "name", message: "Required" }]);
@@ -27,7 +37,10 @@ describe("mapApiErrorWith", () => {
   });
 
   it("falls back to the error message", () => {
-    expect(mapApiErrorWith(api({ status: 500, code: "INTERNAL_ERROR", message: "Boom" }), options).formError).toBe("Boom");
+    expect(
+      mapApiErrorWith(api({ status: 500, code: "INTERNAL_ERROR", message: "Boom" }), options)
+        .formError,
+    ).toBe("Boom");
   });
 });
 

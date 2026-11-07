@@ -37,7 +37,10 @@ class FakeXhr implements XhrLike {
 
 const start = (opts: Partial<Parameters<typeof xhrUpload>[2]> = {}) => {
   const body = new FormData();
-  const promise = xhrUpload("https://api.cloudinary.com/v1_1/demo/image/upload", body, { createXhr: () => new FakeXhr(), ...opts });
+  const promise = xhrUpload("https://api.cloudinary.com/v1_1/demo/image/upload", body, {
+    createXhr: () => new FakeXhr(),
+    ...opts,
+  });
   return { promise, xhr: FakeXhr.last, body };
 };
 

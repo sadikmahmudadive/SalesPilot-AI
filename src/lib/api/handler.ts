@@ -94,14 +94,19 @@ const ISSUE_MESSAGES: Record<string, string> = {
 };
 
 /** Field paths plus static messages; the offending input values are never included. */
-export function zodIssuesToDetails(issues: ReadonlyArray<Pick<ZodIssue, "code" | "path">>): ValidationDetail[] {
+export function zodIssuesToDetails(
+  issues: ReadonlyArray<Pick<ZodIssue, "code" | "path">>,
+): ValidationDetail[] {
   return issues.map((issue) => ({
     path: issue.path.map(String).join(".") || "body",
     message: ISSUE_MESSAGES[issue.code] ?? "Invalid value",
   }));
 }
 
-async function parseBody<S extends ZodType | undefined>(req: Request, schema: S): Promise<BodyOf<S>> {
+async function parseBody<S extends ZodType | undefined>(
+  req: Request,
+  schema: S,
+): Promise<BodyOf<S>> {
   if (!schema) return undefined as BodyOf<S>;
   let raw: unknown;
   try {
@@ -135,7 +140,8 @@ export function assertValidRateLimitSpec(spec: RateLimitSpec): void {
   if (typeof name !== "string" || name.length === 0 || name.includes(":")) {
     throw new Error("withApi: rateLimit.name must be a non-empty string without ':'");
   }
-  if (!Number.isInteger(limit) || limit < 1) throw new Error("withApi: rateLimit.limit must be a positive integer");
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new Error("withApi: rateLimit.limit must be a positive integer");
   if (!Number.isFinite(windowSec) || Math.floor(windowSec * 1000) < 1) {
     throw new Error("withApi: rateLimit.windowSec must be finite and at least 1 millisecond");
   }
@@ -151,24 +157,34 @@ export function isNextControlFlowError(err: unknown): boolean {
   if (typeof err !== "object" || err === null || err instanceof Response) return false;
   try {
     const digest = (err as { digest?: unknown }).digest;
-    return typeof digest === "string" && (digest.startsWith("NEXT_") || digest === "DYNAMIC_SERVER_USAGE");
+    return (
+      typeof digest === "string" &&
+      (digest.startsWith("NEXT_") || digest === "DYNAMIC_SERVER_USAGE")
+    );
   } catch {
     return false;
   }
 }
 
-function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S>>>(p: Pipeline<S, C>): RouteHandler {
+function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S>>>(
+  p: Pipeline<S, C>,
+): RouteHandler {
   const { opts, withMembership, fn } = p;
   if (opts.rateLimit) assertValidRateLimitSpec(opts.rateLimit);
   return async (req, routeCtx) => {
     const requestId = newRequestId();
     try {
-      if (opts.csrf !== false) assertJsonSameOrigin(req, { requireJson: opts.schema !== undefined });
+      if (opts.csrf !== false)
+        assertJsonSameOrigin(req, { requireJson: opts.schema !== undefined });
 
       const user = await requireUser();
       const org = withMembership ? await requireMembership(user) : undefined;
 
-      if (org && opts.permission !== "any-member" && !can(org.role, opts.permission as Permission)) {
+      if (
+        org &&
+        opts.permission !== "any-member" &&
+        !can(org.role, opts.permission as Permission)
+      ) {
         throw new ForbiddenError();
       }
 
@@ -179,8 +195,17 @@ function build<S extends ZodType | undefined, C extends AuthOnlyContext<BodyOf<S
 
       const body = (await parseBody(req, opts.schema)) as BodyOf<S>;
       const params = (await routeCtx?.params) ?? {};
-      const base: AuthOnlyContext<BodyOf<S>> = { uid: user.uid, email: user.email, body, req, params, requestId };
-      const ctx = (org ? { ...base, organizationId: org.organizationId, role: org.role } : base) as C;
+      const base: AuthOnlyContext<BodyOf<S>> = {
+        uid: user.uid,
+        email: user.email,
+        body,
+        req,
+        params,
+        requestId,
+      };
+      const ctx = (
+        org ? { ...base, organizationId: org.organizationId, role: org.role } : base
+      ) as C;
 
       const result = await fn(ctx);
       return finalize(result instanceof Response ? result : Response.json(result), requestId);

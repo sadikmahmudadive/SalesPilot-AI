@@ -11,13 +11,23 @@ import { DELETE, POST } from "./route";
 
 const users: EmulatorUser[] = [];
 afterAll(async () => {
-  await Promise.all(users.map((u) => adminAuth().deleteUser(u.uid).catch(() => undefined)));
+  await Promise.all(
+    users.map((u) =>
+      adminAuth()
+        .deleteUser(u.uid)
+        .catch(() => undefined),
+    ),
+  );
 });
 
 /** Unique documentation-range IP per call so rate-limit counters never collide. */
 const uniqueIp = (): string => `203.0.113.${randomInt(1, 255)}-${crypto.randomUUID()}`;
 
-function post(body: unknown, ip: string = uniqueIp(), extraHeaders: Record<string, string> = {}): Promise<Response> {
+function post(
+  body: unknown,
+  ip: string = uniqueIp(),
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
   return POST(
     new Request("http://localhost/api/auth/session", {
       method: "POST",
@@ -54,11 +64,19 @@ describe("POST /api/auth/session", () => {
     const attrs = setCookie.split("; ");
     expect(attrs[0]).toMatch(new RegExp(`^${SESSION_COOKIE_NAME}=[A-Za-z0-9._~+/=-]+$`));
     // Exact attribute set (NODE_ENV=test, so no Secure).
-    expect(attrs.slice(1)).toEqual(["Path=/", expect.stringMatching(/^Max-Age=\d+$/), "HttpOnly", "SameSite=Lax"]);
+    expect(attrs.slice(1)).toEqual([
+      "Path=/",
+      expect.stringMatching(/^Max-Age=\d+$/),
+      "HttpOnly",
+      "SameSite=Lax",
+    ]);
     expect(res.headers.get("cache-control")).toBe("no-store");
 
     // The cookie we issued is a real, verifiable session for that user.
-    await expect(verifySessionValue(cookieValue(setCookie))).resolves.toEqual({ uid: user.uid, email: user.email });
+    await expect(verifySessionValue(cookieValue(setCookie))).resolves.toEqual({
+      uid: user.uid,
+      email: user.email,
+    });
     // And the token is never echoed in the body.
     expect(text).not.toContain(user.idToken);
   });
@@ -170,7 +188,9 @@ describe("POST /api/auth/session: login CSRF guard", () => {
     users.push(user);
     const res = await post(tokenBody(user.idToken), uniqueIp(), { "content-type": "text/plain" });
     expect(res.status).toBe(415);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      "UNSUPPORTED_MEDIA_TYPE",
+    );
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
@@ -194,20 +214,26 @@ describe("POST /api/auth/session: login CSRF guard", () => {
   it("Sec-Fetch-Site: cross-site -> 403 and no Set-Cookie", async () => {
     const user = await createEmulatorUser();
     users.push(user);
-    const res = await post({ idToken: user.idToken }, uniqueIp(), { "sec-fetch-site": "cross-site" });
+    const res = await post({ idToken: user.idToken }, uniqueIp(), {
+      "sec-fetch-site": "cross-site",
+    });
     expect(res.status).toBe(403);
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
   it("Origin evil.com with a matching Host header still fails", async () => {
-    const res = await post({ idToken: "garbage" }, uniqueIp(), { origin: "https://evil.com", host: "evil.com" });
+    const res = await post({ idToken: "garbage" }, uniqueIp(), {
+      origin: "https://evil.com",
+      host: "evil.com",
+    });
     expect(res.status).toBe(403);
   });
 
   it("rejected requests do not consume the rate limit", async () => {
     const ip = uniqueIp();
     await withPinnedRateWindow(async () => {
-      for (let i = 0; i < 12; i++) await post({ idToken: "garbage" }, ip, { origin: "https://evil.com" });
+      for (let i = 0; i < 12; i++)
+        await post({ idToken: "garbage" }, ip, { origin: "https://evil.com" });
       expect((await post({ idToken: "garbage" }, ip)).status).toBe(401);
     });
   });
@@ -226,7 +252,9 @@ describe("POST /api/auth/session: login CSRF guard", () => {
   it("JSON with a charset parameter works", async () => {
     const user = await createEmulatorUser();
     users.push(user);
-    const res = await post({ idToken: user.idToken }, uniqueIp(), { "content-type": "application/json; charset=utf-8" });
+    const res = await post({ idToken: user.idToken }, uniqueIp(), {
+      "content-type": "application/json; charset=utf-8",
+    });
     expect(res.status).toBe(200);
   });
 
@@ -260,7 +288,10 @@ describe("DELETE /api/auth/session", () => {
   });
 
   it("same-origin DELETE with any content type still works", async () => {
-    const res = await del(undefined, { origin: "http://localhost", "sec-fetch-site": "same-origin" });
+    const res = await del(undefined, {
+      origin: "http://localhost",
+      "sec-fetch-site": "same-origin",
+    });
     expect(res.status).toBe(200);
   });
 

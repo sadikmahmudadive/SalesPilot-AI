@@ -58,7 +58,10 @@ export function ForgotForm() {
             If an account exists for that email address, we have sent a link to reset your password.
           </p>
         </div>
-        <Link href="/login" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full")}>
+        <Link
+          href="/login"
+          className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full")}
+        >
           Back to sign in
         </Link>
       </div>

@@ -29,7 +29,12 @@ export interface PlannedDeletes {
   afterSave: string[];
 }
 
-export function plannedDeletes({ baseline, saved, sessionUploads, removedBeforeSave }: PlannedDeletesInput): PlannedDeletes {
+export function plannedDeletes({
+  baseline,
+  saved,
+  sessionUploads,
+  removedBeforeSave,
+}: PlannedDeletesInput): PlannedDeletes {
   const persisted = new Set(baseline);
   const uploaded = new Set(sessionUploads);
   const stillSaved = new Set(saved ?? []);
@@ -37,6 +42,7 @@ export function plannedDeletes({ baseline, saved, sessionUploads, removedBeforeS
   const immediate = [...new Set(removedBeforeSave)].filter(
     (id) => uploaded.has(id) && !persisted.has(id) && !stillSaved.has(id),
   );
-  const afterSave = saved === null ? [] : [...new Set(baseline)].filter((id) => !stillSaved.has(id));
+  const afterSave =
+    saved === null ? [] : [...new Set(baseline)].filter((id) => !stillSaved.has(id));
   return { immediate, afterSave };
 }

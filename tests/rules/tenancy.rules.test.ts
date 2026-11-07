@@ -84,7 +84,11 @@ beforeEach(async () => {
     // Org A: one member per role. Org B / C: owners (and an agent in B).
     for (const role of ROLES) {
       const uid = `${role}A`;
-      await seed(`users/${uid}`, { uid, email: `${uid}@example.com`, defaultOrganizationId: ORG_A });
+      await seed(`users/${uid}`, {
+        uid,
+        email: `${uid}@example.com`,
+        defaultOrganizationId: ORG_A,
+      });
       await seed(`organizationMembers/${ORG_A}_${uid}`, member(ORG_A, uid, role));
     }
     await seed("users/ownerB", { uid: "ownerB", email: "ownerB@example.com" });
@@ -259,7 +263,10 @@ describe("organizationMembers", () => {
     await assertFails(getDoc(doc(as("ownerA"), `organizationMembers/${ORG_B}_agentB`)));
     await assertFails(
       getDocs(
-        query(collection(as("ownerA"), "organizationMembers"), where("organizationId", "==", ORG_B)),
+        query(
+          collection(as("ownerA"), "organizationMembers"),
+          where("organizationId", "==", ORG_B),
+        ),
       ),
     );
     await assertFails(getDoc(doc(as("outsider"), `organizationMembers/${ORG_A}_ownerA`)));

@@ -21,9 +21,14 @@ export function GET(req: Request): Response {
   const raw = new URL(req.url).searchParams.get("next");
   const next = safeNextPath(raw);
   // /dashboard is the post-login default, so omitting it is equivalent (and covers hostile values).
-  const location = next === DEFAULT_AFTER_LOGIN ? "/login" : `/login?next=${encodeURIComponent(next)}`;
+  const location =
+    next === DEFAULT_AFTER_LOGIN ? "/login" : `/login?next=${encodeURIComponent(next)}`;
   return new Response(null, {
     status: 303,
-    headers: { Location: location, "Set-Cookie": clearSessionCookie(), "Cache-Control": "no-store" },
+    headers: {
+      Location: location,
+      "Set-Cookie": clearSessionCookie(),
+      "Cache-Control": "no-store",
+    },
   });
 }

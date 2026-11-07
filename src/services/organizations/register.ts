@@ -16,12 +16,21 @@ import { z } from "zod";
 import { ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditInTransaction, type AuditEntry } from "@/lib/security/audit";
-import { memberDocId, ORGANIZATION_MEMBERS, ORGANIZATIONS, USERS } from "@/repositories/organizations";
+import {
+  memberDocId,
+  ORGANIZATION_MEMBERS,
+  ORGANIZATIONS,
+  USERS,
+} from "@/repositories/organizations";
 import { registerOrganizationSchema } from "@/schemas/organization";
 
 // uid and email come from the verified session; the display fields are validated like the request body.
 const inputSchema = registerOrganizationSchema.extend({
-  uid: z.string().min(1).max(128).refine((v) => !v.includes("/")),
+  uid: z
+    .string()
+    .min(1)
+    .max(128)
+    .refine((v) => !v.includes("/")),
   email: z.string().min(1).max(320),
 });
 
@@ -50,7 +59,10 @@ export async function registerOrganization(
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) {
     throw new ValidationError(
-      parsed.error.issues.map((i) => ({ path: i.path.join(".") || "input", message: "Invalid value" })),
+      parsed.error.issues.map((i) => ({
+        path: i.path.join(".") || "input",
+        message: "Invalid value",
+      })),
     );
   }
   const { uid, email, displayName, organizationName } = parsed.data;

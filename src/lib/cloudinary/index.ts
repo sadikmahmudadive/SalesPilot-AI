@@ -136,7 +136,8 @@ export function signUpload(
   file: { contentType: string; bytes: number },
 ): SignedUpload {
   const policy = uploadPolicy(kind);
-  if (!policy.contentTypes.includes(file.contentType)) throw invalid("contentType", "This file type is not allowed");
+  if (!policy.contentTypes.includes(file.contentType))
+    throw invalid("contentType", "This file type is not allowed");
   if (!Number.isSafeInteger(file.bytes) || file.bytes < 1 || file.bytes > policy.maxBytes) {
     throw invalid("bytes", "The file must be at most 5 MB");
   }
@@ -181,15 +182,27 @@ type AssetCheck =
   /** The response does not fit this deployment (cloud, host, id): log, answer 500, keep the asset. */
   | { outcome: "unexpected"; reason: string };
 
-function checkAsset(asset: unknown, publicId: string, policy: UploadPolicy, cloudName: string): AssetCheck {
-  if (typeof asset !== "object" || asset === null) return { outcome: "unexpected", reason: "not_an_object" };
+function checkAsset(
+  asset: unknown,
+  publicId: string,
+  policy: UploadPolicy,
+  cloudName: string,
+): AssetCheck {
+  if (typeof asset !== "object" || asset === null)
+    return { outcome: "unexpected", reason: "not_an_object" };
   const a = asset as Record<string, unknown>;
   const { bytes, format, width, height, secure_url: url } = a;
   if (a.resource_type !== "image") return { outcome: "violation" };
-  if (typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes < 1 || bytes > policy.maxBytes) {
+  if (
+    typeof bytes !== "number" ||
+    !Number.isSafeInteger(bytes) ||
+    bytes < 1 ||
+    bytes > policy.maxBytes
+  ) {
     return { outcome: "violation" };
   }
-  if (typeof format !== "string" || !policy.formats.includes(format)) return { outcome: "violation" };
+  if (typeof format !== "string" || !policy.formats.includes(format))
+    return { outcome: "violation" };
   if (!isPositiveDimension(width) || !isPositiveDimension(height)) return { outcome: "violation" };
   // Deployment-level mismatches are not the uploader's doing: never destroy on these.
   if (a.public_id !== undefined && a.public_id !== publicId) {
@@ -214,7 +227,11 @@ function checkAsset(asset: unknown, publicId: string, policy: UploadPolicy, clou
  *   - A kind that differs from the id's folder is a ForbiddenError; a Cloudinary 404 is a
  *     NotFoundError; any other Cloudinary failure is a generic 500.
  */
-export async function confirmUpload(orgId: string, kind: UploadKind, publicId: string): Promise<ConfirmedUpload> {
+export async function confirmUpload(
+  orgId: string,
+  kind: UploadKind,
+  publicId: string,
+): Promise<ConfirmedUpload> {
   assertOwnedPublicIdOfKind(orgId, kind, publicId);
   const policy = uploadPolicy(kind);
   const { cloudName } = credentials();
@@ -230,7 +247,10 @@ export async function confirmUpload(orgId: string, kind: UploadKind, publicId: s
   const check = checkAsset(asset, publicId, policy, cloudName);
   if (check.outcome === "violation") {
     await destroyQuietly(publicId);
-    throw new ValidationError([{ path: "publicId", message: "The uploaded file is not allowed" }], "Upload rejected");
+    throw new ValidationError(
+      [{ path: "publicId", message: "The uploaded file is not allowed" }],
+      "Upload rejected",
+    );
   }
   if (check.outcome === "unexpected") {
     logger.error("cloudinary_asset_unexpected", { reason: check.reason });
@@ -252,12 +272,18 @@ export async function deleteAsset(orgId: string, publicId: string): Promise<void
   await deleteUploadRecord(publicId);
   let result: unknown;
   try {
-    result = await cloudinary.uploader.destroy(publicId, { resource_type: "image", invalidate: true });
+    result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+      invalidate: true,
+    });
   } catch (error) {
     if (httpCodeOf(error) === 404) return;
     throw failure("destroy", error);
   }
-  const outcome = typeof result === "object" && result !== null ? (result as { result?: unknown }).result : undefined;
+  const outcome =
+    typeof result === "object" && result !== null
+      ? (result as { result?: unknown }).result
+      : undefined;
   if (outcome === "ok" || outcome === "not found") return;
   logger.error("cloudinary_request_failed", {
     op: "destroy",

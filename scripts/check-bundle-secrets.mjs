@@ -28,7 +28,11 @@ export const SERVER_ONLY_VARIABLES = [
 ];
 
 /** Text markers that identify private key material. */
-export const PEM_MARKERS = ["-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----"];
+export const PEM_MARKERS = [
+  "-----BEGIN PRIVATE KEY-----",
+  "-----BEGIN RSA PRIVATE KEY-----",
+  "-----BEGIN EC PRIVATE KEY-----",
+];
 
 /**
  * Pure scan of one file's text.
@@ -45,7 +49,8 @@ export function scanContent(content, env = {}) {
     if (typeof value === "string" && value.length > 0) {
       // A value is also searched in its escaped-newline form (how a private key is stored in env).
       const forms = new Set([value, value.replace(/\n/g, "\n")]);
-      if ([...forms].some((form) => content.includes(form))) findings.push({ kind: "value", label: name });
+      if ([...forms].some((form) => content.includes(form)))
+        findings.push({ kind: "value", label: name });
     }
   }
   for (const marker of PEM_MARKERS) {
@@ -85,7 +90,9 @@ function run() {
     for (const hit of hits) console.error(`  [${hit.kind}] ${hit.label} in ${hit.file}`);
     return 1;
   }
-  console.log(`check:bundle: OK, scanned ${files} file(s) in .next/static, no server-only names, values or PEM markers.`);
+  console.log(
+    `check:bundle: OK, scanned ${files} file(s) in .next/static, no server-only names, values or PEM markers.`,
+  );
   return 0;
 }
 

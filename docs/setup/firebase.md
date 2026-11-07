@@ -32,14 +32,14 @@ In the Firebase console:
    - Google
 3. Project settings > General > Your apps > Add app > Web. Copy the config values for the `NEXT_PUBLIC_FIREBASE_*` variables:
 
-   | Variable | Config field |
-   |---|---|
-   | `NEXT_PUBLIC_FIREBASE_API_KEY` | `apiKey` |
-   | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `authDomain` |
-   | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `projectId` |
-   | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
+   | Variable                                   | Config field        |
+   | ------------------------------------------ | ------------------- |
+   | `NEXT_PUBLIC_FIREBASE_API_KEY`             | `apiKey`            |
+   | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`         | `authDomain`        |
+   | `NEXT_PUBLIC_FIREBASE_PROJECT_ID`          | `projectId`         |
+   | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`      | `storageBucket`     |
    | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
-   | `NEXT_PUBLIC_FIREBASE_APP_ID` | `appId` |
+   | `NEXT_PUBLIC_FIREBASE_APP_ID`              | `appId`             |
 
    These are public identifiers, not secrets, but still put them in `.env.local` or the Vercel settings rather than committing real values.
 
@@ -56,11 +56,11 @@ The server uses the Admin SDK with a service account.
 1. Project settings > Service accounts > Generate new private key. A JSON file downloads.
 2. Map it to environment variables:
 
-   | Variable | JSON field |
-   |---|---|
-   | `FIREBASE_PROJECT_ID` | `project_id` |
+   | Variable                | JSON field     |
+   | ----------------------- | -------------- |
+   | `FIREBASE_PROJECT_ID`   | `project_id`   |
    | `FIREBASE_CLIENT_EMAIL` | `client_email` |
-   | `FIREBASE_PRIVATE_KEY` | `private_key` |
+   | `FIREBASE_PRIVATE_KEY`  | `private_key`  |
 
 3. `private_key` contains real line breaks. Store it as a single line with the line breaks written as the two characters `\n`, inside double quotes:
 
@@ -69,6 +69,7 @@ The server uses the Admin SDK with a service account.
    ```
 
    The app converts `\n` back to line breaks (`src/config/env.ts`). In the Vercel dashboard, paste the value with the `\n` sequences and, if the field keeps quotes literally, leave them out; see [vercel.md](vercel.md).
+
 4. Put these in `.env.local` for a local run against the real project, or in Vercel. Never commit the JSON file or the values; `*.pem` and `.env*` are git-ignored, but a `.json` key file is not, so keep it outside the repo and delete it after copying.
 5. To try the real project from your machine, use a production build, which does not load `.env.development` (that file turns the emulators on): put every `NEXT_PUBLIC_FIREBASE_*` and `FIREBASE_*` value in `.env.local`, keep `NEXT_PUBLIC_USE_EMULATORS=false`, do not set the emulator host variables, then run `npm run build` and `npm run start`. `NEXT_PUBLIC_*` values are inlined at build time, so rebuild after changing them. Do not run `npm run dev` against real credentials: it loads `.env.development` and the emulator hosts would apply.
 

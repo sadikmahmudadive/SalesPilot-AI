@@ -17,7 +17,12 @@ function newUid(): string {
   uids.push(uid);
   return uid;
 }
-const input = (uid: string) => ({ uid, email: `${uid}@example.com`, displayName: "Jo Owner", organizationName: "Acme" });
+const input = (uid: string) => ({
+  uid,
+  email: `${uid}@example.com`,
+  displayName: "Jo Owner",
+  organizationName: "Acme",
+});
 
 async function auditRowsBy(uid: string) {
   return adminDb().collection("auditLogs").where("actorUid", "==", uid).get();
@@ -56,18 +61,33 @@ describe("registerOrganization", () => {
     const db = adminDb();
 
     const user = (await db.collection("users").doc(uid).get()).data()!;
-    expect(user).toMatchObject({ uid, email: `${uid}@example.com`, displayName: "Jo Owner", defaultOrganizationId: organizationId });
+    expect(user).toMatchObject({
+      uid,
+      email: `${uid}@example.com`,
+      displayName: "Jo Owner",
+      defaultOrganizationId: organizationId,
+    });
     expect(user.createdAt).toBeInstanceOf(Timestamp);
 
     const org = (await db.collection("organizations").doc(organizationId).get()).data()!;
     expect(org).toMatchObject({ name: "Acme", ownerUid: uid });
     expect(org.createdAt).toBeInstanceOf(Timestamp);
 
-    const member = (await db.collection("organizationMembers").doc(`${organizationId}_${uid}`).get()).data()!;
-    expect(member).toMatchObject({ organizationId, uid, role: "owner", email: `${uid}@example.com` });
+    const member = (
+      await db.collection("organizationMembers").doc(`${organizationId}_${uid}`).get()
+    ).data()!;
+    expect(member).toMatchObject({
+      organizationId,
+      uid,
+      role: "owner",
+      email: `${uid}@example.com`,
+    });
     expect(member.createdAt).toBeInstanceOf(Timestamp);
 
-    const audit = await db.collection("auditLogs").where("organizationId", "==", organizationId).get();
+    const audit = await db
+      .collection("auditLogs")
+      .where("organizationId", "==", organizationId)
+      .get();
     expect(audit.size).toBe(1);
     expect(audit.docs[0]!.data()).toMatchObject({
       action: "organization.create",
@@ -85,22 +105,32 @@ describe("registerOrganization", () => {
     const second = await registerOrganization({ ...input(uid), organizationName: "Other name" });
     expect(second).toEqual({ organizationId: first.organizationId, created: false });
     expect((await orgsOwnedBy(uid)).size).toBe(1);
-    const audit = await adminDb().collection("auditLogs").where("organizationId", "==", first.organizationId).get();
+    const audit = await adminDb()
+      .collection("auditLogs")
+      .where("organizationId", "==", first.organizationId)
+      .get();
     expect(audit.size).toBe(1);
-    const org = (await adminDb().collection("organizations").doc(first.organizationId).get()).data()!;
+    const org = (
+      await adminDb().collection("organizations").doc(first.organizationId).get()
+    ).data()!;
     expect(org.name).toBe("Acme");
   });
 
   it("5 parallel calls for one uid create exactly one organization", async () => {
     const uid = newUid();
-    const results = await Promise.all(Array.from({ length: 5 }, () => registerOrganization(input(uid))));
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => registerOrganization(input(uid))),
+    );
     const ids = new Set(results.map((r) => r.organizationId));
     expect(ids.size).toBe(1);
     expect(results.filter((r) => r.created)).toHaveLength(1);
     expect((await orgsOwnedBy(uid)).size).toBe(1);
     const orgId = [...ids][0]!;
     orgIds.add(orgId);
-    const audit = await adminDb().collection("auditLogs").where("organizationId", "==", orgId).get();
+    const audit = await adminDb()
+      .collection("auditLogs")
+      .where("organizationId", "==", orgId)
+      .get();
     expect(audit.size).toBe(1);
   });
 
@@ -152,13 +182,19 @@ describe("registerOrganization", () => {
     expect((await orgsOwnedBy(uid)).empty).toBe(true);
     expect((await db.collection("rollbackProbe").doc(uid).get()).exists).toBe(false);
     expect((await auditRowsBy(uid)).empty).toBe(true);
-    expect((await db.collection("organizationMembers").where("uid", "==", uid).get()).empty).toBe(true);
+    expect((await db.collection("organizationMembers").where("uid", "==", uid).get()).empty).toBe(
+      true,
+    );
   });
 
   it("rejects invalid input without writing", async () => {
     const uid = newUid();
-    await expect(registerOrganization({ ...input(uid), organizationName: "" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    await expect(registerOrganization({ ...input(""), uid: "" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(
+      registerOrganization({ ...input(uid), organizationName: "" }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(registerOrganization({ ...input(""), uid: "" })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
     expect((await adminDb().collection("users").doc(uid).get()).exists).toBe(false);
   });
 });

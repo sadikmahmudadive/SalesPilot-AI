@@ -6,7 +6,15 @@ import { PriceDisplay } from "@/components/products/price-display";
 import { ProductThumb } from "@/components/products/product-thumb";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Product } from "@/schemas/product";
 
 interface ProductTableProps {
@@ -24,7 +32,10 @@ const categoryOf = (p: Product, names: ReadonlyMap<string, string>) =>
 
 function NameLink({ product }: { product: Product }) {
   return (
-    <Link href={href(product)} className="font-medium text-foreground underline-offset-4 hover:underline">
+    <Link
+      href={href(product)}
+      className="font-medium text-foreground underline-offset-4 hover:underline"
+    >
       {product.name}
     </Link>
   );
@@ -72,7 +83,9 @@ export function ProductTable({ products, categoryNames, canWrite, caption }: Pro
                 </div>
               </TableCell>
               <TableCell className="font-mono text-xs">{p.sku}</TableCell>
-              <TableCell className="text-muted-foreground">{categoryOf(p, categoryNames)}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {categoryOf(p, categoryNames)}
+              </TableCell>
               <TableCell className="text-right">
                 <PriceDisplay regularMinor={p.regularPriceMinor} saleMinor={p.salePriceMinor} />
               </TableCell>

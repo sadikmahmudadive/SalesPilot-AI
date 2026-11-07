@@ -22,7 +22,12 @@ export interface OrgContext {
 export async function requireMembership(user: SessionUser): Promise<OrgContext> {
   const membership = await getMembership(user.uid);
   if (!membership) throw new ForbiddenError("No organization membership");
-  return { uid: user.uid, email: user.email, organizationId: membership.organizationId, role: membership.role };
+  return {
+    uid: user.uid,
+    email: user.email,
+    organizationId: membership.organizationId,
+    role: membership.role,
+  };
 }
 
 /** Session user (401 if absent) plus membership (403 if absent). */

@@ -62,7 +62,12 @@ export function NewCategoryDialog({ open, onOpenChange, onCreated }: NewCategory
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT") setFieldError(DUPLICATE_MESSAGE);
-      else setFormError(error instanceof ApiError ? error.message : "Could not add the category. Please try again.");
+      else
+        setFormError(
+          error instanceof ApiError
+            ? error.message
+            : "Could not add the category. Please try again.",
+        );
     } finally {
       lock.current = false;
       setPending(false);

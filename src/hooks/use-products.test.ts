@@ -10,7 +10,13 @@ describe("buildProductsQuery", () => {
   });
 
   it("includes sort, dir, limit, cursor and archived=true", () => {
-    const q = buildProductsQuery({ sort: "name", dir: "asc", limit: 25, cursor: "abc", archived: true });
+    const q = buildProductsQuery({
+      sort: "name",
+      dir: "asc",
+      limit: 25,
+      cursor: "abc",
+      archived: true,
+    });
     expect(q.get("sort")).toBe("name");
     expect(q.get("dir")).toBe("asc");
     expect(q.get("limit")).toBe("25");
@@ -23,7 +29,15 @@ describe("buildProductsQuery", () => {
   });
 
   it("drops empty and whitespace-only values and trims the rest", () => {
-    expect(buildProductsQuery({ q: "  ", sku: " ", availability: "", categoryId: "", cursor: "" }).toString()).toBe("");
+    expect(
+      buildProductsQuery({
+        q: "  ",
+        sku: " ",
+        availability: "",
+        categoryId: "",
+        cursor: "",
+      }).toString(),
+    ).toBe("");
     expect(buildProductsQuery({ q: "  shirt " }).get("q")).toBe("shirt");
   });
 
@@ -37,15 +51,30 @@ describe("buildProductsQuery", () => {
       dir: "asc",
       archived: true,
     });
-    expect(keys({ q: "shirt", sku: "AB", availability: "active", categoryId: "c1", sort: "name", dir: "asc", archived: true })).toEqual([
-      "q",
-      "archived",
-    ]);
+    expect(
+      keys({
+        q: "shirt",
+        sku: "AB",
+        availability: "active",
+        categoryId: "c1",
+        sort: "name",
+        dir: "asc",
+        archived: true,
+      }),
+    ).toEqual(["q", "archived"]);
     expect(q.get("q")).toBe("shirt");
   });
 
   it("a sku search suppresses filters, sort and dir when there is no name search", () => {
-    expect(keys({ sku: "tee-", availability: "draft", categoryId: "c1", sort: "createdAt", dir: "desc" })).toEqual(["sku"]);
+    expect(
+      keys({
+        sku: "tee-",
+        availability: "draft",
+        categoryId: "c1",
+        sort: "createdAt",
+        dir: "desc",
+      }),
+    ).toEqual(["sku"]);
   });
 
   it("keeps only one filter, availability before category", () => {

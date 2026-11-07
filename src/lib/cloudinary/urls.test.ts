@@ -7,7 +7,9 @@ const ID = "organizations/A/products/abc123.jpg";
 
 describe("thumbUrl", () => {
   it("inserts a fill transformation after /image/upload/", () => {
-    expect(thumbUrl(`${BASE}/v123/${ID}`, 200, 150)).toBe(`${BASE}/c_fill,w_200,h_150,f_auto,q_auto/v123/${ID}`);
+    expect(thumbUrl(`${BASE}/v123/${ID}`, 200, 150)).toBe(
+      `${BASE}/c_fill,w_200,h_150,f_auto,q_auto/v123/${ID}`,
+    );
     expect(thumbUrl(`${BASE}/${ID}`, 64, 64)).toContain("c_fill");
   });
 
@@ -21,11 +23,14 @@ describe("thumbUrl", () => {
     expect(thumbUrl(`${BASE}/${ID}`, 10, 10)).toBe(`${BASE}/c_fill,w_10,h_10,f_auto,q_auto/${ID}`);
   });
 
-  it.each([0, -1, 4001, 1.5, Number.NaN, Number.POSITIVE_INFINITY])("returns the original for size %s", (n) => {
-    const url = `${BASE}/v1/${ID}`;
-    expect(thumbUrl(url, n, 100)).toBe(url);
-    expect(thumbUrl(url, 100, n)).toBe(url);
-  });
+  it.each([0, -1, 4001, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "returns the original for size %s",
+    (n) => {
+      const url = `${BASE}/v1/${ID}`;
+      expect(thumbUrl(url, n, 100)).toBe(url);
+      expect(thumbUrl(url, 100, n)).toBe(url);
+    },
+  );
 
   it("accepts the 1 and 4000 bounds", () => {
     expect(thumbUrl(`${BASE}/v1/${ID}`, 1, 4000)).toContain("w_1,h_4000");
@@ -48,7 +53,8 @@ describe("thumbUrl", () => {
   });
 
   it("only treats the marker right after the cloud name as the upload segment", () => {
-    const u = "https://res.cloudinary.com/demo/image/upload/v1/organizations/A/products/image/upload/x.jpg";
+    const u =
+      "https://res.cloudinary.com/demo/image/upload/v1/organizations/A/products/image/upload/x.jpg";
     expect(optimizedUrl(u)).toBe(
       "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto/v1/organizations/A/products/image/upload/x.jpg",
     );

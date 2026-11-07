@@ -13,7 +13,11 @@ import { ArchiveProductDialog } from "@/components/products/archive-product-dial
 import { ImageGallery } from "@/components/products/image-gallery";
 import { useImageCleanup } from "@/components/products/use-image-cleanup";
 import { ProductContentSections } from "@/components/products/product-content-sections";
-import { AvailabilityField, BasicsFields, PricingFields } from "@/components/products/product-form-fields";
+import {
+  AvailabilityField,
+  BasicsFields,
+  PricingFields,
+} from "@/components/products/product-form-fields";
 import {
   buildProductPatch,
   EMPTY_PRODUCT_VALUES,
@@ -21,7 +25,11 @@ import {
   productToFormValues,
   type ProductFormValues,
 } from "@/components/products/product-form-model";
-import { mapProductApiError, productResolver, validateProductForm } from "@/components/products/product-form-validation";
+import {
+  mapProductApiError,
+  productResolver,
+  validateProductForm,
+} from "@/components/products/product-form-validation";
 import { DiscardChangesDialog } from "@/components/shared/discard-changes-dialog";
 import { saveGuard } from "@/components/products/save-guard";
 import { SectionCard } from "@/components/shared/section-card";
@@ -58,7 +66,11 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
   const submitLock = useRef(false);
   const [pending, setPending] = useState(false);
   // `reveal`: the failure has no field to focus, so the banner itself is scrolled to and focused.
-  const [formError, setFormError] = useState<{ message: string; requestId?: string; reveal?: boolean } | null>(null);
+  const [formError, setFormError] = useState<{
+    message: string;
+    requestId?: string;
+    reveal?: boolean;
+  } | null>(null);
   const alertRef = useRevealAlert(formError?.reveal ? formError : null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -99,7 +111,10 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
       { shouldDirty: true },
     );
     // Form state only: a stored image the saved product uses is deleted after a successful save.
-    cleanup.imageRemoved(removed.publicId, baseline.images.map((image) => image.publicId));
+    cleanup.imageRemoved(
+      removed.publicId,
+      baseline.images.map((image) => image.publicId),
+    );
   }
 
   function showServerError(error: unknown) {
@@ -111,7 +126,9 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
     const first = mapped.fields.find((f) => !LIST_ROOTS.has(f.name));
     if (first) setFocus(first.name as FieldPath<ProductFormValues>);
     setFormError(
-      mapped.formError ? { message: mapped.formError, requestId: mapped.requestId, reveal: !first } : null,
+      mapped.formError
+        ? { message: mapped.formError, requestId: mapped.requestId, reveal: !first }
+        : null,
     );
   }
 
@@ -131,7 +148,10 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
         }
         const saved = await update.mutateAsync({ id: product.id, body: patch });
         const next = productToFormValues(saved);
-        cleanup.saveSucceeded(baseline.images.map((image) => image.publicId), next.images.map((image) => image.publicId));
+        cleanup.saveSucceeded(
+          baseline.images.map((image) => image.publicId),
+          next.images.map((image) => image.publicId),
+        );
         setBaseline(next); // the server assigns ids to new variants: they must be sent from now on
         reset(next);
         toast.success("Product updated");
@@ -201,14 +221,19 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
         aria-label={isEdit ? `Edit ${name}` : "New product"}
       >
         <FormAlert ref={alertRef} message={formError?.message}>
-          {formError?.requestId ? <p className="text-xs">Reference: {formError.requestId}</p> : null}
+          {formError?.requestId ? (
+            <p className="text-xs">Reference: {formError.requestId}</p>
+          ) : null}
         </FormAlert>
         {/* A disabled fieldset disables every control inside it, which is all read-only mode needs. */}
         <fieldset disabled={!canWrite} className="m-0 min-w-0 space-y-4 border-0 p-0">
           <SectionCard title="Basics">
             <BasicsFields form={form} canWrite={canWrite} />
           </SectionCard>
-          <SectionCard title="Pricing" description="Type prices in taka, for example 1200 or 1,200.50.">
+          <SectionCard
+            title="Pricing"
+            description="Type prices in taka, for example 1200 or 1,200.50."
+          >
             <PricingFields form={form} />
           </SectionCard>
           <SectionCard
@@ -234,7 +259,11 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
 
         <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-4">
           {guard.hint ? (
-            <p id="save-hint" role="status" className="mr-auto self-center text-sm text-muted-foreground">
+            <p
+              id="save-hint"
+              role="status"
+              className="mr-auto self-center text-sm text-muted-foreground"
+            >
               {guard.hint}
             </p>
           ) : null}
@@ -255,7 +284,11 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
         </div>
       </form>
 
-      <DiscardChangesDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} onDiscard={leave} />
+      <DiscardChangesDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        onDiscard={leave}
+      />
       {product && canWrite ? (
         <ArchiveProductDialog
           product={archiving ? product : null}

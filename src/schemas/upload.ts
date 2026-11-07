@@ -17,8 +17,14 @@ const publicId = z
 
 export const signUploadSchema = z.object({
   kind,
-  contentType: z.string({ error: "Invalid file type" }).min(1).max(100, { error: "Invalid file type" }),
-  bytes: z.number({ error: "Invalid file size" }).int({ error: "Invalid file size" }).min(1, { error: "Invalid file size" }),
+  contentType: z
+    .string({ error: "Invalid file type" })
+    .min(1)
+    .max(100, { error: "Invalid file type" }),
+  bytes: z
+    .number({ error: "Invalid file size" })
+    .int({ error: "Invalid file size" })
+    .min(1, { error: "Invalid file size" }),
 });
 export type SignUploadInput = z.output<typeof signUploadSchema>;
 

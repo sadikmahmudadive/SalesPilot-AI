@@ -4,8 +4,8 @@
  * Logging must never throw: it is used from inside error handlers.
  */
 
-const MASK = '[REDACTED]';
-const UNREADABLE = '[Unreadable]';
+const MASK = "[REDACTED]";
+const UNREADABLE = "[Unreadable]";
 const SENSITIVE_KEY = /key|token|secret|password|authorization|auth|cookie|private/i;
 const PHONE_KEY = /phone|mobile|msisdn|whatsapp/i;
 const MAX_DEPTH = 8;
@@ -14,23 +14,31 @@ const MAX_DEPTH = 8;
 function maskPhone(value: string): string {
   const total = (value.match(/\d/g) ?? []).length;
   let seen = 0;
-  return value.replace(/\d/g, (d) => (++seen > total - 3 ? d : '*'));
+  return value.replace(/\d/g, (d) => (++seen > total - 3 ? d : "*"));
 }
 
-function walk(value: unknown, key: string | undefined, ancestors: object[], depth: number): unknown {
+function walk(
+  value: unknown,
+  key: string | undefined,
+  ancestors: object[],
+  depth: number,
+): unknown {
   if (key !== undefined) {
     if (SENSITIVE_KEY.test(key)) return MASK;
-    if (PHONE_KEY.test(key) && (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')) {
+    if (
+      PHONE_KEY.test(key) &&
+      (typeof value === "string" || typeof value === "number" || typeof value === "bigint")
+    ) {
       return maskPhone(String(value));
     }
   }
 
-  if (typeof value === 'bigint') return value.toString();
-  if (typeof value === 'function' || typeof value === 'symbol') return undefined;
-  if (value === null || typeof value !== 'object') return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "function" || typeof value === "symbol") return undefined;
+  if (value === null || typeof value !== "object") return value;
 
-  if (ancestors.includes(value)) return '[Circular]';
-  if (depth >= MAX_DEPTH) return '[Truncated]';
+  if (ancestors.includes(value)) return "[Circular]";
+  if (depth >= MAX_DEPTH) return "[Truncated]";
 
   // Any trap / getter on a hostile object may throw; one bad value must not sink the log line.
   try {
@@ -42,7 +50,8 @@ function walk(value: unknown, key: string | undefined, ancestors: object[], dept
     }
 
     const next = [...ancestors, value];
-    if (Array.isArray(value)) return value.map((_, i) => walkChild(value, i, undefined, next, depth));
+    if (Array.isArray(value))
+      return value.map((_, i) => walkChild(value, i, undefined, next, depth));
 
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(value)) out[k] = walkChild(value, k, k, next, depth);
@@ -76,7 +85,7 @@ export function redact(obj: unknown): unknown {
   }
 }
 
-type Level = 'info' | 'warn' | 'error';
+type Level = "info" | "warn" | "error";
 
 function emit(level: Level, msg: string, ctx?: object): void {
   const time = new Date().toISOString();
@@ -84,22 +93,24 @@ function emit(level: Level, msg: string, ctx?: object): void {
   try {
     const safe = ctx === undefined ? {} : redact(ctx);
     const fields =
-      typeof safe === 'object' && safe !== null && !Array.isArray(safe) ? (safe as Record<string, unknown>) : { ctx: safe };
+      typeof safe === "object" && safe !== null && !Array.isArray(safe)
+        ? (safe as Record<string, unknown>)
+        : { ctx: safe };
     line = JSON.stringify({ ...fields, level, msg, time });
   } catch {
     try {
-      line = JSON.stringify({ level, msg, time, ctx: '[unserializable context]' });
+      line = JSON.stringify({ level, msg, time, ctx: "[unserializable context]" });
     } catch {
       line = '{"level":"' + level + '","ctx":"[unserializable context]"}';
     }
   }
-  if (level === 'error') console.error(line);
-  else if (level === 'warn') console.warn(line);
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
   else console.info(line);
 }
 
 export const logger = {
-  info: (msg: string, ctx?: object): void => emit('info', msg, ctx),
-  warn: (msg: string, ctx?: object): void => emit('warn', msg, ctx),
-  error: (msg: string, ctx?: object): void => emit('error', msg, ctx),
+  info: (msg: string, ctx?: object): void => emit("info", msg, ctx),
+  warn: (msg: string, ctx?: object): void => emit("warn", msg, ctx),
+  error: (msg: string, ctx?: object): void => emit("error", msg, ctx),
 };

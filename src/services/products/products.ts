@@ -264,7 +264,10 @@ function resolveImages(orgId: string, requested: Fields[], snaps: DocumentSnapsh
 }
 
 /** Reads the upload records of `images` (transactional; call before any write). */
-function readImageRecords(tx: Transaction, images: Fields[] | undefined): Promise<DocumentSnapshot[]> {
+function readImageRecords(
+  tx: Transaction,
+  images: Fields[] | undefined,
+): Promise<DocumentSnapshot[]> {
   return Promise.all((images ?? []).map((img) => tx.get(uploadRecordRef(img.publicId as string))));
 }
 
@@ -401,7 +404,11 @@ export async function createProduct(ctx: ProductCtx, input: ProductInput): Promi
           assertCategorySnapshot(await tx.get(categoryRepo.docRef(fields.categoryId)), orgId);
         }
         const requestedImages = fields.images as Fields[];
-        const images = resolveImages(orgId, requestedImages, await readImageRecords(tx, requestedImages));
+        const images = resolveImages(
+          orgId,
+          requestedImages,
+          await readImageRecords(tx, requestedImages),
+        );
         const { ref, data } = buildProduct(orgId, { ...fields, images, slug });
         id = ref.id;
         tx.create(skuRef, newLockData(orgId, ref.id));
@@ -507,20 +514,27 @@ export async function updateProduct(
       const removed = oldUnits.filter((u) => !newUnits.includes(u));
       const added = newUnits.filter((u) => !oldUnits.includes(u));
 
-      const [categorySnap, newSkuSnap, oldSkuSnap, removedSnaps, reservationSnaps, addedSnaps, imageSnaps] =
-        await Promise.all([
-          typeof next.categoryId === "string" && next.categoryId !== current.categoryId
-            ? tx.get(categoryRepo.docRef(next.categoryId))
-            : Promise.resolve(null),
-          newSkuLock ? tx.get(newSkuLock) : Promise.resolve(null),
-          oldSkuLock ? tx.get(oldSkuLock) : Promise.resolve(null),
-          Promise.all(removed.map((u) => tx.get(inventoryRef(id, u)))),
-          Promise.all(
-            removed.map((u) => tx.get(inventoryRef(id, u).collection("reservations").limit(1))),
-          ),
-          Promise.all(added.map((u) => tx.get(inventoryRef(id, u)))),
-          readImageRecords(tx, requestedImages),
-        ]);
+      const [
+        categorySnap,
+        newSkuSnap,
+        oldSkuSnap,
+        removedSnaps,
+        reservationSnaps,
+        addedSnaps,
+        imageSnaps,
+      ] = await Promise.all([
+        typeof next.categoryId === "string" && next.categoryId !== current.categoryId
+          ? tx.get(categoryRepo.docRef(next.categoryId))
+          : Promise.resolve(null),
+        newSkuLock ? tx.get(newSkuLock) : Promise.resolve(null),
+        oldSkuLock ? tx.get(oldSkuLock) : Promise.resolve(null),
+        Promise.all(removed.map((u) => tx.get(inventoryRef(id, u)))),
+        Promise.all(
+          removed.map((u) => tx.get(inventoryRef(id, u).collection("reservations").limit(1))),
+        ),
+        Promise.all(added.map((u) => tx.get(inventoryRef(id, u)))),
+        readImageRecords(tx, requestedImages),
+      ]);
 
       // ---- checks ----
       if (categorySnap) assertCategorySnapshot(categorySnap, orgId);

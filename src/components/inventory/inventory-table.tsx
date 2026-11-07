@@ -4,7 +4,15 @@ import { SlidersHorizontal } from "lucide-react";
 import { StockBadge } from "@/components/inventory/stock-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { InventoryListItem } from "@/schemas/inventory";
 
 interface InventoryTableProps {
@@ -20,15 +28,29 @@ const describe = (i: InventoryListItem) => `${i.productName}, ${i.variantLabel}`
 
 function ProductLink({ item }: { item: InventoryListItem }) {
   return (
-    <Link href={productHref(item)} className="font-medium text-foreground underline-offset-4 hover:underline">
+    <Link
+      href={productHref(item)}
+      className="font-medium text-foreground underline-offset-4 hover:underline"
+    >
       {item.productName}
     </Link>
   );
 }
 
-function AdjustButton({ item, onAdjust }: { item: InventoryListItem; onAdjust: (item: InventoryListItem) => void }) {
+function AdjustButton({
+  item,
+  onAdjust,
+}: {
+  item: InventoryListItem;
+  onAdjust: (item: InventoryListItem) => void;
+}) {
   return (
-    <Button variant="outline" size="sm" onClick={() => onAdjust(item)} aria-label={`Adjust stock for ${describe(item)}`}>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => onAdjust(item)}
+      aria-label={`Adjust stock for ${describe(item)}`}
+    >
       <SlidersHorizontal aria-hidden="true" />
       Adjust stock
     </Button>

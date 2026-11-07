@@ -11,7 +11,10 @@ import { useSignOut } from "@/hooks/use-sign-out";
 export function NoOrganization({ email }: { email: string | null }) {
   const { signOut, pending } = useSignOut();
   return (
-    <main id="main-content" className="flex min-h-svh flex-1 items-center justify-center px-4 py-10">
+    <main
+      id="main-content"
+      className="flex min-h-svh flex-1 items-center justify-center px-4 py-10"
+    >
       <Card className="w-full max-w-md">
         <CardHeader className="items-center text-center">
           <span className="mb-2 flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
@@ -21,15 +24,21 @@ export function NoOrganization({ email }: { email: string | null }) {
             <h1 className="text-lg font-semibold">No organization found</h1>
           </CardTitle>
           <CardDescription>
-            {email ? `${email} is` : "This account is"} not part of an organization yet. Set one up to start using
-            SalesPilot AI.
+            {email ? `${email} is` : "This account is"} not part of an organization yet. Set one up
+            to start using SalesPilot AI.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <Button asChild size="lg">
             <Link href="/onboarding">Set up your organization</Link>
           </Button>
-          <Button type="button" variant="ghost" size="lg" onClick={() => void signOut()} disabled={pending}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            onClick={() => void signOut()}
+            disabled={pending}
+          >
             {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
             Sign out
           </Button>

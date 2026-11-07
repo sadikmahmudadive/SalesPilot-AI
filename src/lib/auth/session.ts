@@ -47,7 +47,9 @@ export function assertRecentAuth(authTimeSec: unknown, nowMs: number = Date.now(
  * Any problem with the token (garbage, expired, revoked, stale sign-in) is an
  * `UnauthenticatedError`; SDK error text is never propagated.
  */
-export async function createSessionCookie(idToken: string): Promise<{ value: string; maxAgeSec: number }> {
+export async function createSessionCookie(
+  idToken: string,
+): Promise<{ value: string; maxAgeSec: number }> {
   if (typeof idToken !== "string" || idToken.length === 0) {
     throw new UnauthenticatedError("Invalid credentials");
   }
@@ -111,15 +113,24 @@ function isSecureCookie(): boolean {
 }
 
 function build(value: string, maxAgeSec: number, extra: string[]): string {
-  const parts = [`${SESSION_COOKIE_NAME}=${value}`, "Path=/", `Max-Age=${maxAgeSec}`, ...extra, "HttpOnly", "SameSite=Lax"];
+  const parts = [
+    `${SESSION_COOKIE_NAME}=${value}`,
+    "Path=/",
+    `Max-Age=${maxAgeSec}`,
+    ...extra,
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
   if (isSecureCookie()) parts.push("Secure");
   return parts.join("; ");
 }
 
 /** Builds the `Set-Cookie` header value that stores the session. */
 export function serializeSessionCookie(value: string, maxAgeSec: number): string {
-  if (typeof value !== "string" || !COOKIE_VALUE.test(value)) throw new Error("Invalid session cookie value");
-  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new Error("Invalid session cookie max-age");
+  if (typeof value !== "string" || !COOKIE_VALUE.test(value))
+    throw new Error("Invalid session cookie value");
+  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0)
+    throw new Error("Invalid session cookie max-age");
   return build(value, maxAgeSec, []);
 }
 

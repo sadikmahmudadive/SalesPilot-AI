@@ -15,7 +15,10 @@ export function ProductContentSections({ form }: { form: ProductFormApi }) {
       >
         <VariantEditor form={form} />
       </SectionCard>
-      <SectionCard title="Specifications" description="Facts shoppers ask about, such as material or warranty.">
+      <SectionCard
+        title="Specifications"
+        description="Facts shoppers ask about, such as material or warranty."
+      >
         <SpecsEditor form={form} />
       </SectionCard>
       <SectionCard title="FAQs" description="Short questions and answers about this product.">

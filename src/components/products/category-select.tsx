@@ -74,7 +74,9 @@ export function CategorySelect({ form, canWrite }: CategorySelectProps) {
         <NewCategoryDialog
           open={creating}
           onOpenChange={setCreating}
-          onCreated={(category) => setValue("categoryId", category.id, { shouldDirty: true, shouldValidate: false })}
+          onCreated={(category) =>
+            setValue("categoryId", category.id, { shouldDirty: true, shouldValidate: false })
+          }
         />
       ) : null}
     </div>

@@ -111,9 +111,16 @@ const sharedFields = {
   phone: phoneCore,
   customerType: z.enum(CUSTOMER_TYPES, { error: "Choose a customer type" }),
   tags: z
-    .array(z.string().trim().min(1, "Tags cannot be empty").max(40, "Use 40 characters or fewer per tag"), {
-      error: "Tags must be a list",
-    })
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1, "Tags cannot be empty")
+        .max(40, "Use 40 characters or fewer per tag"),
+      {
+        error: "Tags must be a list",
+      },
+    )
     .max(MAX_RAW_TAGS, `Use at most ${MAX_TAGS} tags`)
     .transform(dedupeTags)
     .pipe(z.array(z.string()).max(MAX_TAGS, `Use at most ${MAX_TAGS} tags`)),
@@ -142,11 +149,15 @@ function withDerivedPhones<T extends { phone: string; whatsappNumber?: string }>
 function withDerivedPhones<T extends { phone?: string; whatsappNumber?: string | null }>(
   value: T,
 ): T & { phoneE164?: string; whatsappE164?: string | null };
-function withDerivedPhones(value: { phone?: string; whatsappNumber?: string | null }): Record<string, unknown> {
+function withDerivedPhones(value: {
+  phone?: string;
+  whatsappNumber?: string | null;
+}): Record<string, unknown> {
   const out: Record<string, unknown> = { ...value };
   if (value.phone !== undefined) out.phoneE164 = normalizePhone(value.phone) ?? undefined;
   if (value.whatsappNumber === null) out.whatsappE164 = null;
-  else if (value.whatsappNumber !== undefined) out.whatsappE164 = normalizePhone(value.whatsappNumber) ?? undefined;
+  else if (value.whatsappNumber !== undefined)
+    out.whatsappE164 = normalizePhone(value.whatsappNumber) ?? undefined;
   return dropUndefined(out);
 }
 

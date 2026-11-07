@@ -24,7 +24,9 @@ export function DiscardChangesDialog({ open, onOpenChange, onDiscard }: DiscardC
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-          <AlertDialogDescription>The details you entered have not been saved and will be lost.</AlertDialogDescription>
+          <AlertDialogDescription>
+            The details you entered have not been saved and will be lost.
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep editing</AlertDialogCancel>

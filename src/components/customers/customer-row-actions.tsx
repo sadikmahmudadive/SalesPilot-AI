@@ -12,11 +12,19 @@ interface CustomerRowActionsProps {
 }
 
 /** View / Edit / Delete icon buttons. Edit and Delete are not rendered at all without write access. */
-export function CustomerRowActions({ customer, canWrite, onEdit, onDelete }: CustomerRowActionsProps) {
+export function CustomerRowActions({
+  customer,
+  canWrite,
+  onEdit,
+  onDelete,
+}: CustomerRowActionsProps) {
   return (
     <div className="flex items-center justify-end gap-1">
       <Button variant="ghost" size="icon-sm" asChild>
-        <Link href={`/customers/${encodeURIComponent(customer.id)}`} aria-label={`View ${customer.fullName}`}>
+        <Link
+          href={`/customers/${encodeURIComponent(customer.id)}`}
+          aria-label={`View ${customer.fullName}`}
+        >
           <Eye aria-hidden="true" />
         </Link>
       </Button>

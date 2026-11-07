@@ -19,7 +19,10 @@ const newOrg = () => {
 };
 
 async function seedCustomer(org: string, segment: CustomerSegment) {
-  await db().collection("customers").doc(randomUUID()).set({ organizationId: org, segment, fullName: "Test" });
+  await db()
+    .collection("customers")
+    .doc(randomUUID())
+    .set({ organizationId: org, segment, fullName: "Test" });
 }
 async function seedProduct(org: string, archived: boolean) {
   await db().collection("products").doc(randomUUID()).set({ organizationId: org, archived });
@@ -137,6 +140,8 @@ describe("getOverview", () => {
     for (const bad of ["", "a/b", ".", "..", "__x__"]) {
       await expect(getOverview(bad), bad).rejects.toBeInstanceOf(ValidationError);
     }
-    await expect(getOverview(undefined as unknown as string)).rejects.toBeInstanceOf(ValidationError);
+    await expect(getOverview(undefined as unknown as string)).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 });

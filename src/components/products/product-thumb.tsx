@@ -21,11 +21,19 @@ interface ProductThumbProps {
  */
 export function ProductThumb({ name, src, size = 40, className }: ProductThumbProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const box = cn("flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted", className);
+  const box = cn(
+    "flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted",
+    className,
+  );
 
   if (!src || failedSrc === src) {
     return (
-      <span className={box} style={{ width: size, height: size }} role="img" aria-label={`No image for ${name}`}>
+      <span
+        className={box}
+        style={{ width: size, height: size }}
+        role="img"
+        aria-label={`No image for ${name}`}
+      >
         <ImageIcon className="size-1/2 text-muted-foreground" aria-hidden="true" />
       </span>
     );

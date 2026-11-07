@@ -77,7 +77,10 @@ export async function getOverview(orgId: string, options: OverviewOptions = {}):
   const settled = await Promise.allSettled(
     METRICS.map((metric) => {
       const { collection, where } = queries[metric];
-      const query = where.reduce<Query>((q, [field, op, value]) => q.where(field, op, value), db.collection(collection));
+      const query = where.reduce<Query>(
+        (q, [field, op, value]) => q.where(field, op, value),
+        db.collection(collection),
+      );
       return runCount(metric, query);
     }),
   );
@@ -85,7 +88,11 @@ export async function getOverview(orgId: string, options: OverviewOptions = {}):
   const result = {} as Overview;
   METRICS.forEach((metric, i) => {
     const outcome = settled[i]!;
-    if (outcome.status === "fulfilled" && Number.isSafeInteger(outcome.value) && outcome.value >= 0) {
+    if (
+      outcome.status === "fulfilled" &&
+      Number.isSafeInteger(outcome.value) &&
+      outcome.value >= 0
+    ) {
       result[metric] = { ok: true, value: outcome.value };
       return;
     }
@@ -93,7 +100,10 @@ export async function getOverview(orgId: string, options: OverviewOptions = {}):
     logger.error("dashboard overview metric failed", {
       metric,
       organizationId: orgId,
-      errorName: outcome.status === "rejected" ? (outcome.reason as Error | undefined)?.name : "InvalidCount",
+      errorName:
+        outcome.status === "rejected"
+          ? (outcome.reason as Error | undefined)?.name
+          : "InvalidCount",
       errorCode: outcome.status === "rejected" ? errorCode(outcome.reason) : undefined,
     });
     result[metric] = { ok: false };

@@ -4,7 +4,8 @@ import { ValidationError } from "./errors";
 import { decodeCursor, encodeCursor, type Cursor } from "./pagination";
 import { isValidIdSegment } from "./ids";
 
-const b64 = (value: unknown) => Buffer.from(typeof value === "string" ? value : JSON.stringify(value)).toString("base64url");
+const b64 = (value: unknown) =>
+  Buffer.from(typeof value === "string" ? value : JSON.stringify(value)).toString("base64url");
 
 function expectInvalid(token: unknown) {
   try {
@@ -110,10 +111,24 @@ describe("decodeCursor rejects bad input", () => {
 
 describe("isValidIdSegment", () => {
   it("accepts ordinary ids", () => {
-    for (const id of ["abc", "org-123", "a_b.c", "x".repeat(1500)]) expect(isValidIdSegment(id)).toBe(true);
+    for (const id of ["abc", "org-123", "a_b.c", "x".repeat(1500)])
+      expect(isValidIdSegment(id)).toBe(true);
   });
   it("rejects bad ids", () => {
-    for (const id of ["", "a/b", "/", ".", "..", "__x__", "x".repeat(1501), "é".repeat(751), 5, null, undefined, {}]) {
+    for (const id of [
+      "",
+      "a/b",
+      "/",
+      ".",
+      "..",
+      "__x__",
+      "x".repeat(1501),
+      "é".repeat(751),
+      5,
+      null,
+      undefined,
+      {},
+    ]) {
       expect(isValidIdSegment(id)).toBe(false);
     }
   });

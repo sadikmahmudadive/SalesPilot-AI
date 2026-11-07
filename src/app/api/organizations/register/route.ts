@@ -14,7 +14,8 @@ import { registerOrganization } from "@/services/organizations/register";
 export const POST = withAuthOnlyApi(
   { rateLimit: { name: "register", limit: 5, windowSec: 60 }, schema: registerOrganizationSchema },
   async ({ uid, email, body }) => {
-    if (!email) throw new ForbiddenError("An account email is required to register an organization");
+    if (!email)
+      throw new ForbiddenError("An account email is required to register an organization");
     const result = await registerOrganization({
       uid,
       email,

@@ -45,7 +45,10 @@ export function uploadRecordRef(publicId: string) {
  */
 export async function saveUploadRecord(record: UploadRecord): Promise<void> {
   try {
-    await uploadRecordRef(record.publicId).create({ ...record, confirmedAt: FieldValue.serverTimestamp() });
+    await uploadRecordRef(record.publicId).create({
+      ...record,
+      confirmedAt: FieldValue.serverTimestamp(),
+    });
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
   }

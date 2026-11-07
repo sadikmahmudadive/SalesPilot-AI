@@ -107,7 +107,12 @@ export function DesktopSidebar({ items, collapsed, animate, onToggle }: DesktopS
         animate && "transition-[width] duration-200 ease-out motion-reduce:transition-none",
       )}
     >
-      <div className={cn("flex h-14 shrink-0 items-center border-b px-4", collapsed && "justify-center px-0")}>
+      <div
+        className={cn(
+          "flex h-14 shrink-0 items-center border-b px-4",
+          collapsed && "justify-center px-0",
+        )}
+      >
         {collapsed ? (
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
             <Compass className="size-4" aria-hidden="true" />

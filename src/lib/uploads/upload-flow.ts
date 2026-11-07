@@ -15,9 +15,7 @@ import type { ConfirmedUpload, SignedUpload } from "@/schemas/upload";
 export type UploadStage = "signing" | "uploading" | "confirming";
 
 export type UploadOutcome =
-  | { kind: "not-configured" }
-  | { kind: "aborted" }
-  | { kind: "error"; message: string };
+  { kind: "not-configured" } | { kind: "aborted" } | { kind: "error"; message: string };
 
 export class UploadFlowError extends Error {
   readonly outcome: UploadOutcome;
@@ -32,7 +30,11 @@ export interface UploadDeps {
   /** JSON POST to our own API (`apiFetch`-like). Rejects with `ApiError`. */
   post: <T>(path: string, body: unknown, signal?: AbortSignal) => Promise<T>;
   /** Multipart POST to Cloudinary with progress and cancellation. */
-  xhrUpload: (url: string, body: FormData, options: { onProgress?: (percent: number) => void; signal?: AbortSignal }) => Promise<unknown>;
+  xhrUpload: (
+    url: string,
+    body: FormData,
+    options: { onProgress?: (percent: number) => void; signal?: AbortSignal },
+  ) => Promise<unknown>;
   createFormData: () => FormData;
 }
 
@@ -63,7 +65,9 @@ const FORMAT_LABELS: Readonly<Record<string, string>> = {
 
 function listFormats(types: readonly string[]): string {
   const names = types.map((t) => FORMAT_LABELS[t] ?? t);
-  return names.length > 1 ? `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}` : (names[0] ?? "");
+  return names.length > 1
+    ? `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`
+    : (names[0] ?? "");
 }
 
 /** `null` when the upload policy of `kind` is not available (knowledge uploads for now). */
@@ -76,12 +80,17 @@ export function policyFor(kind: UploadKind): UploadPolicy | null {
 }
 
 /** UX-only check (the server enforces the real limits). Returns a message, or `null` when fine. */
-export function precheckFile(kind: UploadKind, file: { size: number; type: string }): string | null {
+export function precheckFile(
+  kind: UploadKind,
+  file: { size: number; type: string },
+): string | null {
   const policy = policyFor(kind);
   if (!policy) return MESSAGES.unavailable;
   if (file.size <= 0) return MESSAGES.empty;
-  if (!policy.contentTypes.includes(file.type)) return `Use a ${listFormats(policy.contentTypes)} image`;
-  if (file.size > policy.maxBytes) return `Images must be ${Math.floor(policy.maxBytes / (1024 * 1024))} MB or smaller`;
+  if (!policy.contentTypes.includes(file.type))
+    return `Use a ${listFormats(policy.contentTypes)} image`;
+  if (file.size > policy.maxBytes)
+    return `Images must be ${Math.floor(policy.maxBytes / (1024 * 1024))} MB or smaller`;
   return null;
 }
 
@@ -93,11 +102,15 @@ function toOutcome(error: unknown, phase: "sign" | "upload" | "confirm"): Upload
   if (isAbort(error)) return { kind: "aborted" };
   if (phase === "upload") return { kind: "error", message: MESSAGES.uploadFailed };
   if (error instanceof ApiError) {
-    if (error.status === 503 || error.code === "INTEGRATION_NOT_CONFIGURED") return { kind: "not-configured" };
+    if (error.status === 503 || error.code === "INTEGRATION_NOT_CONFIGURED")
+      return { kind: "not-configured" };
     if (error.status === 403) return { kind: "error", message: MESSAGES.permission };
     if (error.status === 429) return { kind: "error", message: MESSAGES.rateLimited };
     if (error.status === 400) {
-      return { kind: "error", message: phase === "confirm" ? MESSAGES.rejected : MESSAGES.signRejected };
+      return {
+        kind: "error",
+        message: phase === "confirm" ? MESSAGES.rejected : MESSAGES.signRejected,
+      };
     }
     if (error.status === 0) return { kind: "error", message: error.message };
   }
@@ -135,7 +148,11 @@ function buildBody(deps: UploadDeps, signed: SignedUpload, file: Blob): FormData
   return body;
 }
 
-async function step<T>(phase: "sign" | "upload" | "confirm", signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+async function step<T>(
+  phase: "sign" | "upload" | "confirm",
+  signal: AbortSignal | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
   if (signal?.aborted) throw new UploadFlowError({ kind: "aborted" });
   try {
     const result = await run();
@@ -158,17 +175,27 @@ export async function runUpload(
 
   onStage?.("signing");
   const signed = await step("sign", signal, async () => {
-    const value = await deps.post<unknown>("/api/uploads/sign", { kind, contentType: file.type, bytes: file.size }, signal);
+    const value = await deps.post<unknown>(
+      "/api/uploads/sign",
+      { kind, contentType: file.type, bytes: file.size },
+      signal,
+    );
     if (!isSigned(value)) throw new Error("bad sign response");
     return value;
   });
 
   onStage?.("uploading");
-  await step("upload", signal, () => deps.xhrUpload(signed.uploadUrl, buildBody(deps, signed, file), { onProgress, signal }));
+  await step("upload", signal, () =>
+    deps.xhrUpload(signed.uploadUrl, buildBody(deps, signed, file), { onProgress, signal }),
+  );
 
   onStage?.("confirming");
   return step("confirm", signal, async () => {
-    const value = await deps.post<unknown>("/api/uploads/confirm", { kind, publicId: signed.publicId }, signal);
+    const value = await deps.post<unknown>(
+      "/api/uploads/confirm",
+      { kind, publicId: signed.publicId },
+      signal,
+    );
     if (!isConfirmed(value)) throw new Error("bad confirm response");
     return value;
   });

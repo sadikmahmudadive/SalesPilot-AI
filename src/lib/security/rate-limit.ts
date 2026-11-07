@@ -94,6 +94,7 @@ export async function assertRateLimit(
   now: number = Date.now(),
 ): Promise<RateLimitResult> {
   const result = await checkRateLimit(key, opts, now);
-  if (!result.allowed) throw new RateLimitedError(Math.max(1, Math.ceil((result.resetAt - now) / 1000)));
+  if (!result.allowed)
+    throw new RateLimitedError(Math.max(1, Math.ceil((result.resetAt - now) / 1000)));
   return result;
 }

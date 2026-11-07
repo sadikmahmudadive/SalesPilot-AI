@@ -39,7 +39,9 @@ export function Repeater({
   return (
     <div className="space-y-4">
       {count === 0 ? (
-        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          {emptyText}
+        </p>
       ) : (
         <ul className="space-y-3" aria-label={label}>
           {children}

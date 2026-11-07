@@ -10,7 +10,12 @@ const URL_ = "https://app.example.com/api/thing";
  * Builds a request the way a real server sees one: an incoming HTTP request carries a
  * `content-length` header when it has a body (a constructed `Request` does not add one itself).
  */
-function req(method: string, headers: Record<string, string> = {}, body: BodyInit | null = "{}", url = URL_): Request {
+function req(
+  method: string,
+  headers: Record<string, string> = {},
+  body: BodyInit | null = "{}",
+  url = URL_,
+): Request {
   const h = new Headers(headers);
   const sendsBody = method !== "GET" && method !== "HEAD" && body !== null;
   if (sendsBody && typeof body === "string" && !h.has("content-length")) {
@@ -59,7 +64,9 @@ describe("assertJsonSameOrigin: content type", () => {
   });
 
   it.each(["POST", "PUT", "PATCH", "DELETE"])("%s with a non-JSON body is rejected", (m) => {
-    expect(() => assertJsonSameOrigin(req(m, { "content-type": "text/plain" }))).toThrow(UnsupportedMediaTypeError);
+    expect(() => assertJsonSameOrigin(req(m, { "content-type": "text/plain" }))).toThrow(
+      UnsupportedMediaTypeError,
+    );
   });
 
   it("a body-less mutating request needs no content type", () => {
@@ -100,22 +107,30 @@ describe("assertJsonSameOrigin: content type", () => {
   });
 
   it("requireJson: false skips only the content-type check", () => {
-    expect(() => assertJsonSameOrigin(req("DELETE", { "content-type": "text/plain" }), { requireJson: false })).not.toThrow();
     expect(() =>
-      assertJsonSameOrigin(req("DELETE", { origin: "https://evil.com" }, null), { requireJson: false }),
+      assertJsonSameOrigin(req("DELETE", { "content-type": "text/plain" }), { requireJson: false }),
+    ).not.toThrow();
+    expect(() =>
+      assertJsonSameOrigin(req("DELETE", { origin: "https://evil.com" }, null), {
+        requireJson: false,
+      }),
     ).toThrow(ForbiddenError);
   });
 
   it.each(["GET", "HEAD", "OPTIONS"])("%s is never checked", (m) => {
     expect(() =>
-      assertJsonSameOrigin(req(m, { origin: "https://evil.com", "sec-fetch-site": "cross-site" }, null)),
+      assertJsonSameOrigin(
+        req(m, { origin: "https://evil.com", "sec-fetch-site": "cross-site" }, null),
+      ),
     ).not.toThrow();
   });
 });
 
 describe("assertJsonSameOrigin: Origin", () => {
   it("accepts a matching Origin", () => {
-    expect(() => assertJsonSameOrigin(req("POST", { ...json, origin: "https://app.example.com" }))).not.toThrow();
+    expect(() =>
+      assertJsonSameOrigin(req("POST", { ...json, origin: "https://app.example.com" })),
+    ).not.toThrow();
   });
 
   it("accepts a missing Origin (non-browser clients)", () => {
@@ -151,7 +166,12 @@ describe("assertJsonSameOrigin: Origin", () => {
   it("accepts the forwarded public origin behind a proxy (Vercel)", () => {
     const r = req(
       "POST",
-      { ...json, origin: "https://public.example.org", "x-forwarded-host": "public.example.org", "x-forwarded-proto": "https" },
+      {
+        ...json,
+        origin: "https://public.example.org",
+        "x-forwarded-host": "public.example.org",
+        "x-forwarded-proto": "https",
+      },
       "{}",
       "http://localhost:3000/api/thing",
     );
@@ -161,7 +181,12 @@ describe("assertJsonSameOrigin: Origin", () => {
   it("uses the first entry of comma-separated forwarded headers", () => {
     const r = req(
       "POST",
-      { ...json, origin: "https://public.example.org", "x-forwarded-host": "public.example.org, internal", "x-forwarded-proto": "https, http" },
+      {
+        ...json,
+        origin: "https://public.example.org",
+        "x-forwarded-host": "public.example.org, internal",
+        "x-forwarded-proto": "https, http",
+      },
       "{}",
       "http://localhost:3000/api/thing",
     );
@@ -171,18 +196,35 @@ describe("assertJsonSameOrigin: Origin", () => {
   it.each(["javascript", "ftp", "https://evil.com#", ""])(
     "ignores a non-http(s) x-forwarded-proto %j (falls back to the request URL scheme)",
     (proto) => {
-      const base = { ...json, "x-forwarded-host": "public.example.org", "x-forwarded-proto": proto };
+      const base = {
+        ...json,
+        "x-forwarded-host": "public.example.org",
+        "x-forwarded-proto": proto,
+      };
       const url = "http://localhost:3000/api/thing";
       // A usable Origin must be built from the request URL's scheme, never the bogus proto value.
-      expect(() => assertJsonSameOrigin(req("POST", { ...base, origin: "http://public.example.org" }, "{}", url))).not.toThrow();
-      expect(() => assertJsonSameOrigin(req("POST", { ...base, origin: `${proto}://public.example.org` }, "{}", url))).toThrow(ForbiddenError);
+      expect(() =>
+        assertJsonSameOrigin(
+          req("POST", { ...base, origin: "http://public.example.org" }, "{}", url),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        assertJsonSameOrigin(
+          req("POST", { ...base, origin: `${proto}://public.example.org` }, "{}", url),
+        ),
+      ).toThrow(ForbiddenError);
     },
   );
 
   it("accepts an uppercase x-forwarded-proto of HTTPS", () => {
     const r = req(
       "POST",
-      { ...json, origin: "https://public.example.org", "x-forwarded-host": "public.example.org", "x-forwarded-proto": "HTTPS" },
+      {
+        ...json,
+        origin: "https://public.example.org",
+        "x-forwarded-host": "public.example.org",
+        "x-forwarded-proto": "HTTPS",
+      },
       "{}",
       "http://localhost:3000/api/thing",
     );
@@ -192,7 +234,12 @@ describe("assertJsonSameOrigin: Origin", () => {
   it("forwarded host with a different scheme than Origin is rejected", () => {
     const r = req(
       "POST",
-      { ...json, origin: "http://public.example.org", "x-forwarded-host": "public.example.org", "x-forwarded-proto": "https" },
+      {
+        ...json,
+        origin: "http://public.example.org",
+        "x-forwarded-host": "public.example.org",
+        "x-forwarded-proto": "https",
+      },
       "{}",
       "http://localhost:3000/api/thing",
     );
@@ -200,7 +247,12 @@ describe("assertJsonSameOrigin: Origin", () => {
   });
 
   it("a foreign Origin is still rejected when forwarded headers describe a different host", () => {
-    const r = req("POST", { ...json, origin: "https://evil.com", "x-forwarded-host": "public.example.org", "x-forwarded-proto": "https" });
+    const r = req("POST", {
+      ...json,
+      origin: "https://evil.com",
+      "x-forwarded-host": "public.example.org",
+      "x-forwarded-proto": "https",
+    });
     expect(() => assertJsonSameOrigin(r)).toThrow(ForbiddenError);
   });
 });
@@ -211,12 +263,16 @@ describe("assertJsonSameOrigin: Sec-Fetch-Site", () => {
   });
 
   it.each(["cross-site", "same-site", "bogus", ""])("rejects %j with ForbiddenError", (v) => {
-    expect(() => assertJsonSameOrigin(req("POST", { ...json, "sec-fetch-site": v }))).toThrow(ForbiddenError);
+    expect(() => assertJsonSameOrigin(req("POST", { ...json, "sec-fetch-site": v }))).toThrow(
+      ForbiddenError,
+    );
   });
 
   it("rejects cross-site even when Origin looks fine", () => {
     expect(() =>
-      assertJsonSameOrigin(req("POST", { ...json, origin: "https://app.example.com", "sec-fetch-site": "cross-site" })),
+      assertJsonSameOrigin(
+        req("POST", { ...json, origin: "https://app.example.com", "sec-fetch-site": "cross-site" }),
+      ),
     ).toThrow(ForbiddenError);
   });
 });

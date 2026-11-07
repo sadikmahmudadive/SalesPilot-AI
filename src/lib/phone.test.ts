@@ -35,13 +35,23 @@ describe("normalizePhone", () => {
   });
 
   it("maps Bangla digits", () => {
-    expect(normalizePhone("\u09E6\u09E7\u09ED\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC\u09ED\u09EE")).toBe("+8801712345678");
-    expect(normalizePhone("+\u09EE\u09EE\u09E6 \u09E7\u09ED\u09E7\u09E8 \u09E9\u09EA\u09EB\u09EC\u09ED\u09EE")).toBe("+8801712345678");
+    expect(
+      normalizePhone("\u09E6\u09E7\u09ED\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC\u09ED\u09EE"),
+    ).toBe("+8801712345678");
+    expect(
+      normalizePhone(
+        "+\u09EE\u09EE\u09E6 \u09E7\u09ED\u09E7\u09E8 \u09E9\u09EA\u09EB\u09EC\u09ED\u09EE",
+      ),
+    ).toBe("+8801712345678");
   });
 
   it("maps Arabic-Indic and Extended Arabic-Indic digits", () => {
-    expect(normalizePhone("\u0660\u0661\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668")).toBe("+8801712345678");
-    expect(normalizePhone("\u06F0\u06F1\u06F7\u06F1\u06F2\u06F3\u06F4\u06F5\u06F6\u06F7\u06F8")).toBe("+8801712345678");
+    expect(
+      normalizePhone("\u0660\u0661\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668"),
+    ).toBe("+8801712345678");
+    expect(
+      normalizePhone("\u06F0\u06F1\u06F7\u06F1\u06F2\u06F3\u06F4\u06F5\u06F6\u06F7\u06F8"),
+    ).toBe("+8801712345678");
   });
 
   it("accepts every valid BD operator prefix 013-019", () => {
@@ -98,7 +108,10 @@ describe("normalizePhone", () => {
     ["NBSP and narrow NBSP", "+880\u00A01712\u202F345678"],
     ["ideographic space", "01712\u3000345678"],
     ["full-width digits", "\uFF10\uFF11\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17\uFF18"],
-    ["full-width plus and digits", "\uFF0B\uFF18\uFF18\uFF10\uFF11\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17\uFF18"],
+    [
+      "full-width plus and digits",
+      "\uFF0B\uFF18\uFF18\uFF10\uFF11\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17\uFF18",
+    ],
   ])("tolerates pasted invisible characters: %s", (_name, raw) => {
     expect(normalizePhone(raw)).toBe("+8801712345678");
   });

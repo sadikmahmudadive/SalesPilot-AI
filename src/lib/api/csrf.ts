@@ -53,7 +53,9 @@ function allowedOrigins(req: Request): Set<string> {
     const forwardedProto = firstValue(req.headers.get("x-forwarded-proto"))?.toLowerCase();
     // Only http/https are meaningful for an Origin; anything else is ignored rather than trusted.
     const proto =
-      forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : new URL(req.url).protocol.slice(0, -1);
+      forwardedProto === "http" || forwardedProto === "https"
+        ? forwardedProto
+        : new URL(req.url).protocol.slice(0, -1);
     try {
       allowed.add(new URL(`${proto}://${host}`).origin);
     } catch {
@@ -87,7 +89,8 @@ export function assertJsonSameOrigin(req: Request, opts: CsrfOptions = {}): void
   const fetchSite = req.headers.get("sec-fetch-site");
   if (fetchSite !== null) {
     const site = fetchSite.trim().toLowerCase();
-    if (site !== "same-origin" && site !== "none") throw new ForbiddenError("Cross-site request blocked");
+    if (site !== "same-origin" && site !== "none")
+      throw new ForbiddenError("Cross-site request blocked");
   }
 
   const origin = req.headers.get("origin");

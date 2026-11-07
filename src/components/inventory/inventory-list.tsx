@@ -19,7 +19,13 @@ import type { InventoryListItem } from "@/schemas/inventory";
 
 const NOUN = { singular: "stock item", plural: "stock items" };
 
-export function InventoryList({ role, initialLowStock = false }: { role: Role; initialLowStock?: boolean }) {
+export function InventoryList({
+  role,
+  initialLowStock = false,
+}: {
+  role: Role;
+  initialLowStock?: boolean;
+}) {
   const canWrite = can(role, "inventory:write");
   const [lowStock, setLowStock] = useState(initialLowStock);
   const [adjusting, setAdjusting] = useState<InventoryListItem | null>(null);
@@ -43,7 +49,8 @@ export function InventoryList({ role, initialLowStock = false }: { role: Role; i
     </PlaceholderCard>
   ) : (
     <PlaceholderCard icon={PackageSearch} heading="No stock to show yet">
-      Stock appears here once you add products. Each product, or each of its variants, gets a stock count.
+      Stock appears here once you add products. Each product, or each of its variants, gets a stock
+      count.
     </PlaceholderCard>
   );
 
@@ -58,7 +65,13 @@ export function InventoryList({ role, initialLowStock = false }: { role: Role; i
           Low stock only (available {LOW_STOCK_THRESHOLD} or fewer)
         </ToggleButton>
       </div>
-      <PagedListView query={query} items={items} noun={NOUN} skeleton={<ListSkeleton />} empty={empty}>
+      <PagedListView
+        query={query}
+        items={items}
+        noun={NOUN}
+        skeleton={<ListSkeleton />}
+        empty={empty}
+      >
         {(rows) => {
           const table = {
             items: rows,

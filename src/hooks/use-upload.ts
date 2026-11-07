@@ -4,7 +4,13 @@ import { useCallback, useState } from "react";
 
 import { apiFetch } from "@/lib/api/client";
 import type { UploadKind } from "@/lib/cloudinary/folders";
-import { MESSAGES, runUpload, UploadFlowError, type UploadDeps, type UploadOutcome } from "@/lib/uploads/upload-flow";
+import {
+  MESSAGES,
+  runUpload,
+  UploadFlowError,
+  type UploadDeps,
+  type UploadOutcome,
+} from "@/lib/uploads/upload-flow";
 import { xhrUpload } from "@/lib/uploads/xhr-upload";
 import type { ConfirmedUpload } from "@/schemas/upload";
 
@@ -40,15 +46,24 @@ export function useUpload(kind: UploadKind) {
       try {
         const image = await runUpload(deps, kind, file, {
           signal,
-          onStage: (stage) => setState((s) => ({ ...s, status: stage, progress: stage === "confirming" ? 100 : s.progress })),
+          onStage: (stage) =>
+            setState((s) => ({
+              ...s,
+              status: stage,
+              progress: stage === "confirming" ? 100 : s.progress,
+            })),
           onProgress: (progress) => setState((s) => ({ ...s, progress })),
         });
         setState({ status: "done", progress: 100, error: null });
         return image;
       } catch (error) {
         const outcome: UploadOutcome =
-          error instanceof UploadFlowError ? error.outcome : { kind: "error", message: MESSAGES.generic };
-        setState(outcome.kind === "aborted" ? IDLE : { status: "error", progress: 0, error: outcome });
+          error instanceof UploadFlowError
+            ? error.outcome
+            : { kind: "error", message: MESSAGES.generic };
+        setState(
+          outcome.kind === "aborted" ? IDLE : { status: "error", progress: 0, error: outcome },
+        );
         throw error instanceof UploadFlowError ? error : new UploadFlowError(outcome);
       }
     },

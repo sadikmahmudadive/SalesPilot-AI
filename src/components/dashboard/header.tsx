@@ -26,7 +26,10 @@ export function Header({ organizationName, role, email, displayName }: HeaderPro
       <MobileNav items={visibleNavItems(role)} />
 
       <div className="flex min-w-0 items-center gap-2">
-        <span className="max-w-40 truncate text-sm font-medium sm:max-w-56" title={organizationName}>
+        <span
+          className="max-w-40 truncate text-sm font-medium sm:max-w-56"
+          title={organizationName}
+        >
           {organizationName}
         </span>
         <Badge variant="secondary" className="hidden sm:inline-flex">

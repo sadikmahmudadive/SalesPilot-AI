@@ -15,7 +15,13 @@ async function newUser(): Promise<EmulatorUser> {
 }
 
 afterAll(async () => {
-  await Promise.all(users.map((u) => adminAuth().deleteUser(u.uid).catch(() => undefined)));
+  await Promise.all(
+    users.map((u) =>
+      adminAuth()
+        .deleteUser(u.uid)
+        .catch(() => undefined),
+    ),
+  );
 });
 
 describe("createSessionCookie (emulator)", () => {
@@ -53,7 +59,10 @@ describe("verifySessionValue (emulator)", () => {
     const [h, p, s] = value.split(".") as [string, string, string];
 
     // Payload rewritten to point at another account.
-    const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8")) as Record<string, unknown>;
+    const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
     payload.sub = "someone-else";
     payload.user_id = "someone-else";
     const forgedPayload = `${h}.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.${s}`;

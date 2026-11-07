@@ -51,11 +51,17 @@ function CustomerForm({ customer, onDirtyChange, onCancel, onSaved }: CustomerFo
   const update = useUpdateCustomer();
   const submitLock = useRef(false);
   const [pending, setPending] = useState(false);
-  const [formError, setFormError] = useState<{ message: string; requestId?: string; reveal?: boolean } | null>(null);
+  const [formError, setFormError] = useState<{
+    message: string;
+    requestId?: string;
+    reveal?: boolean;
+  } | null>(null);
   const alertRef = useRevealAlert(formError?.reveal ? formError : null);
 
   // Frozen at mount: the edit diff must not move if the customer prop refreshes while the dialog is open.
-  const [defaults] = useState(() => (customer ? customerToFormValues(customer) : EMPTY_FORM_VALUES));
+  const [defaults] = useState(() =>
+    customer ? customerToFormValues(customer) : EMPTY_FORM_VALUES,
+  );
   const form = useForm<CustomerFormValues, unknown, FormOutput>({
     resolver,
     defaultValues: defaults,
@@ -88,11 +94,14 @@ function CustomerForm({ customer, onDirtyChange, onCancel, onSaved }: CustomerFo
       onSaved();
     } catch (error) {
       const mapped = mapApiError(asApiError(error));
-      for (const field of mapped.fields) setError(field.name, { type: "server", message: field.message });
+      for (const field of mapped.fields)
+        setError(field.name, { type: "server", message: field.message });
       const first = mapped.fields[0];
       if (first) setFocus(first.name);
       setFormError(
-        mapped.formError ? { message: mapped.formError, requestId: mapped.requestId, reveal: !first } : null,
+        mapped.formError
+          ? { message: mapped.formError, requestId: mapped.requestId, reveal: !first }
+          : null,
       );
     } finally {
       submitLock.current = false;
@@ -101,10 +110,16 @@ function CustomerForm({ customer, onDirtyChange, onCancel, onSaved }: CustomerFo
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(save)(event)} noValidate className="flex min-h-0 flex-1 flex-col">
+    <form
+      onSubmit={(event) => void handleSubmit(save)(event)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
         <FormAlert ref={alertRef} message={formError?.message}>
-          {formError?.requestId ? <p className="text-xs">Reference: {formError.requestId}</p> : null}
+          {formError?.requestId ? (
+            <p className="text-xs">Reference: {formError.requestId}</p>
+          ) : null}
         </FormAlert>
         <CustomerFormFields form={form} />
       </div>
@@ -166,7 +181,11 @@ export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFor
           />
         </DialogContent>
       </Dialog>
-      <DiscardChangesDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} onDiscard={close} />
+      <DiscardChangesDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        onDiscard={close}
+      />
     </>
   );
 }

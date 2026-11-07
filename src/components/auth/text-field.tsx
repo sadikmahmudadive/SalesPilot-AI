@@ -19,7 +19,14 @@ type TextFieldProps = Omit<React.ComponentProps<"input">, "id"> & {
  * Labelled input with an inline error. `type="password"` gets an accessible show/hide toggle.
  * The `ref` prop (React 19) is forwarded through `...props`, so react-hook-form's `register()` works.
  */
-export function TextField({ label, error, labelAction, type, className, ...props }: TextFieldProps) {
+export function TextField({
+  label,
+  error,
+  labelAction,
+  type,
+  className,
+  ...props
+}: TextFieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   const [revealed, setRevealed] = useState(false);

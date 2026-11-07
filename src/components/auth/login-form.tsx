@@ -16,7 +16,8 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 import { loginSchema, type LoginValues } from "@/schemas/auth";
 
 export function LoginForm({ next }: { next?: string }) {
-  const { pending, busy, formError, begin, fail, completeSignIn, googleProps } = useAuthSubmission(next);
+  const { pending, busy, formError, begin, fail, completeSignIn, googleProps } =
+    useAuthSubmission(next);
   const {
     register,
     handleSubmit,
@@ -29,7 +30,11 @@ export function LoginForm({ next }: { next?: string }) {
   async function onSubmit(values: LoginValues) {
     if (!begin("password")) return;
     try {
-      const credential = await signInWithEmailAndPassword(getFirebaseAuth(), values.email, values.password);
+      const credential = await signInWithEmailAndPassword(
+        getFirebaseAuth(),
+        values.email,
+        values.password,
+      );
       const message = await completeSignIn(await credential.user.getIdToken(), next);
       if (message) fail(message);
     } catch (error) {
@@ -58,7 +63,10 @@ export function LoginForm({ next }: { next?: string }) {
             autoComplete="current-password"
             error={errors.password?.message}
             labelAction={
-              <AuthLink href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+              <AuthLink
+                href="/forgot-password"
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
                 Forgot password?
               </AuthLink>
             }

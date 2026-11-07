@@ -114,7 +114,10 @@ export function CustomerList({ role }: { role: Role }) {
           onOpenChange={(open) => setForm((prev) => ({ ...prev, open }))}
         />
       ) : null}
-      <DeleteCustomerDialog customer={deleting} onOpenChange={(open) => !open && setDeleting(null)} />
+      <DeleteCustomerDialog
+        customer={deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      />
     </div>
   );
 }

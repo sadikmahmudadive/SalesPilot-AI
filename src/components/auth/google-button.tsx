@@ -48,7 +48,14 @@ export function GoogleButton({
   }
 
   return (
-    <Button type="button" variant="outline" size="lg" className="w-full" disabled={disabled} onClick={handleClick}>
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      className="w-full"
+      disabled={disabled}
+      onClick={handleClick}
+    >
       {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <GoogleMark />}
       Continue with Google
     </Button>

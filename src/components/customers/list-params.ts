@@ -51,7 +51,8 @@ export function toListParams(state: ListFilterState): Omit<CustomerListParams, "
     return params;
   }
   if (state.filterBy === "segment" && state.segment) params.segment = state.segment;
-  else if (state.filterBy === "customerType" && state.customerType) params.customerType = state.customerType;
+  else if (state.filterBy === "customerType" && state.customerType)
+    params.customerType = state.customerType;
   else if (state.filterBy === "tag" && state.tag.trim()) params.tag = state.tag.trim();
   return params;
 }
@@ -59,5 +60,10 @@ export function toListParams(state: ListFilterState): Omit<CustomerListParams, "
 /** True when a search or a chosen filter value is narrowing the list (sorting does not count). */
 export function hasActiveCriteria(state: ListFilterState): boolean {
   const { q, ...rest } = toListParams(state);
-  return q !== undefined || rest.segment !== undefined || rest.customerType !== undefined || rest.tag !== undefined;
+  return (
+    q !== undefined ||
+    rest.segment !== undefined ||
+    rest.customerType !== undefined ||
+    rest.tag !== undefined
+  );
 }

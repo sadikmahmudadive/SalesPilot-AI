@@ -33,7 +33,10 @@ export const SEGMENT_VARIANTS: Readonly<Record<CustomerSegment, CustomerBadgeVar
 };
 
 /** `{ value, label }` lists for select controls, in schema order. */
-export const SEGMENT_OPTIONS = CUSTOMER_SEGMENTS.map((value) => ({ value, label: SEGMENT_LABELS[value] }));
+export const SEGMENT_OPTIONS = CUSTOMER_SEGMENTS.map((value) => ({
+  value,
+  label: SEGMENT_LABELS[value],
+}));
 
 export const TYPE_LABELS: Readonly<Record<CustomerType, string>> = {
   retail: "Retail",

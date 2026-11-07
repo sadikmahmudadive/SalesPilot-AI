@@ -26,8 +26,14 @@ const created = { users: [] as string[], members: [] as string[] };
 async function seedMember(role: Role, organizationId = `org-${randomUUID()}`) {
   const uid = `uid-${randomUUID()}`;
   const db = adminDb();
-  await db.collection("users").doc(uid).set({ uid, email: `${uid}@x.com`, defaultOrganizationId: organizationId });
-  await db.collection("organizationMembers").doc(`${organizationId}_${uid}`).set({ organizationId, uid, role });
+  await db
+    .collection("users")
+    .doc(uid)
+    .set({ uid, email: `${uid}@x.com`, defaultOrganizationId: organizationId });
+  await db
+    .collection("organizationMembers")
+    .doc(`${organizationId}_${uid}`)
+    .set({ organizationId, uid, role });
   created.users.push(uid);
   created.members.push(`${organizationId}_${uid}`);
   return { uid, organizationId };
@@ -37,8 +43,12 @@ function signIn(uid: string, email: string | null = `${uid}@x.com`) {
   session = { uid, email };
 }
 
-function post(body?: unknown, headers: Record<string, string> = { "content-type": "application/json" }): Request {
-  const raw = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
+function post(
+  body?: unknown,
+  headers: Record<string, string> = { "content-type": "application/json" },
+): Request {
+  const raw =
+    body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
   const h = new Headers(headers);
   if (raw !== undefined) h.set("content-length", String(Buffer.byteLength(raw)));
   return new Request(URL_, { method: "POST", headers: h, body: raw });
@@ -46,7 +56,11 @@ function post(body?: unknown, headers: Record<string, string> = { "content-type"
 const get = (headers: Record<string, string> = {}) => new Request(URL_, { method: "GET", headers });
 
 async function errorOf(res: Response) {
-  return ((await res.json()) as { error: { code: string; message: string; requestId: string; details?: unknown } }).error;
+  return (
+    (await res.json()) as {
+      error: { code: string; message: string; requestId: string; details?: unknown };
+    }
+  ).error;
 }
 
 beforeEach(() => {
@@ -81,7 +95,10 @@ describe("withApi: auth and membership", () => {
 
   it("403 when the member doc has an unknown role (fail closed)", async () => {
     const { uid, organizationId } = await seedMember("owner");
-    await adminDb().collection("organizationMembers").doc(`${organizationId}_${uid}`).update({ role: "root" });
+    await adminDb()
+      .collection("organizationMembers")
+      .doc(`${organizationId}_${uid}`)
+      .update({ role: "root" });
     signIn(uid);
     const fn = vi.fn(async () => ({}));
     expect((await withApi({ permission: "any-member" }, fn)(get())).status).toBe(403);
@@ -99,7 +116,13 @@ describe("withApi: auth and membership", () => {
       body: ctx.body ?? null,
     }))(get());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ uid, email: "me@x.com", organizationId, role: "agent", body: null });
+    expect(await res.json()).toEqual({
+      uid,
+      email: "me@x.com",
+      organizationId,
+      role: "agent",
+      body: null,
+    });
   });
 });
 
@@ -116,10 +139,14 @@ describe("withApi: permission", () => {
   it("allows an agent on customers:write and a viewer on customers:read", async () => {
     const agent = await seedMember("agent");
     signIn(agent.uid);
-    expect((await withApi({ permission: "customers:write" }, async () => ({ ok: 1 }))(post({}))).status).toBe(200);
+    expect(
+      (await withApi({ permission: "customers:write" }, async () => ({ ok: 1 }))(post({}))).status,
+    ).toBe(200);
     const viewer = await seedMember("viewer");
     signIn(viewer.uid);
-    expect((await withApi({ permission: "customers:read" }, async () => ({ ok: 1 }))(get())).status).toBe(200);
+    expect(
+      (await withApi({ permission: "customers:read" }, async () => ({ ok: 1 }))(get())).status,
+    ).toBe(200);
   });
 
   it("permission is checked before the rate limit and body parse", async () => {
@@ -127,7 +154,11 @@ describe("withApi: permission", () => {
     signIn(uid);
     const schema = z.object({ a: z.string() });
     const res = await withApi(
-      { permission: "customers:write", schema, rateLimit: { name: `perm-${randomUUID()}`, limit: 1, windowSec: 60 } },
+      {
+        permission: "customers:write",
+        schema,
+        rateLimit: { name: `perm-${randomUUID()}`, limit: 1, windowSec: 60 },
+      },
       async () => ({}),
     )(post({ a: 1 }));
     expect(res.status).toBe(403);
@@ -140,7 +171,9 @@ describe("withApi: body", () => {
   it("parses a valid body into ctx.body", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member", schema }, async ({ body }) => ({ got: body }))(post({ name: "Jo", age: 3 }));
+    const res = await withApi({ permission: "any-member", schema }, async ({ body }) => ({
+      got: body,
+    }))(post({ name: "Jo", age: 3 }));
     expect(await res.json()).toEqual({ got: { name: "Jo", age: 3 } });
   });
 
@@ -149,12 +182,18 @@ describe("withApi: body", () => {
     signIn(uid);
     const secret = "SECRET-VALUE-123";
     const fn = vi.fn(async () => ({}));
-    const res = await withApi({ permission: "any-member", schema }, fn)(post({ name: "x", age: secret }));
+    const res = await withApi(
+      { permission: "any-member", schema },
+      fn,
+    )(post({ name: "x", age: secret }));
     expect(res.status).toBe(400);
     const err = await errorOf(res);
     expect(err.code).toBe("VALIDATION_ERROR");
     expect(err.details).toEqual(
-      expect.arrayContaining([expect.objectContaining({ path: "name" }), expect.objectContaining({ path: "age" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ path: "name" }),
+        expect.objectContaining({ path: "age" }),
+      ]),
     );
     expect(JSON.stringify(err)).not.toContain(secret);
     expect(fn).not.toHaveBeenCalled();
@@ -163,7 +202,9 @@ describe("withApi: body", () => {
   it("400 on invalid JSON", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(post("{not json"));
+    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(
+      post("{not json"),
+    );
     expect(res.status).toBe(400);
     expect((await errorOf(res)).code).toBe("VALIDATION_ERROR");
   });
@@ -171,7 +212,9 @@ describe("withApi: body", () => {
   it("400 when the body is missing but a schema is set", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(post(undefined));
+    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(
+      post(undefined),
+    );
     expect(res.status).toBe(400);
     expect((await errorOf(res)).code).toBe("VALIDATION_ERROR");
   });
@@ -179,7 +222,9 @@ describe("withApi: body", () => {
   it("415 for text/plain when a schema is set", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(post('{"name":"Jo","age":1}', { "content-type": "text/plain" }));
+    const res = await withApi({ permission: "any-member", schema }, async () => ({}))(
+      post('{"name":"Jo","age":1}', { "content-type": "text/plain" }),
+    );
     expect(res.status).toBe(415);
   });
 
@@ -200,14 +245,18 @@ describe("withApi: body", () => {
     const req = new Request(`${URL_}?organizationId=other-org`, {
       headers: { "x-organization-id": "other-org", "x-forwarded-organization-id": "other-org" },
     });
-    const res = await withApi({ permission: "any-member" }, async (ctx) => ({ organizationId: ctx.organizationId }))(req);
+    const res = await withApi({ permission: "any-member" }, async (ctx) => ({
+      organizationId: ctx.organizationId,
+    }))(req);
     expect(await res.json()).toEqual({ organizationId });
   });
 
   it("a schema-less mutating request with no body is fine and body is undefined", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async ({ body }) => ({ body: body === undefined }))(post(undefined, {}));
+    const res = await withApi({ permission: "any-member" }, async ({ body }) => ({
+      body: body === undefined,
+    }))(post(undefined, {}));
     expect(await res.json()).toEqual({ body: true });
   });
 });
@@ -215,7 +264,10 @@ describe("withApi: body", () => {
 describe("withApi: csrf", () => {
   it("403 for a cross-origin POST before auth is even evaluated", async () => {
     const fn = vi.fn(async () => ({}));
-    const res = await withApi({ permission: "any-member" }, fn)(post({}, { "content-type": "application/json", origin: "https://evil.com" }));
+    const res = await withApi(
+      { permission: "any-member" },
+      fn,
+    )(post({}, { "content-type": "application/json", origin: "https://evil.com" }));
     expect(res.status).toBe(403); // no session set: would be 401 if csrf ran later
     expect(fn).not.toHaveBeenCalled();
   });
@@ -223,7 +275,9 @@ describe("withApi: csrf", () => {
   it("403 for Sec-Fetch-Site cross-site", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async () => ({}))(post({}, { "content-type": "application/json", "sec-fetch-site": "cross-site" }));
+    const res = await withApi({ permission: "any-member" }, async () => ({}))(
+      post({}, { "content-type": "application/json", "sec-fetch-site": "cross-site" }),
+    );
     expect(res.status).toBe(403);
   });
 
@@ -231,7 +285,14 @@ describe("withApi: csrf", () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
     const res = await withApi({ permission: "any-member" }, async () => ({ ok: 1 }))(
-      post({}, { "content-type": "application/json", origin: "http://localhost", "sec-fetch-site": "same-origin" }),
+      post(
+        {},
+        {
+          "content-type": "application/json",
+          origin: "http://localhost",
+          "sec-fetch-site": "same-origin",
+        },
+      ),
     );
     expect(res.status).toBe(200);
   });
@@ -248,7 +309,9 @@ describe("withApi: csrf", () => {
   it("GET is not subject to csrf", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async () => ({ ok: 1 }))(get({ origin: "https://evil.com", "sec-fetch-site": "cross-site" }));
+    const res = await withApi({ permission: "any-member" }, async () => ({ ok: 1 }))(
+      get({ origin: "https://evil.com", "sec-fetch-site": "cross-site" }),
+    );
     expect(res.status).toBe(200);
   });
 
@@ -256,8 +319,17 @@ describe("withApi: csrf", () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
     const plain = { "content-type": "text/plain" };
-    expect((await withApi({ permission: "any-member" }, async () => ({ ok: 1 }))(post("hello", plain))).status).toBe(200);
-    expect((await withApi({ permission: "any-member", schema: z.object({}) }, async () => ({ ok: 1 }))(post("hello", plain))).status).toBe(415);
+    expect(
+      (await withApi({ permission: "any-member" }, async () => ({ ok: 1 }))(post("hello", plain)))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await withApi({ permission: "any-member", schema: z.object({}) }, async () => ({ ok: 1 }))(
+          post("hello", plain),
+        )
+      ).status,
+    ).toBe(415);
   });
 });
 
@@ -266,7 +338,10 @@ describe("withApi: rate limit", () => {
     const name = `rl-${randomUUID()}`;
     const a = await seedMember("owner");
     const b = await seedMember("owner");
-    const h = withApi({ permission: "any-member", rateLimit: { name, limit: 2, windowSec: 60 } }, async () => ({ ok: 1 }));
+    const h = withApi(
+      { permission: "any-member", rateLimit: { name, limit: 2, windowSec: 60 } },
+      async () => ({ ok: 1 }),
+    );
     await withPinnedRateWindow(async () => {
       signIn(a.uid);
       expect((await h(get())).status).toBe(200);
@@ -283,8 +358,20 @@ describe("withApi: rate limit", () => {
   it("different limiter names do not share counters", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const one = withApi({ permission: "any-member", rateLimit: { name: `n1-${randomUUID()}`, limit: 1, windowSec: 60 } }, async () => ({}));
-    const two = withApi({ permission: "any-member", rateLimit: { name: `n2-${randomUUID()}`, limit: 1, windowSec: 60 } }, async () => ({}));
+    const one = withApi(
+      {
+        permission: "any-member",
+        rateLimit: { name: `n1-${randomUUID()}`, limit: 1, windowSec: 60 },
+      },
+      async () => ({}),
+    );
+    const two = withApi(
+      {
+        permission: "any-member",
+        rateLimit: { name: `n2-${randomUUID()}`, limit: 1, windowSec: 60 },
+      },
+      async () => ({}),
+    );
     await withPinnedRateWindow(async () => {
       expect((await one(get())).status).toBe(200);
       expect((await two(get())).status).toBe(200);
@@ -331,7 +418,9 @@ describe("withApi: responses", () => {
   it("a returned Response is used as-is (status, body) but gets the standard headers", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async () => Response.json({ made: true }, { status: 201, headers: { "x-custom": "1" } }))(get());
+    const res = await withApi({ permission: "any-member" }, async () =>
+      Response.json({ made: true }, { status: 201, headers: { "x-custom": "1" } }),
+    )(get());
     expect(res.status).toBe(201);
     expect(res.headers.get("x-custom")).toBe("1");
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -342,7 +431,9 @@ describe("withApi: responses", () => {
   it("an immutable returned Response (Response.redirect) still works", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async () => Response.redirect("http://localhost/next", 302))(get());
+    const res = await withApi({ permission: "any-member" }, async () =>
+      Response.redirect("http://localhost/next", 302),
+    )(get());
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("http://localhost/next");
     expect(res.headers.get("x-request-id")).toBeTruthy();
@@ -351,7 +442,9 @@ describe("withApi: responses", () => {
   it("a plain object -> 200 JSON", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async () => ({ hello: "world" }))(get());
+    const res = await withApi({ permission: "any-member" }, async () => ({ hello: "world" }))(
+      get(),
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({ hello: "world" });
@@ -360,7 +453,10 @@ describe("withApi: responses", () => {
   it("awaits route params", async () => {
     const { uid } = await seedMember("owner");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async ({ params }) => ({ params }))(get(), { params: Promise.resolve({ id: "42" }) });
+    const res = await withApi({ permission: "any-member" }, async ({ params }) => ({ params }))(
+      get(),
+      { params: Promise.resolve({ id: "42" }) },
+    );
     expect(await res.json()).toEqual({ params: { id: "42" } });
   });
 });
@@ -383,10 +479,19 @@ describe("withAuthOnlyApi", () => {
 
   it("still returns 401 without a session and applies csrf, schema and rate limit", async () => {
     const schema = z.object({ a: z.string() });
-    const h = withAuthOnlyApi({ schema, rateLimit: { name: `ao-${randomUUID()}`, limit: 2, windowSec: 60 } }, async ({ body }) => ({ body }));
+    const h = withAuthOnlyApi(
+      { schema, rateLimit: { name: `ao-${randomUUID()}`, limit: 2, windowSec: 60 } },
+      async ({ body }) => ({ body }),
+    );
     expect((await h(post({ a: "x" }))).status).toBe(401);
     signIn(`uid-${randomUUID()}`);
-    expect((await h(post({ a: "x" }, { "content-type": "application/json", origin: "https://evil.com" }))).status).toBe(403);
+    expect(
+      (
+        await h(
+          post({ a: "x" }, { "content-type": "application/json", origin: "https://evil.com" }),
+        )
+      ).status,
+    ).toBe(403);
     await withPinnedRateWindow(async () => {
       expect((await h(post({ a: 1 }))).status).toBe(400); // counts toward the limit (1 of 2)
       expect((await h(post({ a: "x" }))).status).toBe(200);
@@ -405,7 +510,9 @@ describe("withApi: permission is mandatory", () => {
   it('"any-member" lets a viewer through', async () => {
     const { uid } = await seedMember("viewer");
     signIn(uid);
-    const res = await withApi({ permission: "any-member" }, async ({ role }) => ({ role }))(post({}));
+    const res = await withApi({ permission: "any-member" }, async ({ role }) => ({ role }))(
+      post({}),
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ role: "viewer" });
   });
@@ -447,34 +554,39 @@ describe("withApi: Next.js control-flow errors", () => {
     return Object.assign(new Error("control flow"), { digest });
   }
 
-  it.each(["NEXT_REDIRECT;replace;/login;307;", "NEXT_HTTP_ERROR_FALLBACK;404", "NEXT_NOT_FOUND", "DYNAMIC_SERVER_USAGE"])(
-    "rethrows an error with digest %s unchanged (no 500 envelope)",
+  it.each([
+    "NEXT_REDIRECT;replace;/login;307;",
+    "NEXT_HTTP_ERROR_FALLBACK;404",
+    "NEXT_NOT_FOUND",
+    "DYNAMIC_SERVER_USAGE",
+  ])("rethrows an error with digest %s unchanged (no 500 envelope)", async (digest) => {
+    const { uid } = await seedMember("owner");
+    signIn(uid);
+    const thrown = nextError(digest);
+    const spy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    await expect(
+      withApi({ permission: "any-member" }, async () => {
+        throw thrown;
+      })(get()),
+    ).rejects.toBe(thrown);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it.each([["SOMETHING_ELSE"], [42], [undefined]])(
+    "an error with digest %j still becomes the generic 500",
     async (digest) => {
       const { uid } = await seedMember("owner");
       signIn(uid);
-      const thrown = nextError(digest);
       const spy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
-      await expect(
-        withApi({ permission: "any-member" }, async () => {
-          throw thrown;
-        })(get()),
-      ).rejects.toBe(thrown);
-      expect(spy).not.toHaveBeenCalled();
+      const res = await withApi({ permission: "any-member" }, async () => {
+        throw nextError(digest);
+      })(get());
+      expect(res.status).toBe(500);
+      expect((await errorOf(res)).code).toBe("INTERNAL_ERROR");
       spy.mockRestore();
     },
   );
-
-  it.each([["SOMETHING_ELSE"], [42], [undefined]])("an error with digest %j still becomes the generic 500", async (digest) => {
-    const { uid } = await seedMember("owner");
-    signIn(uid);
-    const spy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
-    const res = await withApi({ permission: "any-member" }, async () => {
-      throw nextError(digest);
-    })(get());
-    expect(res.status).toBe(500);
-    expect((await errorOf(res)).code).toBe("INTERNAL_ERROR");
-    spy.mockRestore();
-  });
 
   it("a thrown Response is not control flow: generic 500", async () => {
     const { uid } = await seedMember("owner");

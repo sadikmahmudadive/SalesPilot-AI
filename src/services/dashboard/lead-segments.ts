@@ -14,4 +14,6 @@ const LEAD_SET: ReadonlySet<CustomerSegment> = new Set<CustomerSegment>([
   "potential_buyer",
 ]);
 
-export const LEAD_SEGMENTS: readonly CustomerSegment[] = CUSTOMER_SEGMENTS.filter((s) => LEAD_SET.has(s));
+export const LEAD_SEGMENTS: readonly CustomerSegment[] = CUSTOMER_SEGMENTS.filter((s) =>
+  LEAD_SET.has(s),
+);

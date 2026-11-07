@@ -12,7 +12,10 @@ describe("saveGuard", () => {
   });
 
   it("warns about leaving when the form is dirty", () => {
-    expect(saveGuard({ dirty: true, canWrite: true, uploading: false })).toMatchObject({ canSave: true, hasUnsavedWork: true });
+    expect(saveGuard({ dirty: true, canWrite: true, uploading: false })).toMatchObject({
+      canSave: true,
+      hasUnsavedWork: true,
+    });
   });
 
   it("blocks saving while an upload is running, hints, and counts it as unsaved work even on a clean form", () => {

@@ -81,16 +81,19 @@ export function useCustomers(params: Omit<CustomerListParams, "cursor">) {
 export function useCustomer(id: string) {
   return useQuery({
     queryKey: customerKeys.detail(id),
-    queryFn: ({ signal }) => apiFetch<Customer>(`/api/customers/${encodeURIComponent(id)}`, { signal }),
+    queryFn: ({ signal }) =>
+      apiFetch<Customer>(`/api/customers/${encodeURIComponent(id)}`, { signal }),
     // A missing customer will not appear on retry.
-    retry: (count, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 1,
+    retry: (count, error) =>
+      !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 1,
   });
 }
 
 export function useCreateCustomer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CustomerCreateBody) => apiFetch<Customer>("/api/customers", { method: "POST", body }),
+    mutationFn: (body: CustomerCreateBody) =>
+      apiFetch<Customer>("/api/customers", { method: "POST", body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: customerKeys.all }),
   });
 }
@@ -110,7 +113,8 @@ export function useUpdateCustomer() {
 export function useDeleteCustomer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch<void>(`/api/customers/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/api/customers/${encodeURIComponent(id)}`, { method: "DELETE" }),
     onSuccess: (_data, id) => {
       // Mark (not refetch) the detail: a profile page still on screen must not flash a 404 before it navigates away.
       void queryClient.invalidateQueries({

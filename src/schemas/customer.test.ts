@@ -49,23 +49,36 @@ describe("customerInputSchema", () => {
   });
 
   it("accepts a Bangla name and NFC-normalizes it", () => {
-    expect(customerInputSchema.parse({ ...base, fullName: "\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8" }).fullName).toBe("\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8");
+    expect(
+      customerInputSchema.parse({
+        ...base,
+        fullName: "\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8",
+      }).fullName,
+    ).toBe("\u09B0\u09B9\u09BF\u09AE \u0989\u09A6\u09CD\u09A6\u09BF\u09A8");
     // "e" + combining acute (NFD) -> single code point (NFC)
-    expect(customerInputSchema.parse({ ...base, fullName: "Jose\u0301" }).fullName).toBe("Jos\u00E9");
+    expect(customerInputSchema.parse({ ...base, fullName: "Jose\u0301" }).fullName).toBe(
+      "Jos\u00E9",
+    );
   });
 
   it("trims the name and rejects blank / too long names", () => {
     expect(customerInputSchema.parse({ ...base, fullName: "  Karim  " }).fullName).toBe("Karim");
     expect(customerInputSchema.safeParse({ ...base, fullName: "   " }).success).toBe(false);
     expect(customerInputSchema.safeParse({ ...base, fullName: "" }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, fullName: "a".repeat(121) }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, fullName: "a".repeat(120) }).success).toBe(true);
+    expect(customerInputSchema.safeParse({ ...base, fullName: "a".repeat(121) }).success).toBe(
+      false,
+    );
+    expect(customerInputSchema.safeParse({ ...base, fullName: "a".repeat(120) }).success).toBe(
+      true,
+    );
   });
 
   it("rejects an unknown segment, customer type and consent status", () => {
     expect(customerInputSchema.safeParse({ ...base, segment: "vip" }).success).toBe(false);
     expect(customerInputSchema.safeParse({ ...base, customerType: "vip" }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, consent: { status: "maybe" } }).success).toBe(false);
+    expect(customerInputSchema.safeParse({ ...base, consent: { status: "maybe" } }).success).toBe(
+      false,
+    );
   });
 
   it("accepts every segment", () => {
@@ -125,7 +138,9 @@ describe("customerInputSchema", () => {
 
   describe("email", () => {
     it("trims and lowercases", () => {
-      expect(customerInputSchema.parse({ ...base, email: "  Rahim@Example.COM " }).email).toBe("rahim@example.com");
+      expect(customerInputSchema.parse({ ...base, email: "  Rahim@Example.COM " }).email).toBe(
+        "rahim@example.com",
+      );
     });
 
     it("omits an empty email", () => {
@@ -144,13 +159,25 @@ describe("customerInputSchema", () => {
 
   describe("optional text fields", () => {
     it("trims address and leadSource and enforces max lengths", () => {
-      const r = customerInputSchema.parse({ ...base, address: "  Dhaka  ", leadSource: " Facebook " });
+      const r = customerInputSchema.parse({
+        ...base,
+        address: "  Dhaka  ",
+        leadSource: " Facebook ",
+      });
       expect(r.address).toBe("Dhaka");
       expect(r.leadSource).toBe("Facebook");
-      expect(customerInputSchema.safeParse({ ...base, address: "a".repeat(500) }).success).toBe(true);
-      expect(customerInputSchema.safeParse({ ...base, address: "a".repeat(501) }).success).toBe(false);
-      expect(customerInputSchema.safeParse({ ...base, leadSource: "a".repeat(80) }).success).toBe(true);
-      expect(customerInputSchema.safeParse({ ...base, leadSource: "a".repeat(81) }).success).toBe(false);
+      expect(customerInputSchema.safeParse({ ...base, address: "a".repeat(500) }).success).toBe(
+        true,
+      );
+      expect(customerInputSchema.safeParse({ ...base, address: "a".repeat(501) }).success).toBe(
+        false,
+      );
+      expect(customerInputSchema.safeParse({ ...base, leadSource: "a".repeat(80) }).success).toBe(
+        true,
+      );
+      expect(customerInputSchema.safeParse({ ...base, leadSource: "a".repeat(81) }).success).toBe(
+        false,
+      );
     });
   });
 
@@ -174,7 +201,9 @@ describe("customerInputSchema", () => {
     it("rejects empty/blank tags and tags over 40 chars", () => {
       expect(customerInputSchema.safeParse({ ...base, tags: ["  "] }).success).toBe(false);
       expect(customerInputSchema.safeParse({ ...base, tags: [""] }).success).toBe(false);
-      expect(customerInputSchema.safeParse({ ...base, tags: ["a".repeat(41)] }).success).toBe(false);
+      expect(customerInputSchema.safeParse({ ...base, tags: ["a".repeat(41)] }).success).toBe(
+        false,
+      );
       expect(customerInputSchema.safeParse({ ...base, tags: ["a".repeat(40)] }).success).toBe(true);
     });
 
@@ -185,21 +214,36 @@ describe("customerInputSchema", () => {
 
   describe("preferences", () => {
     it("accepts language and notes, rejects bad language and long notes", () => {
-      expect(customerInputSchema.parse({ ...base, preferences: { language: "bn", notes: " hi " } }).preferences).toEqual({
+      expect(
+        customerInputSchema.parse({ ...base, preferences: { language: "bn", notes: " hi " } })
+          .preferences,
+      ).toEqual({
         language: "bn",
         notes: "hi",
       });
-      expect(customerInputSchema.safeParse({ ...base, preferences: { language: "fr" } }).success).toBe(false);
-      expect(customerInputSchema.safeParse({ ...base, preferences: { notes: "a".repeat(1001) } }).success).toBe(false);
-      expect(customerInputSchema.safeParse({ ...base, preferences: { notes: "a".repeat(1000) } }).success).toBe(true);
+      expect(
+        customerInputSchema.safeParse({ ...base, preferences: { language: "fr" } }).success,
+      ).toBe(false);
+      expect(
+        customerInputSchema.safeParse({ ...base, preferences: { notes: "a".repeat(1001) } })
+          .success,
+      ).toBe(false);
+      expect(
+        customerInputSchema.safeParse({ ...base, preferences: { notes: "a".repeat(1000) } })
+          .success,
+      ).toBe(true);
     });
   });
 
   describe("assignedAgentId", () => {
     it("accepts a valid id segment and rejects slashes/reserved ids", () => {
-      expect(customerInputSchema.parse({ ...base, assignedAgentId: "uid_123" }).assignedAgentId).toBe("uid_123");
+      expect(
+        customerInputSchema.parse({ ...base, assignedAgentId: "uid_123" }).assignedAgentId,
+      ).toBe("uid_123");
       for (const bad of ["a/b", "..", "__x__", ""]) {
-        expect(customerInputSchema.safeParse({ ...base, assignedAgentId: bad }).success).toBe(false);
+        expect(customerInputSchema.safeParse({ ...base, assignedAgentId: bad }).success).toBe(
+          false,
+        );
       }
     });
   });
@@ -212,7 +256,10 @@ describe("customerInputSchema", () => {
     });
 
     it("rejects granted with a blank source", () => {
-      expect(customerInputSchema.safeParse({ ...base, consent: { status: "granted", source: "  " } }).success).toBe(false);
+      expect(
+        customerInputSchema.safeParse({ ...base, consent: { status: "granted", source: "  " } })
+          .success,
+      ).toBe(false);
     });
 
     it("accepts granted with a source and an ISO timestamp", () => {
@@ -221,12 +268,22 @@ describe("customerInputSchema", () => {
     });
 
     it("accepts denied/unknown without source", () => {
-      expect(customerInputSchema.parse({ ...base, consent: { status: "denied" } }).consent).toEqual({ status: "denied" });
+      expect(customerInputSchema.parse({ ...base, consent: { status: "denied" } }).consent).toEqual(
+        { status: "denied" },
+      );
     });
 
     it("rejects a non-ISO `at` and an overlong source", () => {
-      expect(customerInputSchema.safeParse({ ...base, consent: { status: "denied", at: "yesterday" } }).success).toBe(false);
-      expect(customerInputSchema.safeParse({ ...base, consent: { status: "denied", source: "a".repeat(81) } }).success).toBe(false);
+      expect(
+        customerInputSchema.safeParse({ ...base, consent: { status: "denied", at: "yesterday" } })
+          .success,
+      ).toBe(false);
+      expect(
+        customerInputSchema.safeParse({
+          ...base,
+          consent: { status: "denied", source: "a".repeat(81) },
+        }).success,
+      ).toBe(false);
     });
   });
 
@@ -243,7 +300,15 @@ describe("customerInputSchema", () => {
         fullNameLower: "x",
         extra: 1,
       });
-      for (const key of ["organizationId", "id", "totalSpendMinor", "createdAt", "whatsappE164", "fullNameLower", "extra"]) {
+      for (const key of [
+        "organizationId",
+        "id",
+        "totalSpendMinor",
+        "createdAt",
+        "whatsappE164",
+        "fullNameLower",
+        "extra",
+      ]) {
         expect(r).not.toHaveProperty(key);
       }
       expect(r.phoneE164).toBe("+8801712345678");
@@ -289,7 +354,8 @@ describe("customerPatchSchema", () => {
   it("does not reset consent, tags, segment or customerType", () => {
     const r = customerPatchSchema.parse({ phone: "01712345678" });
     expect(r).toEqual({ phone: "01712345678", phoneE164: "+8801712345678" });
-    for (const key of ["consent", "tags", "segment", "customerType"]) expect(r).not.toHaveProperty(key);
+    for (const key of ["consent", "tags", "segment", "customerType"])
+      expect(r).not.toHaveProperty(key);
   });
 
   it("derives phoneE164 and whatsappE164 when present", () => {
@@ -302,7 +368,10 @@ describe("customerPatchSchema", () => {
   it("validates fields it is given", () => {
     expect(customerPatchSchema.safeParse({ phone: "abc" }).success).toBe(false);
     expect(customerPatchSchema.safeParse({ segment: "vip" }).success).toBe(false);
-    expect(customerPatchSchema.safeParse({ tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }).success).toBe(false);
+    expect(
+      customerPatchSchema.safeParse({ tags: Array.from({ length: 21 }, (_, i) => `t${i}`) })
+        .success,
+    ).toBe(false);
     expect(customerPatchSchema.parse({ tags: ["A", "a"] })).toEqual({ tags: ["A"] });
     expect(customerPatchSchema.parse({ email: " A@B.CO " })).toEqual({ email: "a@b.co" });
   });
@@ -328,7 +397,12 @@ describe("customerPatchSchema", () => {
   });
 
   it("strips forged server fields", () => {
-    const r = customerPatchSchema.parse({ fullName: "A", phoneE164: "+1", organizationId: "o", totalSpendMinor: 5 });
+    const r = customerPatchSchema.parse({
+      fullName: "A",
+      phoneE164: "+1",
+      organizationId: "o",
+      totalSpendMinor: 5,
+    });
     expect(r).toEqual({ fullName: "A" });
   });
 
@@ -346,10 +420,12 @@ describe("customerInputSchema: display text and invisible characters", () => {
     const r = customerInputSchema.parse({ ...base, phone: "0171\n2345678" });
     expect(r.phone).toBe("0171 2345678");
     expect(r.phoneE164).toBe("+8801712345678");
-    expect(customerInputSchema.parse({ ...base, phone: " +880 \t 1712\u200b   345678\u202c " }).phone).toBe(
-      "+880 1712 345678",
+    expect(
+      customerInputSchema.parse({ ...base, phone: " +880 \t 1712\u200b   345678\u202c " }).phone,
+    ).toBe("+880 1712 345678");
+    expect(customerInputSchema.parse({ ...base, phone: "\u202a01712345678\u202c" }).phone).toBe(
+      "01712345678",
     );
-    expect(customerInputSchema.parse({ ...base, phone: "\u202a01712345678\u202c" }).phone).toBe("01712345678");
   });
 
   it("cleans the stored raw whatsappNumber the same way", () => {
@@ -365,13 +441,21 @@ describe("customerInputSchema: display text and invisible characters", () => {
   });
 
   it("treats an invisible-only name as blank but keeps ZWNJ/ZWJ inside real names", () => {
-    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200b\u2060\ufeff" }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, fullName: " \u200b \u202e " }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200d\u200c" }).success).toBe(false);
-    expect(customerInputSchema.parse({ ...base, fullName: "\u202eAli\u200b" }).fullName).toBe("Ali");
-    expect(customerInputSchema.parse({ ...base, fullName: "\u09b0\u200d\u09cd\u09af" }).fullName).toBe(
-      "\u09b0\u200d\u09cd\u09af",
+    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200b\u2060\ufeff" }).success).toBe(
+      false,
     );
+    expect(customerInputSchema.safeParse({ ...base, fullName: " \u200b \u202e " }).success).toBe(
+      false,
+    );
+    expect(customerInputSchema.safeParse({ ...base, fullName: "\u200d\u200c" }).success).toBe(
+      false,
+    );
+    expect(customerInputSchema.parse({ ...base, fullName: "\u202eAli\u200b" }).fullName).toBe(
+      "Ali",
+    );
+    expect(
+      customerInputSchema.parse({ ...base, fullName: "\u09b0\u200d\u09cd\u09af" }).fullName,
+    ).toBe("\u09b0\u200d\u09cd\u09af");
   });
 
   it("caps email at 254 characters", () => {
@@ -381,7 +465,9 @@ describe("customerInputSchema: display text and invisible characters", () => {
     const tooLong = `${local}@${"b".repeat(200)}.com`;
     expect(tooLong.length).toBeGreaterThan(254);
     expect(customerInputSchema.safeParse({ ...base, email: tooLong }).success).toBe(false);
-    expect(customerInputSchema.safeParse({ ...base, email: "a".repeat(1_000_000) }).success).toBe(false);
+    expect(customerInputSchema.safeParse({ ...base, email: "a".repeat(1_000_000) }).success).toBe(
+      false,
+    );
   });
 
   it("rejects null for clearable fields on create (null only means 'clear' in PATCH)", () => {

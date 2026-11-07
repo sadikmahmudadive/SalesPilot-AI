@@ -11,7 +11,10 @@ interface Preventable {
 /**
  * `onOpenChange` handler that ignores requests to close while `pending`. Opening is always allowed.
  */
-export function guardOpenChange(pending: boolean, onOpenChange: (open: boolean) => void): (open: boolean) => void {
+export function guardOpenChange(
+  pending: boolean,
+  onOpenChange: (open: boolean) => void,
+): (open: boolean) => void {
   return (open) => {
     if (!open && pending) return;
     onOpenChange(open);

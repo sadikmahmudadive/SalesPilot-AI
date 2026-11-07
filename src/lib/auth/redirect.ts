@@ -41,7 +41,11 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
  * Returns the (same-origin, relative) location to redirect to, or null to continue.
  * `search` is the raw query string including the leading `?` (or empty).
  */
-export function decideRedirect(pathname: string, search: string, hasCookie: boolean): string | null {
+export function decideRedirect(
+  pathname: string,
+  search: string,
+  hasCookie: boolean,
+): string | null {
   if (!hasCookie && PROTECTED_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
     return `/login?next=${encodeURIComponent(pathname + search)}`;
   }
@@ -58,7 +62,8 @@ export function decideRedirect(pathname: string, search: string, hasCookie: bool
  * `/dashboard`. Backslashes are rejected anywhere because browsers treat `\` as `/`.
  */
 export function safeNextPath(raw: string | null | undefined): string {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_NEXT_LENGTH) return DEFAULT_AFTER_LOGIN;
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_NEXT_LENGTH)
+    return DEFAULT_AFTER_LOGIN;
   if (raw[0] !== "/" || raw[1] === "/") return DEFAULT_AFTER_LOGIN;
   // C0 controls (incl. tab/CR/LF), DEL, C1 controls, Unicode line/paragraph separators, backslash.
   if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029\\]/.test(raw)) return DEFAULT_AFTER_LOGIN;
@@ -69,7 +74,8 @@ export function safeNextPath(raw: string | null | undefined): string {
   if (/%(2e|2f|5c)/i.test(path)) return DEFAULT_AFTER_LOGIN;
   // Belt and braces: after URL resolution it must still be the same origin.
   try {
-    if (new URL(raw, "http://sp.invalid").origin !== "http://sp.invalid") return DEFAULT_AFTER_LOGIN;
+    if (new URL(raw, "http://sp.invalid").origin !== "http://sp.invalid")
+      return DEFAULT_AFTER_LOGIN;
   } catch {
     return DEFAULT_AFTER_LOGIN;
   }

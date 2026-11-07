@@ -15,11 +15,21 @@ afterAll(async () => {
   await Promise.all(createdIds.map((id) => adminDb().collection("auditLogs").doc(id).delete()));
 });
 
-const base = { organizationId: orgId, actorUid: "uid-1", action: "product.update", resource: "product", resourceId: "p1" };
+const base = {
+  organizationId: orgId,
+  actorUid: "uid-1",
+  action: "product.update",
+  resource: "product",
+  resourceId: "p1",
+};
 
 describe("writeAudit", () => {
   it("writes the entry with a server timestamp and masks secrets", async () => {
-    const id = await writeAudit({ ...base, before: { token: "x", name: "a" }, after: { name: "b" } });
+    const id = await writeAudit({
+      ...base,
+      before: { token: "x", name: "a" },
+      after: { name: "b" },
+    });
     createdIds.push(id);
     const data = (await adminDb().collection("auditLogs").doc(id).get()).data()!;
     expect(data).toMatchObject({
@@ -61,7 +71,10 @@ describe("writeAudit", () => {
     const marker = `marker-${randomUUID()}`;
     const id = await writeAudit({ ...base, organizationId: marker, actorUid: marker });
     createdIds.push(id);
-    const snap = await adminDb().collection("auditLogs").where("organizationId", "==", marker).get();
+    const snap = await adminDb()
+      .collection("auditLogs")
+      .where("organizationId", "==", marker)
+      .get();
     expect(snap.size).toBe(1);
   });
 });

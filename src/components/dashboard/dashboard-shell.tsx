@@ -17,7 +17,13 @@ interface DashboardShellProps {
 }
 
 /** Signed-in chrome: skip link, collapsible sidebar (desktop), header (with mobile nav sheet) and main content. */
-export function DashboardShell({ organizationName, role, email, displayName, children }: DashboardShellProps) {
+export function DashboardShell({
+  organizationName,
+  role,
+  email,
+  displayName,
+  children,
+}: DashboardShellProps) {
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const [animate, setAnimate] = useState(false);
 
@@ -39,8 +45,17 @@ export function DashboardShell({ organizationName, role, email, displayName, chi
         }}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Header organizationName={organizationName} role={role} email={email} displayName={displayName} />
-        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6 lg:px-8 lg:py-8">
+        <Header
+          organizationName={organizationName}
+          role={role}
+          email={email}
+          displayName={displayName}
+        />
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 px-4 py-6 outline-none sm:px-6 lg:px-8 lg:py-8"
+        >
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
       </div>

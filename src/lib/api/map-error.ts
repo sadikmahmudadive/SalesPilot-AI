@@ -49,5 +49,9 @@ export function mapApiErrorWith<Name extends string>(
 export function asApiError(error: unknown): ApiError {
   return error instanceof ApiError
     ? error
-    : new ApiError({ status: 0, code: "UNKNOWN", message: "Something went wrong. Please try again." });
+    : new ApiError({
+        status: 0,
+        code: "UNKNOWN",
+        message: "Something went wrong. Please try again.",
+      });
 }

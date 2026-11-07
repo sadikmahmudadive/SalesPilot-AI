@@ -30,14 +30,21 @@ export type SessionResult =
 
 export type MeResult =
   | { status: "ok"; me: MeResponse }
-  | { status: "unauthenticated" | "no_organization" | "rate_limited" | "network" | "error"; message: string };
+  | {
+      status: "unauthenticated" | "no_organization" | "rate_limited" | "network" | "error";
+      message: string;
+    };
 
 export type RegisterOrgResult =
   | { status: "created"; organizationId: string }
   | { status: "exists"; organizationId: string }
-  | { status: "unauthenticated" | "rate_limited" | "invalid" | "network" | "error"; message: string };
+  | {
+      status: "unauthenticated" | "rate_limited" | "invalid" | "network" | "error";
+      message: string;
+    };
 
-export type PostSignInResult = { to: "app" } | { to: "onboarding" } | { to: "error"; message: string };
+export type PostSignInResult =
+  { to: "app" } | { to: "onboarding" } | { to: "error"; message: string };
 
 type Raw = { ok: true; status: number; body: unknown } | { ok: false; kind: "network" };
 
@@ -64,7 +71,8 @@ function jsonPost(fetchFn: FetchFn, url: string, payload: unknown): Promise<Raw>
   });
 }
 
-const failure = (status: "network", message: string = NETWORK_ERROR) => ({ status, message }) as const;
+const failure = (status: "network", message: string = NETWORK_ERROR) =>
+  ({ status, message }) as const;
 
 /** Exchanges a fresh Firebase ID token for the httpOnly session cookie. */
 export async function exchangeSession(idToken: string, fetchFn: FetchFn): Promise<SessionResult> {
@@ -79,7 +87,9 @@ export async function exchangeSession(idToken: string, fetchFn: FetchFn): Promis
 function isMe(value: unknown): value is MeResponse {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.uid === "string" && typeof v.organizationId === "string" && typeof v.role === "string";
+  return (
+    typeof v.uid === "string" && typeof v.organizationId === "string" && typeof v.role === "string"
+  );
 }
 
 /**
@@ -102,7 +112,8 @@ export type SignOutResult =
   /** `serverCleared` is false when the DELETE failed, i.e. the session cookie may still be present. */
   | { ok: false; serverCleared: boolean; message: string };
 
-const SIGN_OUT_ERROR = "We could not fully sign you out. Please close this browser window if you are on a shared device.";
+const SIGN_OUT_ERROR =
+  "We could not fully sign you out. Please close this browser window if you are on a shared device.";
 
 /**
  * Full sign-out: server session first (cookie cleared, refresh tokens revoked), then the Firebase
@@ -117,18 +128,26 @@ export async function signOutEverywhere(deps: SignOutDeps): Promise<SignOutResul
   } catch {
     firebaseCleared = false;
   }
-  return serverCleared && firebaseCleared ? { ok: true } : { ok: false, serverCleared, message: SIGN_OUT_ERROR };
+  return serverCleared && firebaseCleared
+    ? { ok: true }
+    : { ok: false, serverCleared, message: SIGN_OUT_ERROR };
 }
 
 /** Reads the signed-in member. 403 means signed in but no organization yet. */
 export async function fetchMe(fetchFn: FetchFn): Promise<MeResult> {
-  const raw = await request(fetchFn, "/api/me", { method: "GET", headers: { Accept: "application/json" } });
+  const raw = await request(fetchFn, "/api/me", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
   if (!raw.ok) return failure("network");
   if (raw.status === 200) {
-    return isMe(raw.body) ? { status: "ok", me: raw.body } : { status: "error", message: GENERIC_ERROR };
+    return isMe(raw.body)
+      ? { status: "ok", me: raw.body }
+      : { status: "error", message: GENERIC_ERROR };
   }
   if (raw.status === 401) return { status: "unauthenticated", message: SESSION_EXPIRED };
-  if (raw.status === 403) return { status: "no_organization", message: "No organization found for this account." };
+  if (raw.status === 403)
+    return { status: "no_organization", message: "No organization found for this account." };
   if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
   return { status: "error", message: GENERIC_ERROR };
 }
@@ -143,13 +162,16 @@ export async function registerOrganizationRequest(
   if (raw.status === 200 || raw.status === 201) {
     const id = (raw.body as { organizationId?: unknown } | null)?.organizationId;
     if (typeof id === "string") {
-      return raw.status === 201 ? { status: "created", organizationId: id } : { status: "exists", organizationId: id };
+      return raw.status === 201
+        ? { status: "created", organizationId: id }
+        : { status: "exists", organizationId: id };
     }
     return { status: "error", message: GENERIC_ERROR };
   }
   if (raw.status === 401) return { status: "unauthenticated", message: SESSION_EXPIRED };
   if (raw.status === 429) return { status: "rate_limited", message: RATE_LIMITED };
-  if (raw.status === 400) return { status: "invalid", message: "Please check the details you entered and try again." };
+  if (raw.status === 400)
+    return { status: "invalid", message: "Please check the details you entered and try again." };
   return { status: "error", message: "We could not create your organization. Please try again." };
 }
 
@@ -157,7 +179,10 @@ export async function registerOrganizationRequest(
  * After Firebase sign-in: set the session cookie, then decide where the user belongs.
  * Members go to the app, users without an organization go to onboarding.
  */
-export async function resolvePostSignIn(idToken: string, fetchFn: FetchFn): Promise<PostSignInResult> {
+export async function resolvePostSignIn(
+  idToken: string,
+  fetchFn: FetchFn,
+): Promise<PostSignInResult> {
   const session = await exchangeSession(idToken, fetchFn);
   if (session.status !== "ok") return { to: "error", message: session.message };
   const me = await fetchMe(fetchFn);
@@ -275,12 +300,18 @@ export async function registerAccount<U>(
   try {
     idToken = await deps.getIdToken(user);
   } catch {
-    return { outcome: "session-failed", message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${SESSION_ERROR}` };
+    return {
+      outcome: "session-failed",
+      message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${SESSION_ERROR}`,
+    };
   }
 
   const session = await exchangeSession(idToken, deps.fetch);
   if (session.status !== "ok") {
-    return { outcome: "session-failed", message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${session.message}` };
+    return {
+      outcome: "session-failed",
+      message: `${ACCOUNT_CREATED_SIGN_IN_FAILED} ${session.message}`,
+    };
   }
 
   const org = await registerOrganizationRequest(

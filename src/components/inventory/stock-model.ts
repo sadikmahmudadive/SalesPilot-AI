@@ -25,7 +25,8 @@ export function stockStatus(available: number): StockStatus {
 
 export type QuantityResult = { ok: true; value: number } | { ok: false; message: string };
 
-const tooLarge = () => `You can adjust by at most ${MAX_ADJUST_DELTA.toLocaleString("en-GB")} at a time`;
+const tooLarge = () =>
+  `You can adjust by at most ${MAX_ADJUST_DELTA.toLocaleString("en-GB")} at a time`;
 
 const QUANTITY_MESSAGE = "Enter a whole number of 1 or more";
 
@@ -42,7 +43,8 @@ export function parseQuantity(input: string): QuantityResult {
 }
 
 /** The signed delta for a quantity in the given mode. */
-export const toDelta = (quantity: number, mode: AdjustMode): number => (mode === "remove" ? -quantity : quantity);
+export const toDelta = (quantity: number, mode: AdjustMode): number =>
+  mode === "remove" ? -quantity : quantity;
 
 export interface StockCounts {
   onHand: number;

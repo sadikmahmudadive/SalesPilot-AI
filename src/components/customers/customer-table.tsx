@@ -4,7 +4,15 @@ import { CustomerRowActions } from "@/components/customers/customer-row-actions"
 import { CustomerTags } from "@/components/customers/customer-tags";
 import { SegmentBadge } from "@/components/customers/segment-badge";
 import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { TYPE_LABELS } from "@/config/customer-labels";
 import { formatDateOr, formatMoneyMinor } from "@/lib/format";
 import type { Customer } from "@/schemas/customer";
@@ -32,7 +40,13 @@ function NameLink({ customer }: { customer: Customer }) {
 }
 
 /** Desktop table (md and up). Mobile uses `CustomerCardList`. */
-export function CustomerTable({ customers, canWrite, onEdit, onDelete, caption }: CustomerTableProps) {
+export function CustomerTable({
+  customers,
+  canWrite,
+  onEdit,
+  onDelete,
+  caption,
+}: CustomerTableProps) {
   return (
     <Card className="hidden gap-0 py-0 md:block">
       <Table>
@@ -67,9 +81,16 @@ export function CustomerTable({ customers, canWrite, onEdit, onDelete, caption }
               </TableCell>
               <TableCell>{TYPE_LABELS[c.customerType]}</TableCell>
               <TableCell className="text-muted-foreground">{lastActivity(c)}</TableCell>
-              <TableCell className="text-right tabular-nums">{formatMoneyMinor(c.totalSpendMinor)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatMoneyMinor(c.totalSpendMinor)}
+              </TableCell>
               <TableCell>
-                <CustomerRowActions customer={c} canWrite={canWrite} onEdit={onEdit} onDelete={onDelete} />
+                <CustomerRowActions
+                  customer={c}
+                  canWrite={canWrite}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
               </TableCell>
             </TableRow>
           ))}
@@ -80,7 +101,13 @@ export function CustomerTable({ customers, canWrite, onEdit, onDelete, caption }
 }
 
 /** Mobile card list (below md). */
-export function CustomerCardList({ customers, canWrite, onEdit, onDelete, caption }: CustomerTableProps) {
+export function CustomerCardList({
+  customers,
+  canWrite,
+  onEdit,
+  onDelete,
+  caption,
+}: CustomerTableProps) {
   return (
     <ul className="space-y-3 md:hidden" aria-label={caption}>
       {customers.map((c) => (
@@ -111,7 +138,12 @@ export function CustomerCardList({ customers, canWrite, onEdit, onDelete, captio
                   <dd className="tabular-nums">{formatMoneyMinor(c.totalSpendMinor)}</dd>
                 </div>
               </dl>
-              <CustomerRowActions customer={c} canWrite={canWrite} onEdit={onEdit} onDelete={onDelete} />
+              <CustomerRowActions
+                customer={c}
+                canWrite={canWrite}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
             </div>
           </Card>
         </li>

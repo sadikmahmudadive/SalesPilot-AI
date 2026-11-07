@@ -16,7 +16,12 @@ export function BasicsFields({ form, canWrite }: { form: ProductFormApi; canWrit
   } = form;
   return (
     <div className="space-y-4">
-      <TextField label="Product name" autoComplete="off" error={errors.name?.message} {...register("name")} />
+      <TextField
+        label="Product name"
+        autoComplete="off"
+        error={errors.name?.message}
+        {...register("name")}
+      />
       <TextField
         label="SKU"
         autoComplete="off"
@@ -44,7 +49,12 @@ export function PricingFields({ form }: { form: ProductFormApi }) {
   const money = { inputMode: "decimal", autoComplete: "off", placeholder: "0.00" } as const;
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <TextField label="Regular price (BDT)" error={errors.regularPrice?.message} {...money} {...register("regularPrice")} />
+      <TextField
+        label="Regular price (BDT)"
+        error={errors.regularPrice?.message}
+        {...money}
+        {...register("regularPrice")}
+      />
       <TextField
         label="Sale price (BDT, optional)"
         error={errors.salePrice?.message}

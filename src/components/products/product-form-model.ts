@@ -61,7 +61,8 @@ export const EMPTY_PRODUCT_VALUES: ProductFormValues = {
   images: [],
 };
 
-const price = (minor: number | undefined): string => (minor === undefined ? "" : formatMinorToTakaInput(minor));
+const price = (minor: number | undefined): string =>
+  minor === undefined ? "" : formatMinorToTakaInput(minor);
 
 export function productToFormValues(p: Product): ProductFormValues {
   return {
@@ -73,7 +74,12 @@ export function productToFormValues(p: Product): ProductFormValues {
     salePrice: price(p.salePriceMinor),
     wholesalePrice: price(p.wholesalePriceMinor),
     availability: p.availability,
-    variants: p.variants.map((v) => ({ id: v.id, size: v.size ?? "", color: v.color ?? "", sku: v.sku ?? "" })),
+    variants: p.variants.map((v) => ({
+      id: v.id,
+      size: v.size ?? "",
+      color: v.color ?? "",
+      sku: v.sku ?? "",
+    })),
     specs: Object.entries(p.specifications).map(([key, value]) => ({ key, value: String(value) })),
     faqs: p.faqs.map((f) => ({ q: f.q, a: f.a })),
     images: p.images,
@@ -85,7 +91,13 @@ const text = (v: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
-function readPrice(raw: string, field: string, label: string, required: boolean, issues: FormIssue[]): number | undefined {
+function readPrice(
+  raw: string,
+  field: string,
+  label: string,
+  required: boolean,
+  issues: FormIssue[],
+): number | undefined {
   if (text(raw) === undefined) {
     if (required) issues.push({ name: field, message: `Enter the ${label}` });
     return undefined;
@@ -110,16 +122,26 @@ function prepareVariants(rows: readonly VariantRow[]): NonNullable<ProductCreate
   });
 }
 
-function prepareSpecifications(rows: readonly SpecRow[], issues: FormIssue[]): Record<string, string> {
+function prepareSpecifications(
+  rows: readonly SpecRow[],
+  issues: FormIssue[],
+): Record<string, string> {
   const entries: [string, string][] = [];
   const seen = new Set<string>();
   rows.forEach((row, index) => {
     const key = row.key.trim();
     const value = row.value.trim();
     if (!key && !value) return; // a blank row is just an unused row
-    if (!key) return void issues.push({ name: `specs.${index}.key`, message: "Enter a specification name" });
+    if (!key)
+      return void issues.push({
+        name: `specs.${index}.key`,
+        message: "Enter a specification name",
+      });
     if (seen.has(key)) {
-      return void issues.push({ name: `specs.${index}.key`, message: "This specification name is already used" });
+      return void issues.push({
+        name: `specs.${index}.key`,
+        message: "This specification name is already used",
+      });
     }
     seen.add(key);
     entries.push([key, value]);
@@ -133,11 +155,20 @@ function prepareSpecifications(rows: readonly SpecRow[], issues: FormIssue[]): R
  * `issues` lists what could not be converted (prices, specification names); `body` is only
  * meaningful when it is empty.
  */
-export function prepareProductBody(values: ProductFormValues): { body: ProductCreateBody; issues: FormIssue[] } {
+export function prepareProductBody(values: ProductFormValues): {
+  body: ProductCreateBody;
+  issues: FormIssue[];
+} {
   const issues: FormIssue[] = [];
   const regular = readPrice(values.regularPrice, "regularPrice", "regular price", true, issues);
   const sale = readPrice(values.salePrice, "salePrice", "sale price", false, issues);
-  const wholesale = readPrice(values.wholesalePrice, "wholesalePrice", "wholesale price", false, issues);
+  const wholesale = readPrice(
+    values.wholesalePrice,
+    "wholesalePrice",
+    "wholesale price",
+    false,
+    issues,
+  );
   const specifications = prepareSpecifications(values.specs, issues);
 
   const body: ProductCreateBody = {
@@ -161,7 +192,12 @@ export function prepareProductBody(values: ProductFormValues): { body: ProductCr
 }
 
 const SCALAR_KEYS = ["name", "regularPriceMinor", "availability"] as const;
-const CLEARABLE_KEYS = ["description", "categoryId", "salePriceMinor", "wholesalePriceMinor"] as const;
+const CLEARABLE_KEYS = [
+  "description",
+  "categoryId",
+  "salePriceMinor",
+  "wholesalePriceMinor",
+] as const;
 /** Sent whole (the API replaces them) when they changed. */
 const WHOLE_KEYS = ["variants", "specifications", "faqs", "images"] as const;
 
@@ -171,9 +207,13 @@ const WHOLE_KEYS = ["variants", "specifications", "faqs", "images"] as const;
  * (variants keep their ids). Both arguments must come from `prepareProductBody`. The SKU is
  * compared ignoring case because the server upper-cases it.
  */
-export function buildProductPatch(initial: ProductCreateBody, next: ProductCreateBody): ProductPatchBody {
+export function buildProductPatch(
+  initial: ProductCreateBody,
+  next: ProductCreateBody,
+): ProductPatchBody {
   const patch: Record<string, unknown> = {};
-  const changed = (key: keyof ProductCreateBody) => stableJson(initial[key]) !== stableJson(next[key]);
+  const changed = (key: keyof ProductCreateBody) =>
+    stableJson(initial[key]) !== stableJson(next[key]);
 
   for (const key of SCALAR_KEYS) if (changed(key)) patch[key] = next[key];
   if (initial.sku.toUpperCase() !== next.sku.toUpperCase()) patch.sku = next.sku;

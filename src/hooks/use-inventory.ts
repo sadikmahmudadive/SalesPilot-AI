@@ -46,7 +46,12 @@ export function useInventory(params: Omit<InventoryListParams, "cursor">) {
  */
 export function isUnconfirmedError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
-  return error.code === "NETWORK" || error.code === "BAD_RESPONSE" || error.status === 0 || error.status >= 500;
+  return (
+    error.code === "NETWORK" ||
+    error.code === "BAD_RESPONSE" ||
+    error.status === 0 ||
+    error.status >= 500
+  );
 }
 
 /**
@@ -58,14 +63,16 @@ export function useAdjustStock() {
   const queryClient = useQueryClient();
   return useMutation({
     retry: 0,
-    mutationFn: (body: AdjustInput) => apiFetch<InventoryRecord>("/api/inventory/adjust", { method: "POST", body }),
+    mutationFn: (body: AdjustInput) =>
+      apiFetch<InventoryRecord>("/api/inventory/adjust", { method: "POST", body }),
     onSuccess: (_record, { productId }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
         queryClient.invalidateQueries({ queryKey: productKeys.detail(productId) }),
       ]),
     onError: (error) => {
-      if (isUnconfirmedError(error)) void queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      if (isUnconfirmedError(error))
+        void queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     },
   });
 }

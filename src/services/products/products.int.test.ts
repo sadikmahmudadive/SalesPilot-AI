@@ -533,7 +533,10 @@ describe("createProduct", () => {
       }
       __resetEnvCacheForTests();
       const other = image(ctx.organizationId).url.replace("/demo/", "/anything/");
-      const img = await seedUpload(ctx.organizationId, { ...image(ctx.organizationId), url: other });
+      const img = await seedUpload(ctx.organizationId, {
+        ...image(ctx.organizationId),
+        url: other,
+      });
       const p = await createProduct(ctx, make({ images: [img] }));
       expect(p.images).toHaveLength(1);
     });

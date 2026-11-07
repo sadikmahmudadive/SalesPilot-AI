@@ -11,7 +11,13 @@ interface ToggleButtonProps {
 }
 
 /** On/off filter button. Announced as a toggle (`aria-pressed`) and operable with Enter and Space. */
-export function ToggleButton({ pressed, onPressedChange, children, disabled, className }: ToggleButtonProps) {
+export function ToggleButton({
+  pressed,
+  onPressedChange,
+  children,
+  disabled,
+  className,
+}: ToggleButtonProps) {
   return (
     <Button
       type="button"

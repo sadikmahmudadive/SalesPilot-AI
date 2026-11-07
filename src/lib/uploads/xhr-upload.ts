@@ -12,7 +12,10 @@ export interface XhrLike {
   withCredentials: boolean;
   status: number;
   responseText: string;
-  upload: { onprogress: ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null };
+  upload: {
+    onprogress:
+      ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null;
+  };
   onload: (() => void) | null;
   onerror: (() => void) | null;
   onabort: (() => void) | null;
@@ -45,11 +48,21 @@ export class UploadTransportError extends Error {
   }
 }
 
-const abortError = () => Object.assign(new Error("The upload was cancelled"), { name: "AbortError" });
+const abortError = () =>
+  Object.assign(new Error("The upload was cancelled"), { name: "AbortError" });
 
 /** POSTs `body` to `url`; resolves with the parsed JSON of a 2xx answer and rejects otherwise. */
-export function xhrUpload(url: string, body: FormData, options: XhrUploadOptions = {}): Promise<unknown> {
-  const { onProgress, signal, timeoutMs = UPLOAD_TIMEOUT_MS, createXhr = () => new XMLHttpRequest() as XhrLike } = options;
+export function xhrUpload(
+  url: string,
+  body: FormData,
+  options: XhrUploadOptions = {},
+): Promise<unknown> {
+  const {
+    onProgress,
+    signal,
+    timeoutMs = UPLOAD_TIMEOUT_MS,
+    createXhr = () => new XMLHttpRequest() as XhrLike,
+  } = options;
 
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(abortError());
@@ -70,7 +83,8 @@ export function xhrUpload(url: string, body: FormData, options: XhrUploadOptions
     };
     xhr.onload = () =>
       settle(() => {
-        if (xhr.status < 200 || xhr.status >= 300) return reject(new UploadTransportError("http", xhr.status));
+        if (xhr.status < 200 || xhr.status >= 300)
+          return reject(new UploadTransportError("http", xhr.status));
         try {
           resolve(JSON.parse(xhr.responseText));
         } catch {

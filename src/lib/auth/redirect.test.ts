@@ -41,7 +41,9 @@ describe("decideRedirect: protected paths", () => {
   });
 
   it("handles a trailing slash", () => {
-    expect(decideRedirect("/orders/", "", false)).toBe(`/login?next=${encodeURIComponent("/orders/")}`);
+    expect(decideRedirect("/orders/", "", false)).toBe(
+      `/login?next=${encodeURIComponent("/orders/")}`,
+    );
   });
 
   it("encodes characters that could break out of the query string", () => {
@@ -62,28 +64,41 @@ describe("decideRedirect: protected paths", () => {
 });
 
 describe("decideRedirect: lookalike and unrelated paths", () => {
-  it.each(["/dashboardfoo", "/ordersx/1", "/settingsx", "/", "/pricing", "/about", "/loginx", "/x/dashboard"])(
-    "%s is not protected",
-    (p) => {
-      expect(decideRedirect(p, "", false)).toBeNull();
-      expect(decideRedirect(p, "", true)).toBeNull();
-    },
-  );
+  it.each([
+    "/dashboardfoo",
+    "/ordersx/1",
+    "/settingsx",
+    "/",
+    "/pricing",
+    "/about",
+    "/loginx",
+    "/x/dashboard",
+  ])("%s is not protected", (p) => {
+    expect(decideRedirect(p, "", false)).toBeNull();
+    expect(decideRedirect(p, "", true)).toBeNull();
+  });
 
-  it.each(["/api/x", "/api/auth/session", "/api/dashboard", "/_next/static/a.js", "/favicon.ico", "/robots.txt"])(
-    "%s is never intercepted",
-    (p) => {
-      expect(decideRedirect(p, "", false)).toBeNull();
-      expect(decideRedirect(p, "", true)).toBeNull();
-    },
-  );
+  it.each([
+    "/api/x",
+    "/api/auth/session",
+    "/api/dashboard",
+    "/_next/static/a.js",
+    "/favicon.ico",
+    "/robots.txt",
+  ])("%s is never intercepted", (p) => {
+    expect(decideRedirect(p, "", false)).toBeNull();
+    expect(decideRedirect(p, "", true)).toBeNull();
+  });
 });
 
 describe("decideRedirect: auth pages", () => {
-  it.each(["/login", "/register", "/login/", "/register/"])("%s with cookie redirects to /dashboard", (p) => {
-    expect(decideRedirect(p, "", true)).toBe("/dashboard");
-    expect(decideRedirect(p, "?next=//evil.com", true)).toBe("/dashboard");
-  });
+  it.each(["/login", "/register", "/login/", "/register/"])(
+    "%s with cookie redirects to /dashboard",
+    (p) => {
+      expect(decideRedirect(p, "", true)).toBe("/dashboard");
+      expect(decideRedirect(p, "?next=//evil.com", true)).toBe("/dashboard");
+    },
+  );
 
   it.each(["/login", "/register"])("%s without cookie renders", (p) => {
     expect(decideRedirect(p, "", false)).toBeNull();

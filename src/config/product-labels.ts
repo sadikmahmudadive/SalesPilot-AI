@@ -17,7 +17,10 @@ export const AVAILABILITY_VARIANTS: Readonly<Record<Availability, BadgeVariant>>
 };
 
 /** `{ value, label }` lists for select controls. */
-export const AVAILABILITY_OPTIONS = AVAILABILITIES.map((value) => ({ value, label: AVAILABILITY_LABELS[value] }));
+export const AVAILABILITY_OPTIONS = AVAILABILITIES.map((value) => ({
+  value,
+  label: AVAILABILITY_LABELS[value],
+}));
 
 /** Active and draft: what a product can be set to (archiving has its own confirmation). */
 export const LIVE_AVAILABILITY_OPTIONS = AVAILABILITY_OPTIONS.filter((o) => o.value !== "archived");

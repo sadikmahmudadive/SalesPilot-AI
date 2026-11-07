@@ -28,16 +28,28 @@ export function UserMenu({ email, displayName, role }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          aria-label="Account menu"
+        >
           <Avatar size="default">
-            <AvatarFallback className="text-xs font-medium">{initialsFor(displayName, email)}</AvatarFallback>
+            <AvatarFallback className="text-xs font-medium">
+              {initialsFor(displayName, email)}
+            </AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="flex flex-col gap-0.5 py-2 font-normal">
-          {displayName && <span className="truncate text-sm font-medium text-foreground">{displayName}</span>}
-          <span className="truncate text-xs text-muted-foreground">{email ?? "No email on file"}</span>
+          {displayName && (
+            <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
+          )}
+          <span className="truncate text-xs text-muted-foreground">
+            {email ?? "No email on file"}
+          </span>
           <span className="text-xs text-muted-foreground">Role: {ROLE_LABELS[role]}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -54,7 +66,11 @@ export function UserMenu({ email, displayName, role }: UserMenuProps) {
             void signOut();
           }}
         >
-          {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
+          {pending ? (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          ) : (
+            <LogOut aria-hidden="true" />
+          )}
           {pending ? "Signing out..." : "Sign out"}
         </DropdownMenuItem>
       </DropdownMenuContent>

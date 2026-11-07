@@ -73,7 +73,14 @@ describe("productToFormValues", () => {
   });
 
   it("starts a new product as a draft with nothing filled in", () => {
-    expect(EMPTY_PRODUCT_VALUES).toMatchObject({ name: "", sku: "", availability: "draft", variants: [], specs: [], faqs: [] });
+    expect(EMPTY_PRODUCT_VALUES).toMatchObject({
+      name: "",
+      sku: "",
+      availability: "draft",
+      variants: [],
+      specs: [],
+      faqs: [],
+    });
   });
 });
 
@@ -99,7 +106,13 @@ describe("prepareProductBody", () => {
 
   it("trims text and drops blank optional fields", () => {
     const { body } = prepareProductBody(
-      values({ name: "  Tee  ", description: "   ", categoryId: "", salePrice: "", wholesalePrice: " " }),
+      values({
+        name: "  Tee  ",
+        description: "   ",
+        categoryId: "",
+        salePrice: "",
+        wholesalePrice: " ",
+      }),
     );
     expect(body.name).toBe("Tee");
     expect(body).not.toHaveProperty("description");
@@ -113,11 +126,17 @@ describe("prepareProductBody", () => {
       values({ regularPrice: "19.99", salePrice: "10.5", wholesalePrice: "0.07" }),
     );
     expect(issues.map((i) => i.name)).toEqual([]);
-    expect(body).toMatchObject({ regularPriceMinor: 1999, salePriceMinor: 1050, wholesalePriceMinor: 7 });
+    expect(body).toMatchObject({
+      regularPriceMinor: 1999,
+      salePriceMinor: 1050,
+      wholesalePriceMinor: 7,
+    });
   });
 
   it("reports invalid and missing prices on the matching fields", () => {
-    const { issues } = prepareProductBody(values({ regularPrice: "", salePrice: "12.345", wholesalePrice: "abc" }));
+    const { issues } = prepareProductBody(
+      values({ regularPrice: "", salePrice: "12.345", wholesalePrice: "abc" }),
+    );
     expect(issues.map((i) => i.name)).toEqual(["regularPrice", "salePrice", "wholesalePrice"]);
     expect(issues[0]!.message).toMatch(/regular price/i);
   });
@@ -131,7 +150,10 @@ describe("prepareProductBody", () => {
         ],
       }),
     );
-    expect(body.variants).toEqual([{ id: "v-aaaa", size: "M" }, { color: "Red", sku: "tee-red" }]);
+    expect(body.variants).toEqual([
+      { id: "v-aaaa", size: "M" },
+      { color: "Red", sku: "tee-red" },
+    ]);
   });
 
   it("drops fully blank specification and FAQ rows", () => {
@@ -230,18 +252,34 @@ describe("buildProductPatch", () => {
   });
 
   it("sends specifications whole when changed, and {} when cleared", () => {
-    expect(edit({ specs: [{ key: "Material", value: "Linen" }, { key: "Weight", value: "200g" }] })).toEqual({
+    expect(
+      edit({
+        specs: [
+          { key: "Material", value: "Linen" },
+          { key: "Weight", value: "200g" },
+        ],
+      }),
+    ).toEqual({
       specifications: { Material: "Linen", Weight: "200g" },
     });
     expect(edit({ specs: [] })).toEqual({ specifications: {} });
   });
 
   it("does not treat reordered specifications as a change", () => {
-    expect(edit({ specs: [{ key: "Weight", value: "200g" }, { key: "Material", value: "Cotton" }] })).toEqual({});
+    expect(
+      edit({
+        specs: [
+          { key: "Weight", value: "200g" },
+          { key: "Material", value: "Cotton" },
+        ],
+      }),
+    ).toEqual({});
   });
 
   it("sends FAQs whole when changed, [] when cleared", () => {
-    expect(edit({ faqs: [{ q: "Washable?", a: "No" }] })).toEqual({ faqs: [{ q: "Washable?", a: "No" }] });
+    expect(edit({ faqs: [{ q: "Washable?", a: "No" }] })).toEqual({
+      faqs: [{ q: "Washable?", a: "No" }],
+    });
     expect(edit({ faqs: [] })).toEqual({ faqs: [] });
   });
 
@@ -253,7 +291,7 @@ describe("buildProductPatch", () => {
     for (const patch of [
       edit({ name: "Y" }),
       edit({ salePrice: "", description: "", categoryId: "" }),
-      edit({ variants: [] , specs: [], faqs: [] }),
+      edit({ variants: [], specs: [], faqs: [] }),
       edit({ variants: [...values().variants, { size: "XL", color: "", sku: "" }] }),
     ]) {
       expect(productPatchSchema.safeParse(patch).success, JSON.stringify(patch)).toBe(true);

@@ -4,15 +4,32 @@ import { Controller, type UseFormReturn } from "react-hook-form";
 import type { z } from "zod";
 
 import { TextField } from "@/components/auth/text-field";
-import { tagsErrorMessage, type CustomerFormValues } from "@/components/customers/customer-form-model";
-import { FieldError, FormSection, SelectField, TextAreaField } from "@/components/shared/form-controls";
+import {
+  tagsErrorMessage,
+  type CustomerFormValues,
+} from "@/components/customers/customer-form-model";
+import {
+  FieldError,
+  FormSection,
+  SelectField,
+  TextAreaField,
+} from "@/components/shared/form-controls";
 import { TagInput } from "@/components/customers/tag-input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CONSENT_LABELS, LANGUAGE_LABELS, SEGMENT_OPTIONS, TYPE_OPTIONS } from "@/config/customer-labels";
+import {
+  CONSENT_LABELS,
+  LANGUAGE_LABELS,
+  SEGMENT_OPTIONS,
+  TYPE_OPTIONS,
+} from "@/config/customer-labels";
 import { CONSENT_STATUSES, type customerInputSchema } from "@/schemas/customer";
 
-export type CustomerForm = UseFormReturn<CustomerFormValues, unknown, z.output<typeof customerInputSchema>>;
+export type CustomerForm = UseFormReturn<
+  CustomerFormValues,
+  unknown,
+  z.output<typeof customerInputSchema>
+>;
 
 const LANGUAGE_NOT_SET = "none";
 const LANGUAGE_OPTIONS = [
@@ -32,7 +49,12 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
   return (
     <div className="space-y-5">
       <FormSection title="Basics">
-        <TextField label="Full name" autoComplete="off" error={errors.fullName?.message} {...register("fullName")} />
+        <TextField
+          label="Full name"
+          autoComplete="off"
+          error={errors.fullName?.message}
+          {...register("fullName")}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Phone"
@@ -63,7 +85,12 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
           error={errors.email?.message}
           {...register("email")}
         />
-        <TextAreaField label="Address (optional)" rows={2} error={errors.address?.message} {...register("address")} />
+        <TextAreaField
+          label="Address (optional)"
+          rows={2}
+          error={errors.address?.message}
+          {...register("address")}
+        />
       </FormSection>
 
       <FormSection title="Classification">
@@ -106,7 +133,11 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
           control={control}
           name="tags"
           render={({ field }) => (
-            <TagInput value={field.value ?? []} onChange={field.onChange} error={tagsErrorMessage(errors.tags)} />
+            <TagInput
+              value={field.value ?? []}
+              onChange={field.onChange}
+              error={tagsErrorMessage(errors.tags)}
+            />
           )}
         />
       </FormSection>
@@ -145,7 +176,9 @@ export function CustomerFormFields({ form }: { form: CustomerForm }) {
                 onValueChange={field.onChange}
                 className="grid gap-2 sm:grid-cols-3"
                 aria-labelledby="consent-status-label"
-                aria-describedby={errors.consent?.status?.message ? "consent-status-error" : undefined}
+                aria-describedby={
+                  errors.consent?.status?.message ? "consent-status-error" : undefined
+                }
               >
                 {CONSENT_STATUSES.map((status) => (
                   <Label key={status} htmlFor={`consent-${status}`} className="gap-2 font-normal">

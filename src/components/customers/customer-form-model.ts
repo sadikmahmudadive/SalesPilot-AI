@@ -73,7 +73,8 @@ export function prepareCustomerBody(values: CustomerFormValues): CustomerCreateB
   if (email) body.email = email;
   if (address) body.address = address;
   if (leadSource) body.leadSource = leadSource;
-  if (language || notes) body.preferences = { ...(language ? { language } : {}), ...(notes ? { notes } : {}) };
+  if (language || notes)
+    body.preferences = { ...(language ? { language } : {}), ...(notes ? { notes } : {}) };
   return body;
 }
 
@@ -97,7 +98,10 @@ const CLEARABLE = new Set<string>(["whatsappNumber", "email", "address", "leadSo
  * cleared preferences become `{}` (PATCH replaces the whole map). `consent` is sent whole when it
  * changed. Both arguments must come from `prepareCustomerBody`.
  */
-export function buildPatch(initial: CustomerCreateBody, next: CustomerCreateBody): CustomerPatchBody {
+export function buildPatch(
+  initial: CustomerCreateBody,
+  next: CustomerCreateBody,
+): CustomerPatchBody {
   const patch: Record<string, unknown> = {};
   for (const key of PATCH_KEYS) {
     const before = initial[key];
@@ -157,7 +161,10 @@ export const DUPLICATE_PHONE_MESSAGE = "A customer with this phone number alread
 export function mapApiError(error: ApiError): MappedApiError {
   return mapApiErrorWith(error, {
     toField: toFieldName,
-    onConflict: () => ({ fields: [{ name: "phone", message: DUPLICATE_PHONE_MESSAGE }], formError: null }),
+    onConflict: () => ({
+      fields: [{ name: "phone", message: DUPLICATE_PHONE_MESSAGE }],
+      formError: null,
+    }),
   });
 }
 
@@ -193,7 +200,9 @@ export function addTags(current: readonly string[], raw: string): AddTagsResult 
 }
 
 type TagsFieldError =
-  { message?: string; root?: { message?: string } } | readonly (TagsFieldError | undefined)[] | undefined;
+  | { message?: string; root?: { message?: string } }
+  | readonly (TagsFieldError | undefined)[]
+  | undefined;
 
 /**
  * The message to show under the tags control. React Hook Form stores an array-item error from the

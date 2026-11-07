@@ -12,7 +12,13 @@ export function SubmitButton({
   children: React.ReactNode;
 }) {
   return (
-    <Button type="submit" size="lg" className="w-full" disabled={loading || disabled} aria-busy={loading}>
+    <Button
+      type="submit"
+      size="lg"
+      className="w-full"
+      disabled={loading || disabled}
+      aria-busy={loading}
+    >
       {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
       {children}
     </Button>

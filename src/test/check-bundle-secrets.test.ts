@@ -16,12 +16,17 @@ describe("scanContent (bundle secret scan)", () => {
 
   it("flags every server-only variable name", () => {
     for (const name of SERVER_ONLY_VARIABLES) {
-      expect(scanContent(`x=process.env.${name};`, {})).toContainEqual({ kind: "name", label: name });
+      expect(scanContent(`x=process.env.${name};`, {})).toContainEqual({
+        kind: "name",
+        label: name,
+      });
     }
   });
 
   it("does not flag public variable names or unrelated text", () => {
-    expect(scanContent("NEXT_PUBLIC_APP_URL CLOUDINARY_CLOUD_NAME OPENAI_CHAT_MODEL", {})).toEqual([]);
+    expect(scanContent("NEXT_PUBLIC_APP_URL CLOUDINARY_CLOUD_NAME OPENAI_CHAT_MODEL", {})).toEqual(
+      [],
+    );
   });
 
   it("flags a set value and reports only the variable name", () => {
@@ -57,7 +62,9 @@ describe("scanContent (bundle secret scan)", () => {
   });
 
   it("reports both the name and the value when both are present", () => {
-    const findings = scanContent(`OPENAI_API_KEY="${FAKE_SECRET}"`, { OPENAI_API_KEY: FAKE_SECRET });
+    const findings = scanContent(`OPENAI_API_KEY="${FAKE_SECRET}"`, {
+      OPENAI_API_KEY: FAKE_SECRET,
+    });
     expect(findings).toEqual([
       { kind: "name", label: "OPENAI_API_KEY" },
       { kind: "value", label: "OPENAI_API_KEY" },

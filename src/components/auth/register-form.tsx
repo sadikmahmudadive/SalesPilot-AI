@@ -30,14 +30,21 @@ export function RegisterForm({ next }: { next?: string }) {
     formState: { errors },
   } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { displayName: "", organizationName: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: {
+      displayName: "",
+      organizationName: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
   });
 
   async function onSubmit(values: RegisterValues) {
     if (!begin("password")) return;
     const result = await registerAccount(
       {
-        createUser: async (email, password) => (await createUserWithEmailAndPassword(getFirebaseAuth(), email, password)).user,
+        createUser: async (email, password) =>
+          (await createUserWithEmailAndPassword(getFirebaseAuth(), email, password)).user,
         updateProfile: (user, displayName) => updateProfile(user, { displayName }),
         getIdToken: (user) => user.getIdToken(),
         fetch,
@@ -66,7 +73,10 @@ export function RegisterForm({ next }: { next?: string }) {
 
   return (
     <div>
-      <AuthCardHeader title="Create your account" description="Set up your organization in under a minute." />
+      <AuthCardHeader
+        title="Create your account"
+        description="Set up your organization in under a minute."
+      />
       <FormAlert message={formError}>
         {needsSignIn ? (
           <AuthLink href="/login" className="font-medium">

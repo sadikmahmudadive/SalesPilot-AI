@@ -38,7 +38,14 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * Body of a paginated list: aria-live count, "Updating..." hint, skeleton, error + retry, empty
  * state, the rows, a failed-refresh banner and the "Showing N ... / Load more" footer.
  */
-export function PagedListView<T>({ query, items, noun, skeleton, empty, children }: PagedListViewProps<T>) {
+export function PagedListView<T>({
+  query,
+  items,
+  noun,
+  skeleton,
+  empty,
+  children,
+}: PagedListViewProps<T>) {
   const count = (n: number) => countLabel(n, noun.singular, noun.plural);
   const plural = noun.plural;
   const refreshing = query.isFetching && !query.isFetchingNextPage && !query.isPending;
@@ -77,7 +84,9 @@ export function PagedListView<T>({ query, items, noun, skeleton, empty, children
                   : `${capitalize(plural)} could not be refreshed`
               }
               error={query.error}
-              onRetry={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}
+              onRetry={() =>
+                void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+              }
               retrying={query.isFetching}
             />
           </div>
@@ -88,8 +97,14 @@ export function PagedListView<T>({ query, items, noun, skeleton, empty, children
             {query.hasNextPage ? "" : " (all)"}
           </span>
           {query.hasNextPage ? (
-            <Button variant="outline" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
-              {query.isFetchingNextPage ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+            <Button
+              variant="outline"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {query.isFetchingNextPage ? (
+                <Loader2 className="animate-spin" aria-hidden="true" />
+              ) : null}
               {query.isFetchingNextPage ? "Loading..." : "Load more"}
             </Button>
           ) : null}
@@ -103,7 +118,10 @@ export function PagedListView<T>({ query, items, noun, skeleton, empty, children
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <p className="mb-2 flex h-4 items-center gap-1.5 text-xs text-muted-foreground" aria-hidden="true">
+      <p
+        className="mb-2 flex h-4 items-center gap-1.5 text-xs text-muted-foreground"
+        aria-hidden="true"
+      >
         {refreshing ? (
           <>
             <Loader2 className="size-3 animate-spin" />

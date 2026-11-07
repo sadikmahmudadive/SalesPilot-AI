@@ -24,6 +24,9 @@ export const POST = withApi(
   async ({ body, organizationId, role }) => {
     assertCloudinaryConfigured();
     if (!can(role, kindPermission(body.kind))) throw new ForbiddenError();
-    return signUpload(organizationId, body.kind, { contentType: body.contentType, bytes: body.bytes });
+    return signUpload(organizationId, body.kind, {
+      contentType: body.contentType,
+      bytes: body.bytes,
+    });
   },
 );

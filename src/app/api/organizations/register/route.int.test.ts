@@ -32,7 +32,11 @@ function post(body: unknown, headers: Record<string, string> = {}): Promise<Resp
   return POST(
     new Request("http://localhost/api/organizations/register", {
       method: "POST",
-      headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(raw)), ...headers },
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(Buffer.byteLength(raw)),
+        ...headers,
+      },
       body: raw,
     }),
   );
@@ -87,19 +91,31 @@ describe("POST /api/organizations/register", () => {
 
     const me = await getMe(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
-    expect(await me.json()).toEqual({ uid, email: "owner@example.com", organizationId: a.organizationId, role: "owner" });
+    expect(await me.json()).toEqual({
+      uid,
+      email: "owner@example.com",
+      organizationId: a.organizationId,
+      role: "owner",
+    });
   });
 
   it("takes uid and email from the session, ignoring any in the body", async () => {
     const uid = signIn("real@example.com");
-    const res = await post({ ...valid, uid: "victim", email: "victim@example.com", organizationId: "other" });
+    const res = await post({
+      ...valid,
+      uid: "victim",
+      email: "victim@example.com",
+      organizationId: "other",
+    });
     expect(res.status).toBe(201);
     const { organizationId } = (await res.json()) as { organizationId: string };
     orgIds.add(organizationId);
     const org = (await adminDb().collection("organizations").doc(organizationId).get()).data()!;
     expect(org.ownerUid).toBe(uid);
     expect((await adminDb().collection("users").doc("victim").get()).exists).toBe(false);
-    const member = (await adminDb().collection("organizationMembers").doc(`${organizationId}_${uid}`).get()).data()!;
+    const member = (
+      await adminDb().collection("organizationMembers").doc(`${organizationId}_${uid}`).get()
+    ).data()!;
     expect(member.email).toBe("real@example.com");
   });
 
@@ -124,7 +140,10 @@ describe("POST /api/organizations/register", () => {
     });
     expect(statuses.slice(0, 5)).toEqual([201, 200, 200, 200, 200]);
     expect(statuses.slice(5)).toEqual([429, 429]);
-    const owned = await adminDb().collection("organizations").where("ownerUid", "==", session!.uid).get();
+    const owned = await adminDb()
+      .collection("organizations")
+      .where("ownerUid", "==", session!.uid)
+      .get();
     expect(owned.size).toBe(1);
   });
 });
