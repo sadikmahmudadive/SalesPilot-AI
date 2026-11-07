@@ -29,6 +29,8 @@ export function UploadRow({ item, status, progress, onCancel }: UploadRowProps) 
   const failed = item.phase === "error";
   const active = item.phase === "active";
   const percent = active ? (status === "uploading" ? progress : status === "confirming" ? 100 : 0) : 0;
+  // Once the file is being confirmed, aborting cannot undo it, so there is nothing to cancel.
+  const canDismiss = failed || !(active && status === "confirming");
   const text = active ? (STATUS_TEXT[status] ?? `Uploading ${percent}%`) : "Waiting";
 
   return (
@@ -56,15 +58,17 @@ export function UploadRow({ item, status, progress, onCancel }: UploadRowProps) 
           </div>
         )}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={() => onCancel(item.id)}
-        aria-label={failed ? `Dismiss error for ${item.name}` : `Cancel upload of ${item.name}`}
-      >
-        <X aria-hidden="true" />
-      </Button>
+      {canDismiss ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onCancel(item.id)}
+          aria-label={failed ? `Dismiss error for ${item.name}` : `Cancel upload of ${item.name}`}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      ) : null}
     </li>
   );
 }

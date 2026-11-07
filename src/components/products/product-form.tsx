@@ -23,6 +23,7 @@ import {
 } from "@/components/products/product-form-model";
 import { mapProductApiError, productResolver, validateProductForm } from "@/components/products/product-form-validation";
 import { DiscardChangesDialog } from "@/components/shared/discard-changes-dialog";
+import { saveGuard } from "@/components/products/save-guard";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
@@ -72,14 +73,15 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
   const cleanup = useImageCleanup();
 
   const isEdit = product !== undefined;
-  const dirty = formState.isDirty;
-  useBeforeUnloadGuard(dirty && canWrite);
+  const [uploading, setUploading] = useState(false);
+  const guard = saveGuard({ dirty: formState.isDirty, canWrite, uploading });
+  useBeforeUnloadGuard(guard.hasUnsavedWork);
 
   function leave() {
     router.push(LIST_PATH);
   }
   function requestLeave() {
-    if (dirty && canWrite) setConfirmDiscard(true);
+    if (guard.hasUnsavedWork) setConfirmDiscard(true);
     else leave();
   }
 
@@ -114,7 +116,7 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
   }
 
   async function save() {
-    if (submitLock.current) return; // synchronous guard: two quick submits cannot both pass
+    if (submitLock.current || !guard.canSave) return; // synchronous guard: two quick submits cannot both pass
     submitLock.current = true;
     setPending(true);
     setFormError(null);
@@ -225,16 +227,27 @@ export function ProductForm({ product, canWrite, role }: ProductFormProps) {
               disabled={pending}
               onUploaded={addImage}
               onRemove={removeImage}
+              onBusyChange={setUploading}
             />
           </SectionCard>
         </fieldset>
 
         <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-4">
+          {guard.hint ? (
+            <p id="save-hint" role="status" className="mr-auto self-center text-sm text-muted-foreground">
+              {guard.hint}
+            </p>
+          ) : null}
           <Button type="button" variant="outline" onClick={requestLeave} disabled={pending}>
             {canWrite ? "Cancel" : "Back to products"}
           </Button>
           {canWrite ? (
-            <Button type="submit" disabled={pending} aria-busy={pending}>
+            <Button
+              type="submit"
+              disabled={pending || !guard.canSave}
+              aria-busy={pending}
+              aria-describedby={guard.hint ? "save-hint" : undefined}
+            >
               {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
               {isEdit ? "Save changes" : "Add product"}
             </Button>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ImageOff, Upload } from "lucide-react";
 
+import { LiveStatus, useAnnouncer } from "@/components/shared/live-status";
 import { UploadRow, type UploadItem } from "@/components/uploads/upload-row";
 import { Button } from "@/components/ui/button";
 import { useUpload } from "@/hooks/use-upload";
@@ -23,13 +24,17 @@ interface MediaUploaderProps {
   currentCount: number;
   onUploaded: (image: ConfirmedUpload) => void;
   disabled?: boolean;
+  /** Called with `true` while anything is queued, uploading or confirming, and `false` otherwise. */
+  onBusyChange?: (busy: boolean) => void;
+  /** The file input, so a parent can move focus to the uploader. */
+  ref?: React.Ref<HTMLInputElement>;
 }
 
 let nextItemId = 0;
 
 function NotConfigured({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center">
+    <div role="status" className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-8 text-center">
       <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
         <ImageOff className="size-5" aria-hidden="true" />
       </span>
@@ -53,7 +58,16 @@ function NotConfigured({ onRetry }: { onRetry: () => void }) {
  * once without any network call. Progress, cancellation and errors are per file; completion and
  * failure are announced through a polite live region.
  */
-export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, disabled = false }: MediaUploaderProps) {
+export function MediaUploader({
+  kind,
+  role,
+  maxFiles,
+  currentCount,
+  onUploaded,
+  disabled = false,
+  onBusyChange,
+  ref,
+}: MediaUploaderProps) {
   const inputId = useId();
   const hintId = useId();
   const policy = policyFor(kind);
@@ -61,7 +75,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
 
   const [items, setItems] = useState<UploadItem[]>([]);
   const [notice, setNotice] = useState("");
-  const [announcement, setAnnouncement] = useState("");
+  const { message: announcement, announce } = useAnnouncer();
   const [notConfigured, setNotConfigured] = useState(false);
   const [dragging, setDragging] = useState(false);
 
@@ -74,6 +88,16 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
   useEffect(() => {
     latestOnUploaded.current = onUploaded;
   }, [onUploaded]);
+
+  const busy = items.some((item) => item.phase !== "error");
+  const latestOnBusyChange = useRef(onBusyChange);
+  useEffect(() => {
+    latestOnBusyChange.current = onBusyChange;
+  }, [onBusyChange]);
+  useEffect(() => {
+    latestOnBusyChange.current?.(busy);
+  }, [busy]);
+  useEffect(() => () => latestOnBusyChange.current?.(false), []);
 
   // Leaving the page cancels the running upload and drops the waiting ones.
   useEffect(
@@ -107,7 +131,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
           const image = await upload(file, { signal: ctl.signal });
           latestOnUploaded.current(image);
           drop(id);
-          setAnnouncement(`${file.name} uploaded`);
+          announce(`${file.name} uploaded`);
         } catch (error) {
           const outcome = error instanceof UploadFlowError ? error.outcome : { kind: "error" as const, message: MESSAGES.generic };
           if (outcome.kind === "aborted") {
@@ -119,7 +143,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
             setNotConfigured(true);
           } else {
             patch(id, { phase: "error", message: outcome.message });
-            setAnnouncement(`${file.name} failed. ${outcome.message}`);
+            announce(`${file.name} failed. ${outcome.message}`);
           }
         } finally {
           activeId.current = null;
@@ -129,7 +153,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
     } finally {
       running.current = false;
     }
-  }, [upload, patch, drop]);
+  }, [upload, patch, drop, announce]);
 
   function addFiles(list: File[]) {
     if (disabled || notConfigured || list.length === 0) return;
@@ -165,6 +189,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
 
   function cancel(id: string) {
     if (id === activeId.current) {
+      if (status === "confirming") return; // the server is already recording the file: aborting cannot undo it
       controller.current?.abort();
       return;
     }
@@ -185,15 +210,14 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
       <label
         htmlFor={inputId}
         onDragOver={(event) => {
-          if (blocked) return;
-          event.preventDefault();
-          setDragging(true);
+          event.preventDefault(); // always: otherwise the browser would open the dropped image in this tab
+          if (!blocked) setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(event) => {
           event.preventDefault();
           setDragging(false);
-          if (disabled) return;
+          if (blocked) return;
           addFiles(Array.from(event.dataTransfer.files));
         }}
         className={cn(
@@ -214,6 +238,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
         </span>
         <input
           id={inputId}
+          ref={ref}
           type="file"
           multiple
           accept={policy.contentTypes.join(",")}
@@ -237,9 +262,7 @@ export function MediaUploader({ kind, role, maxFiles, currentCount, onUploaded, 
         </ul>
       ) : null}
 
-      <p role="status" className="sr-only">
-        {announcement}
-      </p>
+      <LiveStatus message={announcement} />
     </div>
   );
 }
