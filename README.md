@@ -4,18 +4,18 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 ## Current scope
 
-Sub-projects 1 and 2 of 8 are implemented. Nothing from sub-projects 3 to 8 exists yet; their dashboard pages show an explicit "coming later" state, not mock data.
+Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has been run in a browser. Nothing from sub-projects 3 to 8 exists yet; their dashboard pages show an explicit "coming later" state, not mock data.
 
-| #   | Sub-project                                                                | State   |
-| --- | -------------------------------------------------------------------------- | ------- |
-| 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | done    |
-| 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | done    |
-| 3   | AI agents (RAG, tool calling)                                              | roadmap |
-| 4   | WhatsApp and unified inbox                                                 | roadmap |
-| 5   | Orders, payments, courier                                                  | roadmap |
-| 6   | Voice calls                                                                | roadmap |
-| 7   | Follow-ups and automations (n8n)                                           | roadmap |
-| 8   | Analytics and integrations settings                                        | roadmap |
+| #   | Sub-project                                                                | State                                |
+| --- | -------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | implemented; UI not browser-verified |
+| 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
+| 3   | AI agents (RAG, tool calling)                                              | roadmap                              |
+| 4   | WhatsApp and unified inbox                                                 | roadmap                              |
+| 5   | Orders, payments, courier                                                  | roadmap                              |
+| 6   | Voice calls                                                                | roadmap                              |
+| 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
+| 8   | Analytics and integrations settings                                        | roadmap                              |
 
 The design is in [docs/superpowers/specs/2026-11-06-foundation-core-data-design.md](docs/superpowers/specs/2026-11-06-foundation-core-data-design.md). What has and has not been verified is in [docs/CHECKLIST.md](docs/CHECKLIST.md).
 

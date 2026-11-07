@@ -4,15 +4,16 @@ Status of sub-projects 1 to 8 and of this plan (`docs/superpowers/plans/2026-11-
 
 Legend:
 
-- `[x]` there are automated tests for it and they passed in the final gate (see "Last verified run" at the end).
-- `[ ]` not verified, or only partly verified. The note says which part.
+- `[x]` fully verified by automated tests that passed in the final gate. Where Firebase is involved, "verified" means against the local emulators; the real project is listed under "Unverified".
+- `[~]` logic is tested, but the UI has not been seen in a browser, or the real external service (Cloudinary, a real Firebase project, Vercel) has not been exercised. The note says which.
+- `[ ]` not started.
 
-A tick means the logic is covered by tests. It does not mean anyone has seen the screen in a browser; no UI has been run in a browser (see "Unverified").
+No UI has been run in a browser and no real external service has been used (see "Unverified").
 
 ## Sub-projects
 
-- [x] 1. Foundation (auth, organizations, roles, security baseline, dashboard shell): logic tested, UI unverified
-- [x] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
+- [~] 1. Foundation (auth, organizations, roles, security baseline, dashboard shell): logic tested, UI unverified
+- [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
 - [ ] 3. AI agents (RAG, tool calling): not started
 - [ ] 4. WhatsApp and unified inbox: not started
 - [ ] 5. Orders, payments, courier: not started (stock reserve/release/commit exist for it)
@@ -33,20 +34,20 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 - [x] 7. Session auth and route redirects: `src/lib/auth/session.test.ts`, `src/lib/auth/session.int.test.ts`, `src/lib/auth/redirect.test.ts`, `src/app/api/auth/session/route.int.test.ts`, `src/proxy.test.ts`
 - [x] 8. Registration atomicity and `withApi`: `src/services/organizations/register.int.test.ts`, `src/app/api/organizations/register/route.int.test.ts`, `src/lib/api/handler.test.ts`, `src/lib/api/handler.int.test.ts`, `src/lib/api/csrf.test.ts`
 - [x] 9. Firestore rules: `tests/rules/tenancy.rules.test.ts` (cross-org read and write denied, client writes denied, role matrix)
-- [x] 10. Security headers: `src/config/security-headers.test.ts`
-- [ ] 11. Auth UI: schemas and client flow tested (`src/schemas/auth.test.ts`, `src/lib/auth/client-flow.test.ts`); the pages and forms have not been rendered or clicked in a browser
-- [ ] 12. Dashboard shell: navigation data tested (`src/config/nav.test.ts`, `src/lib/auth/dashboard-context.test.ts`); layout, responsive behavior and theme toggle not seen in a browser
+- [~] 10. Security headers: header values and CSP rules tested (`src/config/security-headers.test.ts`); behavior in a real browser (for example Google sign-in under the CSP) not seen
+- [~] 11. Auth UI: schemas and client flow tested (`src/schemas/auth.test.ts`, `src/lib/auth/client-flow.test.ts`); the pages and forms have not been rendered or clicked in a browser
+- [~] 12. Dashboard shell: navigation data tested (`src/config/nav.test.ts`, `src/lib/auth/dashboard-context.test.ts`); layout, responsive behavior and theme toggle not seen in a browser
 - [x] 13. Repository base and pagination: `src/repositories/base.int.test.ts`, `src/lib/pagination.test.ts`
 - [x] 14. Customer domain (schema, phone, segments): `src/lib/phone.test.ts`, `src/schemas/customer.test.ts`
 - [x] 15. Customer service and API: `src/services/crm/customers.int.test.ts`, `src/app/api/customers/route.int.test.ts`, `src/services/crm/customer-query.test.ts`, `src/services/crm/customer-indexes.test.ts`
-- [ ] 16. Customer UI: form model, list params and hooks tested (`src/components/customers/*.test.ts`, `src/hooks/use-customers.test.ts`); screens not seen in a browser
+- [~] 16. Customer UI: form model, list params and hooks tested (`src/components/customers/*.test.ts`, `src/hooks/use-customers.test.ts`); screens not seen in a browser
 - [x] 17. Product and category domain, service, API: `src/schemas/product.test.ts`, `src/services/products/products.int.test.ts`, `src/app/api/products/route.int.test.ts`, `src/app/api/categories/route.int.test.ts`, `src/services/products/product-query.test.ts`, `src/services/products/product-indexes.test.ts`
 - [x] 18. Inventory service (reserve, release, commit, adjust): `src/services/inventory/stock.int.test.ts` (concurrency, idempotency, failure leaves counts unchanged), `src/app/api/inventory/route.int.test.ts`, `src/services/inventory/inventory-query.test.ts`, `src/services/inventory/inventory-indexes.test.ts`, `src/schemas/inventory.test.ts`
-- [ ] 19. Products and inventory UI: models and hooks tested (`src/components/products/*.test.ts`, `src/components/inventory/stock-model.test.ts`, `src/hooks/use-products.test.ts`, `src/hooks/use-inventory.test.ts`); screens not seen in a browser
-- [ ] 20. Cloudinary library and signing: tested with the SDK mocked (`src/lib/cloudinary/index.test.ts`, `src/lib/cloudinary/folders.test.ts`, `src/lib/cloudinary/urls.test.ts`, `src/app/api/uploads/uploads.int.test.ts`); never run against a real Cloudinary account
-- [ ] 21. Upload component: flow logic tested (`src/lib/uploads/upload-flow.test.ts`, `src/lib/uploads/xhr-upload.test.ts`, `src/lib/uploads/planned-deletes.test.ts`, `src/lib/uploads/focus-after-remove.test.ts`); component not seen in a browser, no real upload performed
-- [x] 22. Overview KPIs: `src/services/dashboard/overview.int.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/lead-segments.test.ts`; the page itself is unverified in a browser
-- [x] 23. Documentation and release gates: `scripts/check-bundle-secrets.mjs` scan function tested in `src/test/check-bundle-secrets.test.ts`; `npm run check:bundle` passes on the built bundle; guides are written but unexercised (below)
+- [~] 19. Products and inventory UI: models and hooks tested (`src/components/products/*.test.ts`, `src/components/inventory/stock-model.test.ts`, `src/hooks/use-products.test.ts`, `src/hooks/use-inventory.test.ts`); screens not seen in a browser
+- [~] 20. Cloudinary library and signing: tested with the SDK mocked (`src/lib/cloudinary/index.test.ts`, `src/lib/cloudinary/folders.test.ts`, `src/lib/cloudinary/urls.test.ts`, `src/app/api/uploads/uploads.int.test.ts`); never run against a real Cloudinary account
+- [~] 21. Upload component: flow logic tested (`src/lib/uploads/upload-flow.test.ts`, `src/lib/uploads/xhr-upload.test.ts`, `src/lib/uploads/planned-deletes.test.ts`, `src/lib/uploads/focus-after-remove.test.ts`); component not seen in a browser, no real upload performed
+- [~] 22. Overview KPIs: `src/services/dashboard/overview.int.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/lead-segments.test.ts`; the page itself is unverified in a browser
+- [~] 23. Documentation and release gates: `scripts/check-bundle-secrets.mjs` scan function tested in `src/test/check-bundle-secrets.test.ts`; `npm run check:bundle` passes on the built bundle; guides are written but unexercised (below)
 
 ## Unverified
 
@@ -67,6 +68,15 @@ These have not been done or observed. Do not assume they work.
 - **Cloudinary credentials:** to be provided directly in `.env.local` (and in Vercel) by the project owner.
 - **Authorized domains and `authDomain`:** staying on `*.firebaseapp.com` unless a custom auth domain is wanted (needs a CSP change).
 
-## Last verified run
+## Last verified run (2026-11-07, branch `feat/foundation-core-data`)
 
-Release gate, in order: `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npm run test:int`, `npm run build`, `npm run check:bundle`. The results of the last run are recorded in the Task 23 report in `.superpowers/sdd/2026-11-06-foundation-core-data/task-23-report.md` (local, not committed).
+| Command                | Result                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `npm run typecheck`    | passes (`next typegen` then `tsc --noEmit`, no errors)                                   |
+| `npm run lint`         | passes, no output                                                                        |
+| `npm run test:unit`    | 67 test files, 1267 tests pass                                                           |
+| `npm run test:int`     | 20 test files, 533 tests pass (Firestore and Auth emulators)                             |
+| `npm run build`        | passes                                                                                   |
+| `npm run check:bundle` | passes (53 files scanned in `.next/static`, no server-only names, values or PEM markers) |
+
+Re-run the gate in this order before a release.

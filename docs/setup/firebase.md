@@ -102,7 +102,7 @@ Run this against the deployed app (or a local `next start` pointed at the real p
 1. Register a new account with email and password; confirm you reach the dashboard, then sign out and sign back in. Repeat with Google sign-in.
 2. Open Firebase console > Firestore and confirm `users`, `organizations` and `organizationMembers` documents exist for the account.
 3. Customers: create a customer whose full name is in Bangla, and another whose name starts with an emoji. Search by the Bangla prefix and by the emoji-prefixed name; both must find the customer.
-4. Customers list: switch through every sort option (created, name, last interaction) in ascending and descending order, and apply each filter the toolbar offers (segment, customer type, tag). Each combination must load without an error. This is what proves the customer indexes.
+4. Customers list: switch through every sort option (Newest, Name A-Z, Name Z-A, Recently active), and apply each filter the toolbar offers (segment, customer type, tag). Each combination must load without an error. This is what proves the customer indexes.
 5. Products: create a product with a variant. Open the product list, try each sort and each filter the toolbar offers. Each must load.
 6. Inventory: adjust stock for a variant with a reason (this should show in `auditLogs`), then use the low-stock filter and the other inventory filters and sorts. Each must load.
 7. Dashboard overview: confirm the customer, product and low-stock counts match what you created.

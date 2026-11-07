@@ -73,7 +73,7 @@ The app replaces each `\n` sequence with a real line break when it reads the var
 
 - **Production** builds the production branch (usually `main`) and serves the production domain.
 - **Preview** builds every other branch and pull request on a `*.vercel.app` URL.
-- Previews use the same variables you assign to the Preview environment. Point them at a staging Firebase project, not at production data. If you do not want a staging project yet, do not give Preview the Firebase service account; the build will pass, but the preview will fail at runtime, which is safer than writing to production.
+- Previews use the same variables you assign to the Preview environment. Point them at a staging Firebase project, not at production data. If you do not want a staging project yet, leave the Firebase service account out of Preview. The app should then fail at runtime on previews instead of touching production data; this is expected but has not been verified.
 - Sign-in on a preview URL requires that hostname in Firebase Authentication > Settings > Authorized domains. Add it, or accept that sign-in works only on the production domain.
 - `NEXT_PUBLIC_APP_URL` differs per environment; set it separately for Preview and Production.
 

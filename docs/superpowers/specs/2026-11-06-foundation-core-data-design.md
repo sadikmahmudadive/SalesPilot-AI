@@ -14,7 +14,7 @@ Assumptions (correct me): single npm package; roles `owner|admin|agent|viewer`; 
 Layers, one direction of dependency: `app/` (routes, UI) → `services/` (business rules) → `repositories/` (Firestore access) → `lib/` (SDK wrappers: firebase, cloudinary, security). `schemas/` (Zod) is shared by API handlers and forms. `src/config/env.ts` (server) and `src/config/env.client.ts` (public `NEXT_PUBLIC_*`) are the only places `process.env` is read.
 
 - **Reads vs writes.** Server Components and route handlers use the Admin SDK. The browser may read org-scoped lists directly under Firestore rules (for realtime later). All writes go through route handlers or Server Actions: Zod validation, permission check, rate limit, audit log.
-- **Auth.** Client signs in with Firebase Auth, posts the ID token to `/api/auth/session`, the server mints an httpOnly session cookie. `middleware.ts` only checks cookie presence for redirects; `getCurrentUser()` verifies the cookie with Admin SDK on every protected server call. Role and org come from the `organizationMembers` doc (source of truth), not from client-supplied data.
+- **Auth.** Client signs in with Firebase Auth, posts the ID token to `/api/auth/session`, the server mints an httpOnly session cookie. `src/proxy.ts` (Next 16 renamed middleware to Proxy) only checks cookie presence for redirects; `getCurrentUser()` verifies the cookie with Admin SDK on every protected server call. Role and org come from the `organizationMembers` doc (source of truth), not from client-supplied data.
 - **Tenancy.** Every business doc has `organizationId`. Rules allow read only when the caller has a member doc for that org; all client writes to privileged collections are denied.
 
 ## 3. Components
@@ -58,7 +58,7 @@ Typed errors (`ValidationError`, `Unauthenticated`, `Forbidden`, `NotFound`, `Co
 - Integration (emulator): session route bad/expired token → 401; registration atomicity; audit entries on mutations.
 - Concurrency: N parallel reservations against M stock never exceed M; idempotent retry reserves once; failure leaves counts unchanged.
 - Build gate: `tsc --noEmit`, lint, `next build`, and a grep of `.next/static` confirming no secret names/values.
-- Windows note: check ports 8080/9099/4000 before emulator runs; fall back to a temp config with alternate ports.
+- Windows note: check ports 8085 (Firestore) and 9199 (Auth) before emulator runs; if they are taken, fall back to a temporary config with alternate ports (and matching emulator host variables), deleted afterwards.
 
 ## 7. Out of scope (later sub-projects)
 
