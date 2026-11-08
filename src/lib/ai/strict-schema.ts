@@ -17,11 +17,17 @@
  *    null -> undefined normalisation).
  *  - Every object lists ALL of its properties in `required`.
  *  - Previously optional properties become nullable: `type: "x"` -> `type: ["x", "null"]`,
- *    `enum` gains a `null` member, `anyOf`/`oneOf` gains a `{ type: "null" }` branch, and a
- *    `$ref` / `const` becomes `anyOf: [original, { type: "null" }]`.
+ *    `enum` gains a `null` member, `anyOf` gains a `{ type: "null" }` branch, and a `const`
+ *    (z.literal), `$ref` or untyped node becomes `anyOf: [original, { type: "null" }]` (a
+ *    `type` array alongside `const` would still forbid null).
+ *  - `oneOf` (z.discriminatedUnion) is rewritten to `anyOf`.
+ *  - `minimum`/`maximum` equal to +-Number.MAX_SAFE_INTEGER (added by Zod to plain ints) are
+ *    dropped as noise.
  *  - `additionalProperties: false` on every object.
- *  - `propertyNames` is removed; open-ended objects (`z.record`) cannot be expressed in strict
- *    mode and throw, as does a non-object root. Both are programmer errors at tool definition.
+ *  - Keywords strict mode rejects (see UNSUPPORTED_KEYWORDS: prefixItems, uniqueItems, allOf,
+ *    not, patternProperties, ...) throw an Error naming the keyword and the schema path, as do
+ *    open-ended objects (`z.record`) and a non-object root. These are programmer errors at
+ *    tool definition time.
  *
  * Everything else (`description`, `enum`, `minLength`, `minimum`, `items`, ...) is passed
  * through unchanged. Pure module: no env / server-only imports.
@@ -30,7 +36,44 @@ import { z, type ZodType } from "zod";
 
 type Json = Record<string, unknown>;
 
-const STRIPPED_KEYS = new Set(["$schema", "default", "propertyNames"]);
+const STRIPPED_KEYS = new Set(["$schema", "default"]);
+const MAX_SAFE = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Keywords OpenAI strict mode rejects (mirrors JSON_SCHEMA_UNSUPPORTED_SCHEMA_KEYWORDS in the
+ * openai SDK's lib/transform.js, minus `oneOf`, which is rewritten to `anyOf`). Any of them in
+ * a tool schema (z.tuple -> prefixItems, z.set -> uniqueItems, z.intersection -> allOf, ...)
+ * throws at conversion time so the mistake surfaces in tests, not on a live call.
+ */
+const UNSUPPORTED_KEYWORDS = new Set([
+  "$anchor",
+  "$dynamicAnchor",
+  "$dynamicRef",
+  "$recursiveAnchor",
+  "$recursiveRef",
+  "allOf",
+  "contains",
+  "contentEncoding",
+  "contentMediaType",
+  "contentSchema",
+  "dependentRequired",
+  "dependentSchemas",
+  "dependencies",
+  "else",
+  "if",
+  "maxContains",
+  "maxProperties",
+  "minContains",
+  "minProperties",
+  "not",
+  "patternProperties",
+  "prefixItems",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+  "uniqueItems",
+]);
 
 function isPlainObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -49,51 +92,63 @@ function makeNullable(node: Json): Json {
 
   if (alreadyNull(node)) return node;
 
-  for (const key of ["anyOf", "oneOf"] as const) {
-    const branches = node[key];
-    if (Array.isArray(branches)) {
-      if (branches.some(alreadyNull)) return node;
-      return { ...node, [key]: [...branches, { type: "null" }] };
-    }
+  // A const cannot be widened in place (`type: [T, "null"]` + `const: x` still forbids null).
+  if ("const" in node) return { anyOf: [node, { type: "null" }] };
+
+  const branches = node.anyOf;
+  if (Array.isArray(branches)) {
+    if (branches.some(alreadyNull)) return node;
+    return { ...node, anyOf: [...branches, { type: "null" }] };
   }
 
-  if (typeof node.type === "string") {
-    const next: Json = { ...node, type: [node.type, "null"] };
-    if (Array.isArray(node.enum) && !node.enum.includes(null)) next.enum = [...node.enum, null];
-    return next;
-  }
-  if (Array.isArray(node.type)) {
-    const next: Json = { ...node, type: [...node.type, "null"] };
+  if (typeof node.type === "string" || Array.isArray(node.type)) {
+    const types = Array.isArray(node.type) ? node.type : [node.type];
+    const next: Json = { ...node, type: [...types, "null"] };
     if (Array.isArray(node.enum) && !node.enum.includes(null)) next.enum = [...node.enum, null];
     return next;
   }
 
-  // $ref, const, or an untyped node: wrap.
+  // $ref or an untyped node: wrap.
   return { anyOf: [node, { type: "null" }] };
 }
 
-function convert(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(convert);
+const where = (path: string[]): string => path.join("/") || "<root>";
+
+function convertMap(map: Json, path: string[]): Json {
+  return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, convert(v, [...path, k])]));
+}
+
+function convert(node: unknown, path: string[]): unknown {
+  if (Array.isArray(node)) return node.map((n, i) => convert(n, [...path, String(i)]));
   if (!isPlainObject(node)) return node;
 
   const out: Json = {};
   for (const [key, value] of Object.entries(node)) {
     if (STRIPPED_KEYS.has(key)) continue;
-    if (key === "properties" && isPlainObject(value)) {
-      out[key] = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]));
-    } else if (key === "$defs" && isPlainObject(value)) {
-      out[key] = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]));
+    if (UNSUPPORTED_KEYWORDS.has(key)) {
+      throw new Error(
+        `Schema at \`${where(path)}\` uses keyword \`${key}\`, which OpenAI strict mode does not support.`,
+      );
+    }
+    if ((key === "minimum" || key === "maximum") && Math.abs(Number(value)) === MAX_SAFE) continue;
+    if ((key === "properties" || key === "$defs") && isPlainObject(value)) {
+      out[key] = convertMap(value, [...path, key]);
     } else if (key === "enum" || key === "const" || key === "required") {
       out[key] = value;
+    } else if (key === "oneOf") {
+      // Strict mode only allows anyOf; for tool input unions the two are equivalent in practice.
+      out.anyOf = convert(value, [...path, key]);
     } else {
-      out[key] = convert(value);
+      out[key] = convert(value, [...path, key]);
     }
   }
 
   if (isObjectSchema(out)) {
     const additional = node.additionalProperties;
     if (isPlainObject(additional) || additional === true) {
-      throw new Error("Strict JSON schema does not support open-ended objects (z.record).");
+      throw new Error(
+        `Schema at \`${where(path)}\` is an open-ended object (z.record), which OpenAI strict mode does not support.`,
+      );
     }
     const properties = isPlainObject(out.properties) ? out.properties : {};
     const originallyRequired = new Set(
@@ -116,5 +171,5 @@ export function toStrictJsonSchema(schema: ZodType): Record<string, unknown> {
   if (!isObjectSchema(raw)) {
     throw new Error("Strict JSON schema root must be an object schema.");
   }
-  return convert(raw) as Record<string, unknown>;
+  return convert(raw, []) as Record<string, unknown>;
 }

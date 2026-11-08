@@ -34,6 +34,11 @@ export interface ProviderRequest {
   onTextDelta?: (delta: string) => void;
 }
 
+/**
+ * Note: a response that stopped with `stopReason: "max_tokens"` can carry TRUNCATED function-call
+ * arguments (invalid JSON). Consumers must treat unparseable `argumentsJson` as a malformed call
+ * (Task 5 reports it to the model as a tool error) rather than assume it parses.
+ */
 export interface ProviderResult {
   text: string;
   toolCalls: ProviderToolCall[];

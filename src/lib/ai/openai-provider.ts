@@ -10,6 +10,10 @@
  * unknown errors, and any failure after text deltas were already emitted (a retry would
  * duplicate output to the consumer).
  *
+ * Timeouts: the SDK client timeout (30 s) only covers the wait for response headers; once the
+ * stream is open it no longer applies. Callers MUST therefore pass the turn-budget `signal`
+ * so a stalled stream is cut off (it maps to `timeout`).
+ *
  * Errors: everything surfaces as AiProviderError with a static message. Provider error text,
  * request ids and keys are never copied into the message or logs; only `kind` and the HTTP
  * status are logged.
@@ -81,6 +85,10 @@ function classify(err: unknown, signal: AbortSignal | undefined): Classified {
   }
   if (err instanceof APIConnectionTimeoutError) return { kind: "timeout", retryable: true };
   if (err instanceof APIConnectionError || err instanceof StreamFailure) {
+    return { kind: "unavailable", retryable: true };
+  }
+  if (err instanceof APIError && typeof err.status !== "number") {
+    // An SSE `error` event inside the stream surfaces as an APIError without an HTTP status.
     return { kind: "unavailable", retryable: true };
   }
   if (err instanceof APIError && typeof err.status === "number") {

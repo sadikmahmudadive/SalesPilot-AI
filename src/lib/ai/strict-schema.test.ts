@@ -10,7 +10,7 @@ describe("toStrictJsonSchema", () => {
     const schema = z.object({
       name: z.string().min(1).max(40).describe("Product name"),
       kind: z.enum(["a", "b"]),
-      count: z.number().int(),
+      count: z.number().min(0).max(10),
     });
     const base = z.toJSONSchema(schema, { io: "input" }) as Json;
     delete base.$schema;
@@ -84,5 +84,51 @@ describe("toStrictJsonSchema", () => {
   it("rejects open-ended records and non-object roots", () => {
     expect(() => toStrictJsonSchema(z.object({ r: z.record(z.string(), z.string()) }))).toThrow();
     expect(() => toStrictJsonSchema(z.string())).toThrow();
+  });
+
+  it("rewrites oneOf (discriminated union) to anyOf and strictifies the branches", () => {
+    const out = toStrictJsonSchema(
+      z.object({
+        action: z.discriminatedUnion("kind", [
+          z.object({ kind: z.literal("a"), x: z.string().optional() }),
+          z.object({ kind: z.literal("b"), y: z.number() }),
+        ]),
+      }),
+    ) as Json;
+    const action = out.properties.action;
+    expect("oneOf" in action).toBe(false);
+    expect(action.anyOf).toHaveLength(2);
+    expect(action.anyOf[0].additionalProperties).toBe(false);
+    expect(action.anyOf[0].required).toEqual(["kind", "x"]);
+    expect(action.anyOf[0].properties.x.type).toEqual(["string", "null"]);
+  });
+
+  it("makes an optional literal accept null", () => {
+    const out = toStrictJsonSchema(z.object({ flag: z.literal("y").optional() })) as Json;
+    expect(out.required).toEqual(["flag"]);
+    const flag = out.properties.flag;
+    expect(flag.anyOf).toEqual([{ type: "string", const: "y" }, { type: "null" }]);
+  });
+
+  it("drops the safe-integer bounds Zod adds to ints but keeps real bounds", () => {
+    const out = toStrictJsonSchema(
+      z.object({ n: z.number().int(), m: z.number().int().min(1).max(50) }),
+    ) as Json;
+    expect(out.properties.n).toEqual({ type: "integer" });
+    expect(out.properties.m).toEqual({ type: "integer", minimum: 1, maximum: 50 });
+  });
+
+  it.each([
+    ["prefixItems", () => z.object({ t: z.tuple([z.string(), z.number()]) })],
+    ["not", () => z.object({ n: z.never() })],
+    ["propertyNames", () => z.object({ r: z.record(z.string(), z.string()) })],
+  ] as const)("throws naming %s and the schema path", (keyword, make) => {
+    expect(() => toStrictJsonSchema(make())).toThrow(new RegExp(`\`${keyword}\``));
+  });
+
+  it("names the path of the offending node", () => {
+    expect(() =>
+      toStrictJsonSchema(z.object({ outer: z.object({ t: z.tuple([z.string()]) }) })),
+    ).toThrow(/properties\/outer\/properties\/t/);
   });
 });

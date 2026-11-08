@@ -1,4 +1,5 @@
 import {
+  APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
   APIUserAbortError,
@@ -7,13 +8,14 @@ import {
   InternalServerError,
   RateLimitError,
 } from "openai";
-import { describe, expect, it, vi } from "vitest";
-import { AiProviderError, isAppError } from "../errors";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { __resetEnvCacheForTests } from "../../config/env";
+import { AiProviderError, IntegrationNotConfiguredError, isAppError } from "../errors";
 import failedStream from "./__fixtures__/stream-failed.json";
 import maxTokensStream from "./__fixtures__/stream-max-tokens.json";
 import textStream from "./__fixtures__/stream-text.json";
 import toolCallStream from "./__fixtures__/stream-tool-calls.json";
-import { createOpenAiProvider, type OpenAILike } from "./openai-provider";
+import { createOpenAiProvider, getChatProvider, type OpenAILike } from "./openai-provider";
 import type { ChatMessage, ProviderRequest } from "./provider";
 
 type Step = { events?: unknown[]; throwBefore?: Error; throwAfter?: Error };
@@ -205,6 +207,13 @@ describe("error mapping and retry", () => {
     ["500", serverError(500), "unavailable"],
     ["503", serverError(503), "unavailable"],
     ["timeout", new APIConnectionTimeoutError(), "timeout"],
+    ["408", new APIError(408, { message: SECRET }, SECRET, headers), "timeout"],
+    ["connection error", new APIConnectionError({ message: SECRET }), "unavailable"],
+    [
+      "in-stream error event (no status)",
+      new APIError(undefined, { message: SECRET }, SECRET, undefined),
+      "unavailable",
+    ],
   ] as const)("%s retries exactly once, then maps to %s", async (_n, err, kind) => {
     noSleep.mockClear();
     const f = fakeClient([{ throwBefore: err }, { throwBefore: err }, { events: textStream }]);
@@ -278,6 +287,26 @@ describe("error mapping and retry", () => {
       await kindOf(provider(f.client).generate({ ...baseReq, signal: controller.signal })),
     ).toBe("timeout");
     expect(f.create).toHaveBeenCalledTimes(0);
+  });
+
+  it("maps a user abort raised mid-stream to timeout: no retry, no duplicated output", async () => {
+    const controller = new AbortController();
+    const f = fakeClient([
+      { events: [textStream[1]], throwAfter: new APIUserAbortError() },
+      { events: textStream },
+    ]);
+    const deltas: string[] = [];
+    const p = provider(f.client).generate({
+      ...baseReq,
+      signal: controller.signal,
+      onTextDelta: (d) => {
+        deltas.push(d);
+        controller.abort();
+      },
+    });
+    expect(await kindOf(p)).toBe("timeout");
+    expect(f.create).toHaveBeenCalledTimes(1);
+    expect(deltas).toEqual(["Hello"]);
   });
 
   it("maps an abort raised during the call to timeout without retry", async () => {
@@ -366,5 +395,32 @@ describe("AiProviderError", () => {
     expect(new AiProviderError("timeout").message).toBe(
       "The AI service didn't respond. Try again.",
     );
+  });
+});
+
+describe("getChatProvider", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    __resetEnvCacheForTests();
+  });
+
+  function stubEnv(openAiKey: string) {
+    vi.stubEnv("FIREBASE_PROJECT_ID", "demo-project");
+    vi.stubEnv("FIREBASE_CLIENT_EMAIL", "svc@demo-project.iam.gserviceaccount.com");
+    vi.stubEnv("FIREBASE_PRIVATE_KEY", "-----BEGIN KEY-----\nabc\n-----END KEY-----\n");
+    vi.stubEnv("FIRESTORE_EMULATOR_HOST", "");
+    vi.stubEnv("FIREBASE_AUTH_EMULATOR_HOST", "");
+    vi.stubEnv("OPENAI_API_KEY", openAiKey);
+    __resetEnvCacheForTests();
+  }
+
+  it("throws IntegrationNotConfiguredError when OPENAI_API_KEY is unset", () => {
+    stubEnv("");
+    expect(() => getChatProvider()).toThrow(IntegrationNotConfiguredError);
+  });
+
+  it("returns a provider when the key is set", () => {
+    stubEnv("sk-test-key");
+    expect(typeof getChatProvider().generate).toBe("function");
   });
 });
