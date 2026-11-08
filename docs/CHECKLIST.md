@@ -64,7 +64,7 @@ These have not been done or observed. Do not assume they work.
 
 ## Open decisions
 
-- **Firebase project:** reuse `salespilot-ai-9b1cd` (asia-southeast1) or create a new project for production. Until decided, development uses the emulators.
+- **Firebase project (decided 2026-11-08):** reuse `salespilot-ai-9b1cd` (asia-southeast1). Development and tests still use the `demo-salespilot` emulator project. Nothing has been deployed to it yet.
 - **Cloudinary credentials:** to be provided directly in `.env.local` (and in Vercel) by the project owner.
 - **Authorized domains and `authDomain`:** staying on `*.firebaseapp.com` unless a custom auth domain is wanted (needs a CSP change).
 

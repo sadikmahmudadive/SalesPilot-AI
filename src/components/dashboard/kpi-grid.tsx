@@ -39,10 +39,10 @@ export async function KpiGrid({ organizationId }: { organizationId: string }) {
       />
       <KpiCard
         id="kpi-products"
-        title="Active products"
+        title="Products"
         icon={Boxes}
         state={stateOf(overview.products)}
-        subtext="Products that are not archived."
+        subtext="Not archived (includes drafts)."
         href="/products"
         linkLabel="View products"
       />
@@ -51,7 +51,7 @@ export async function KpiGrid({ organizationId }: { organizationId: string }) {
         title="Low stock"
         icon={TriangleAlert}
         state={stateOf(overview.lowStock)}
-        subtext={`Available \u2264 ${LOW_STOCK_THRESHOLD}`}
+        subtext={`Stock units (variants) with ${LOW_STOCK_THRESHOLD} or fewer available, including never-stocked units.`}
         href="/inventory?lowStock=true"
         linkLabel="View low stock"
       />
