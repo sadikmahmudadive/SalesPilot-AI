@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AiProviderError,
   AppError,
   ConflictError,
   ForbiddenError,
@@ -29,6 +30,8 @@ describe("errors", () => {
       503,
       "INTEGRATION_NOT_CONFIGURED",
     ],
+    ["AiProviderError", new AiProviderError("timeout"), 503, "AI_PROVIDER_ERROR"],
+    ["AiProviderError", new AiProviderError("bad_request"), 502, "AI_PROVIDER_ERROR"],
   ];
 
   it.each(cases)("%s maps to status and code", (name, err, status, code) => {
