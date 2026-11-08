@@ -20,6 +20,9 @@ describe("AGENT_TEMPLATES", () => {
       it("parses with the agent input schema once a name is added", () => {
         const r = agentInputSchema.safeParse({ ...t, name: "Template agent", role });
         expect(r.success).toBe(true);
+        if (!r.success) return;
+        // Parsing must not silently trim, drop or reorder anything in the template.
+        expect(r.data).toMatchObject(t);
       });
 
       it("only lists known tools, without duplicates", () => {
@@ -70,6 +73,29 @@ describe("AGENT_TEMPLATES", () => {
     expect(tools.filter((t) => WRITE_TOOLS.has(t))).toEqual(["escalate_to_human"]);
     // No catalog tool exists beyond the listed ones, and the text must say support cannot change data.
     expect(AGENT_TEMPLATES.customer_support.instructions.toLowerCase()).toContain("cannot change");
+  });
+
+  it("is deeply frozen so shared template data cannot be mutated", () => {
+    expect(Object.isFrozen(AGENT_TEMPLATES)).toBe(true);
+    for (const role of AGENT_ROLES) {
+      const t = AGENT_TEMPLATES[role];
+      expect(Object.isFrozen(t)).toBe(true);
+      expect(Object.isFrozen(t.tools)).toBe(true);
+      expect(Object.isFrozen(t.objectives)).toBe(true);
+      expect(Object.isFrozen(t.languages)).toBe(true);
+    }
+    const tools = AGENT_TEMPLATES.retail_sales.tools as string[];
+    expect(() => tools.push("x")).toThrow();
+    expect(() => {
+      (AGENT_TEMPLATES.retail_sales as { description: string }).description = "changed";
+    }).toThrow();
+  });
+
+  it("tells the voice agent to write prices as digits so the figure check can see them", () => {
+    const text = AGENT_TEMPLATES.voice_sales.instructions;
+    expect(text).toContain("digits");
+    expect(text).not.toMatch(/\d/);
+    expect(text.toLowerCase()).not.toContain("two hundred");
   });
 
   it("stays within the schema bounds for long text", () => {

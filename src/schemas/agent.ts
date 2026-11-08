@@ -4,10 +4,11 @@
  * CREATE vs PATCH. `agentInputSchema` applies defaults (a new agent starts `inactive`, answers in
  * all three languages, has no tools, `{ mode: "all" }` product access and the `test` channel only).
  * `agentPatchSchema` shares the same field rules but applies NO top-level defaults, so patching
- * `{ name }` yields exactly `{ name }`; `status` is patchable; an empty patch is rejected. Nested
- * objects (`escalation`, `limits`, `productAccess`) are replaced wholesale by a patch, so
- * `limits` defaults fill missing keys inside a `limits` value that is sent. `role` is fixed at
- * creation and is not patchable.
+ * `{ name }` yields exactly `{ name }`; `status` and `role` are patchable; an empty patch is rejected.
+ * Nested objects (`escalation`, `limits`, `productAccess`) are replaced WHOLESALE by a patch and
+ * carry no defaults there: a `limits` patch must give all three limits, and an `escalation` patch
+ * replaces the whole object, so omitting `maxTurnsBeforeHandover` clears it. `role` is a label and
+ * template choice, not a behaviour field, so it is not in `VERSIONED_FIELDS`.
  *
  * MANAGED FIELDS. `id`, `organizationId`, `version`, `createdBy`, `createdAt`, `updatedAt` and
  * `nameLower` are never read from a client: object schemas strip unknown keys and the service
@@ -187,13 +188,23 @@ const intInRange = (min: number, max: number) => {
     .max(max, { error: message });
 };
 
-const limitsSchema = z.object({
-  maxTurnsPerSession: intInRange(1, 100).default(DEFAULT_LIMITS.maxTurnsPerSession),
-  maxToolCallsPerTurn: intInRange(1, 6).default(DEFAULT_LIMITS.maxToolCallsPerTurn),
-  maxOutputTokens: intInRange(100, 2000).default(DEFAULT_LIMITS.maxOutputTokens),
+/** The limits shape, defined once with NO defaults (the PATCH form: all three are required). */
+const limitsFields = {
+  maxTurnsPerSession: intInRange(1, 100),
+  maxToolCallsPerTurn: intInRange(1, 6),
+  maxOutputTokens: intInRange(100, 2000),
+};
+const limitsSchema = z.object(limitsFields);
+/** Create form: the same fields with per-field defaults. */
+const limitsWithDefaultsSchema = z.object({
+  maxTurnsPerSession: limitsFields.maxTurnsPerSession.default(DEFAULT_LIMITS.maxTurnsPerSession),
+  maxToolCallsPerTurn: limitsFields.maxToolCallsPerTurn.default(DEFAULT_LIMITS.maxToolCallsPerTurn),
+  maxOutputTokens: limitsFields.maxOutputTokens.default(DEFAULT_LIMITS.maxOutputTokens),
 });
 
 const modelCore = z.string().trim().min(1).max(100, { error: "Use 100 characters or fewer" });
+
+const roleSchema = z.enum(AGENT_ROLES, { error: "Choose a role" });
 
 /** Rules shared verbatim by create and PATCH. None of them carries a default. */
 const sharedFields = {
@@ -219,7 +230,7 @@ const sharedFields = {
 export const agentInputSchema = z
   .object({
     name: sharedFields.name,
-    role: z.enum(AGENT_ROLES, { error: "Choose a role" }),
+    role: roleSchema,
     status: sharedFields.status.default("inactive"),
     description: sharedFields.description.default(""),
     personality: sharedFields.personality.default(""),
@@ -230,7 +241,7 @@ export const agentInputSchema = z
     productAccess: sharedFields.productAccess.default({ mode: "all" }),
     channels: sharedFields.channels.default(["test"]),
     escalation: sharedFields.escalation.default({ keywords: [], onMissingInfo: true }),
-    limits: sharedFields.limits.default({ ...DEFAULT_LIMITS }),
+    limits: limitsWithDefaultsSchema.default({ ...DEFAULT_LIMITS }),
     responseStyle: sharedFields.responseStyle.default("concise"),
     model: omitWhenBlank(modelCore, "Use 100 characters or fewer"),
   })
@@ -244,6 +255,7 @@ export const agentInputSchema = z
 export const agentPatchSchema = z
   .object({
     name: sharedFields.name,
+    role: roleSchema,
     status: sharedFields.status,
     description: sharedFields.description,
     personality: sharedFields.personality,

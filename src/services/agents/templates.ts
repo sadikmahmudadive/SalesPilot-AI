@@ -7,23 +7,23 @@
  */
 import type { AgentInput, AgentRole } from "@/schemas/agent";
 
-export type AgentTemplate = Pick<
-  AgentInput,
-  | "description"
-  | "personality"
-  | "instructions"
-  | "objectives"
-  | "tools"
-  | "languages"
-  | "responseStyle"
->;
+/** A template is immutable (deeply frozen); copy the arrays before putting them in form state. */
+export type AgentTemplate = Readonly<{
+  description: AgentInput["description"];
+  personality: AgentInput["personality"];
+  instructions: AgentInput["instructions"];
+  objectives: readonly AgentInput["objectives"][number][];
+  tools: readonly AgentInput["tools"][number][];
+  languages: readonly AgentInput["languages"][number][];
+  responseStyle: AgentInput["responseStyle"];
+}>;
 
 const GROUNDING = [
   "Always use your tools for prices, stock and order totals. Never guess or remember them; if a tool gives no answer, say you will check.",
   "If you are unsure, the customer is upset, or you cannot find what they need, offer to connect them with a human teammate.",
 ];
 
-export const AGENT_TEMPLATES: Readonly<Record<AgentRole, AgentTemplate>> = {
+const TEMPLATES: Record<AgentRole, AgentTemplate> = {
   retail_sales: {
     description:
       "Helps individual shoppers find products, check prices and stock, and decide what to buy.",
@@ -146,7 +146,7 @@ export const AGENT_TEMPLATES: Readonly<Record<AgentRole, AgentTemplate>> = {
       "Natural, upbeat and conversational. Speaks in short sentences and one idea at a time, as if on a phone call.",
     instructions: [
       "You are a voice sales assistant. Your replies will be spoken aloud, so use one or two short sentences, no lists and no symbols.",
-      "Say prices in words the way a person would, for example two hundred fifty taka. Ask one question at a time.",
+      "Write every price as digits followed by the word taka; text-to-speech reads them aloud, and your tools return exact amounts. Never spell prices out in words or round them. Ask one question at a time.",
       ...GROUNDING,
       "Save the caller's name and phone number with the customer tool once they share them.",
       'Useful Bangla phrases: "জি, বলুন" (Yes, please go ahead) and "এক মিনিট, দেখে বলছি" (One minute, let me check).',
@@ -169,3 +169,18 @@ export const AGENT_TEMPLATES: Readonly<Record<AgentRole, AgentTemplate>> = {
     responseStyle: "concise",
   },
 };
+
+function freezeTemplate(t: AgentTemplate): AgentTemplate {
+  Object.freeze(t.objectives);
+  Object.freeze(t.tools);
+  Object.freeze(t.languages);
+  return Object.freeze(t);
+}
+
+export const AGENT_TEMPLATES: Readonly<Record<AgentRole, AgentTemplate>> = Object.freeze({
+  retail_sales: freezeTemplate(TEMPLATES.retail_sales),
+  wholesale_sales: freezeTemplate(TEMPLATES.wholesale_sales),
+  customer_support: freezeTemplate(TEMPLATES.customer_support),
+  order_management: freezeTemplate(TEMPLATES.order_management),
+  voice_sales: freezeTemplate(TEMPLATES.voice_sales),
+});

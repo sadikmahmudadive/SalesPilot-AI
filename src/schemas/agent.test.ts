@@ -300,7 +300,7 @@ describe("agentPatchSchema", () => {
 
   it("strips managed keys alongside valid ones", () => {
     expect(
-      patchOk({ name: "A", version: 9, organizationId: "x", createdBy: "y", role: "voice_sales" }),
+      patchOk({ name: "A", version: 9, organizationId: "x", createdBy: "y", nameLower: "z" }),
     ).toEqual({ name: "A" });
   });
 
@@ -336,8 +336,41 @@ describe("agentPatchSchema", () => {
 
   it("replaces nested objects wholesale (nested defaults only fill that object)", () => {
     expect(patchOk({ productAccess: { mode: "all" } })).toEqual({ productAccess: { mode: "all" } });
-    expect(patchOk({ limits: { maxTurnsPerSession: 10 } })).toEqual({
-      limits: { maxTurnsPerSession: 10, maxToolCallsPerTurn: 4, maxOutputTokens: 600 },
+  });
+
+  it("requires all three limits in a limits patch and never fills in defaults", () => {
+    expect(patchBad({ limits: {} }).success).toBe(false);
+    expect(patchBad({ limits: { maxTurnsPerSession: 10 } }).success).toBe(false);
+    expect(patchBad({ limits: { maxTurnsPerSession: 10, maxToolCallsPerTurn: 2 } }).success).toBe(
+      false,
+    );
+    const full = { maxTurnsPerSession: 10, maxToolCallsPerTurn: 2, maxOutputTokens: 300 };
+    expect(patchOk({ limits: full })).toEqual({ limits: full });
+  });
+
+  it("replaces escalation wholesale, so omitting maxTurnsBeforeHandover clears it", () => {
+    const out = patchOk({ escalation: { keywords: ["refund"], onMissingInfo: false } });
+    expect(out).toEqual({ escalation: { keywords: ["refund"], onMissingInfo: false } });
+    expect(out.escalation).not.toHaveProperty("maxTurnsBeforeHandover");
+    expect(
+      patchOk({
+        escalation: { keywords: [], onMissingInfo: true, maxTurnsBeforeHandover: 5 },
+      }).escalation?.maxTurnsBeforeHandover,
+    ).toBe(5);
+    expect(patchBad({ escalation: { keywords: [] } }).success).toBe(false);
+  });
+
+  it("allows the role to be changed but it is not a versioned field", () => {
+    expect(patchOk({ role: "voice_sales" })).toEqual({ role: "voice_sales" });
+    expect(patchOk({ name: "A", role: "customer_support" })).toEqual({
+      name: "A",
+      role: "customer_support",
     });
+    const secret = "SECRET-ROLE-123";
+    const r = patchBad({ role: secret });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).not.toContain(secret);
+    expect(r.error?.issues[0]?.message).toBe("Choose a role");
+    expect((VERSIONED_FIELDS as readonly string[]).includes("role")).toBe(false);
   });
 });

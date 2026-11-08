@@ -1,8 +1,11 @@
 import {
   AGENT_LANGUAGES,
   AGENT_ROLES,
+  type AgentChannel,
   type AgentLanguage,
   type AgentRole,
+  type AgentStatus,
+  type ResponseStyle,
   type ToolName,
 } from "@/schemas/agent";
 
@@ -66,6 +69,22 @@ export const TOOL_LABELS: Readonly<Record<ToolName, { name: string; description:
     name: "Escalate to human",
     description: "Hands the conversation over to a team member.",
   },
+};
+
+export const AGENT_CHANNEL_LABELS: Readonly<Record<AgentChannel, string>> = {
+  test: "Test console",
+  whatsapp: "WhatsApp",
+  voice: "Voice",
+};
+
+export const RESPONSE_STYLE_LABELS: Readonly<Record<ResponseStyle, string>> = {
+  concise: "Concise",
+  detailed: "Detailed",
+};
+
+export const AGENT_STATUS_LABELS: Readonly<Record<AgentStatus, string>> = {
+  active: "Active",
+  inactive: "Inactive",
 };
 
 /** Use where the human team role could be confused with an AI agent. */
