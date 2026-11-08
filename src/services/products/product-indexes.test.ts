@@ -107,9 +107,16 @@ describe("other collections in firestore.indexes.json", () => {
     expect(of("customers")).toHaveLength(31);
   });
 
-  it("holds exactly the category list index (and no other collection group but inventory)", () => {
+  it("holds exactly the category list index (and no other collection group but inventory and agents)", () => {
     expect(of("categories").map(canon)).toEqual([canon(CATEGORY_LIST_INDEX)]);
     const groups = new Set(file.indexes.map((i) => i.collectionGroup));
-    expect([...groups].sort()).toEqual(["categories", "customers", "inventory", "products"]);
+    expect([...groups].sort()).toEqual([
+      "agentSessions",
+      "agents",
+      "categories",
+      "customers",
+      "inventory",
+      "products",
+    ]);
   });
 });

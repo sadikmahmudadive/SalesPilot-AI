@@ -79,6 +79,23 @@ service cloud.firestore {
       }
     }
 
+    // AI agent configuration: readable by members of the agent's organization, written by the
+    // server only.
+    match /agents/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+    }
+
+    // Test-chat sessions and their messages hold customer conversation text: server only
+    // (Admin SDK). Explicit so the intent survives a future change of the default.
+    match /agentSessions/{id} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
     // Confirmed Cloudinary uploads: written and read by the server only (Admin SDK). The products
     // service trusts these records, so no client may read or forge one.
     match /uploads/{id} {
