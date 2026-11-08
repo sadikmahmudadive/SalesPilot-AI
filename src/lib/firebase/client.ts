@@ -7,8 +7,6 @@ import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 
 import { getClientEnv } from "@/config/env.client";
 
-const AUTH_EMULATOR_URL = "http://127.0.0.1:9199";
-
 let authEmulatorConnected = false;
 
 function firebaseApp(): FirebaseApp {
@@ -26,8 +24,11 @@ function firebaseApp(): FirebaseApp {
 
 export function getFirebaseAuth(): Auth {
   const auth = getAuth(firebaseApp());
-  if (getClientEnv().NEXT_PUBLIC_USE_EMULATORS && !authEmulatorConnected) {
-    connectAuthEmulator(auth, AUTH_EMULATOR_URL, { disableWarnings: true });
+  const env = getClientEnv();
+  if (env.NEXT_PUBLIC_USE_EMULATORS && !authEmulatorConnected) {
+    connectAuthEmulator(auth, env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL, {
+      disableWarnings: true,
+    });
     authEmulatorConnected = true;
   }
   return auth;

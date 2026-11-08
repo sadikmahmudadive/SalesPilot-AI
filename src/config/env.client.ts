@@ -20,6 +20,10 @@ const clientSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  // Only read when NEXT_PUBLIC_USE_EMULATORS=true; override when the Auth emulator is not on 9199.
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL: z
+    .url({ protocol: /^https?$/ })
+    .default("http://127.0.0.1:9199"),
 });
 
 export type ClientEnv = z.infer<typeof clientSchema>;
@@ -39,6 +43,7 @@ export function getClientEnv(): ClientEnv {
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     NEXT_PUBLIC_USE_EMULATORS: process.env.NEXT_PUBLIC_USE_EMULATORS,
+    NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL: process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL,
   });
   const result = clientSchema.safeParse(raw);
   if (!result.success) failWithNames("client", result.error);

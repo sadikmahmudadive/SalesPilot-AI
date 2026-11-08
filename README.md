@@ -115,7 +115,7 @@ The Firestore emulator runs as a Java process that `firebase emulators:exec` can
   ```
 
 - If a port is held by a leftover `java` process from an earlier run, stop that process yourself (for example `Stop-Process -Id <pid>` after confirming the PID with the command above). Nothing in this repo kills processes for you.
-- If the default ports are taken by something you cannot stop, copy `firebase.json` to a temporary file with different `firestore.port` and `auth.port`, point both the emulator command (`--config <file>`) and the host variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) at the new ports, and delete the temporary file afterwards. Do not commit it.
+- If the default ports are taken by something you cannot stop, copy `firebase.json` to a temporary file with different `firestore.port` and `auth.port`, point both the emulator command (`--config <file>`) and the host variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) at the new ports, and delete the temporary file afterwards. Do not commit it. If you run `npm run dev` against a non-default Auth port, also set `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL` (for example `http://127.0.0.1:9299`) in `.env.local`; the browser SDK otherwise looks for the Auth emulator on 9199.
 
 ## Setup guides
 
