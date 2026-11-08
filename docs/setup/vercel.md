@@ -9,7 +9,7 @@ This deployment has not been performed yet.
 1. Vercel dashboard > Add New > Project > Import the GitHub repository.
 2. Framework Preset: Next.js (detected automatically).
 3. Root Directory: the repository root (single npm package, no monorepo).
-4. Node.js Version: 20.x or newer (Project Settings > General). `package.json` requires `>=20.11`.
+4. Node.js Version: 22.x or 24.x (22.12 or newer) (Project Settings > General). `package.json` requires `>=22.12`: firebase-admin 14 needs Node 22, and `jwks-rsa` 4 needs the native `require(esm)` that arrived in 22.12. Node 20 fails with `ERR_REQUIRE_ESM` (see the README, "Dependency overrides").
 5. Install command: `npm install` (the default when `package-lock.json` is present). Use npm only.
 
 ## 2. Build settings

@@ -21,7 +21,7 @@ The design is in [docs/superpowers/specs/2026-11-06-foundation-core-data-design.
 
 ## Prerequisites
 
-- Node.js 20.11 or newer (`engines` in `package.json`) and npm. Use npm only; the lockfile is `package-lock.json`.
+- Node.js 22.x or 24.x (22.12 or newer; `engines` in `package.json`) and npm. Use npm only; the lockfile is `package-lock.json`. Node 20 is not supported: `firebase-admin` 14 requires Node 22, and on Node 20 `jwks-rsa` fails with `ERR_REQUIRE_ESM` when it loads `jose`.
 - Java 21 or newer on `PATH`. The Firestore emulator needs it.
 - `firebase-tools`. It is a dev dependency, so `npx firebase` works after `npm install`; no global install is required.
 
@@ -84,6 +84,15 @@ src/app (routes, UI) -> src/services (business rules) -> src/repositories (Fires
 - **Firestore rules** (`firestore.rules`) let a member read their own organization's documents and deny every client write. Cross-organization access is denied. Rules are tested in `tests/rules/tenancy.rules.test.ts`.
 - **Money** is stored as integer minor units (BDT). **Phone numbers** are normalized to E.164 and unique per organization. **Inventory** reserve, release and commit are server-only transactions; manual adjustments go through `/api/inventory/adjust` with a reason.
 - **Indexes.** Composite indexes for the customer, product and inventory lists are in `firestore.indexes.json` and must be deployed to any real project (see the Firebase guide).
+
+## Dependency overrides
+
+`package.json` pins `jwks-rsa` to `jose@4.15.9` through `overrides`.
+
+- **Why.** `jwks-rsa` 4 depends on `jose@6`, which is ESM-only. When the package is loaded with `require()` on an older Node, or through a bundling path that does not support `require(esm)`, it fails with `ERR_REQUIRE_ESM`. The override gives `jwks-rsa` the dual-format `jose@4` instead.
+- **Is 4.15.9 enough?** `jwks-rsa` only uses `importJWK`, `exportSPKI`, `decodeJwt` and `decodeProtectedHeader`, all present in `jose` 4.15.9, which also contains the fix for CVE-2024-28176.
+- **Where it matters.** `jwks-rsa` is reached only through `firebase-admin`'s App Check and phone-number verification code paths. Session cookies and ID tokens (the paths this app uses) verify with `firebase-admin`'s own keys code.
+- **Rule.** On any `firebase-admin` or `jwks-rsa` upgrade, re-check which `jose` APIs `jwks-rsa` calls, and try removing the override on Node 22.12 or newer. Remove it if everything still loads (`node -e "require('firebase-admin/auth'); require('jwks-rsa')"`) and the tests pass.
 
 ## Real versus mock
 

@@ -3,6 +3,7 @@ import { securityHeaders } from "./src/config/security-headers";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // firebase-admin is already in Next's default external list; kept only to make the intent explicit.
   serverExternalPackages: ["firebase-admin"],
   async headers() {
     // Fail closed: only `next dev` gets the relaxed policy; any other NODE_ENV
