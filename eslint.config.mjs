@@ -12,7 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    "public/**",
+    // Generated design source, never shipped (see docs/brand/README.md).
+    "docs/brand/**",
   ]),
 ]);
 
