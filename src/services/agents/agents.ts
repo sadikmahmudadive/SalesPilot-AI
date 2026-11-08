@@ -37,7 +37,7 @@ import { FieldValue, type Transaction } from "firebase-admin/firestore";
 
 import { NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
-import { DEFAULT_LIMIT, MAX_LIMIT } from "@/lib/list-params";
+import { DEFAULT_LIMIT, MAX_LIMIT, resolveListLimit } from "@/lib/list-params";
 import { assertEntityId, assertOrgCtx } from "@/lib/org-context";
 import { writeAuditInTransaction } from "@/lib/security/audit";
 import { stableJson } from "@/lib/stable-json";
@@ -169,10 +169,7 @@ export async function getAgent(ctx: AgentCtx, id: string): Promise<Agent> {
 
 export async function listAgents(ctx: AgentCtx, q: AgentListQuery): Promise<AgentPage> {
   assertCtx(ctx);
-  const limit = q.limit ?? DEFAULT_LIMIT;
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-    throw invalid("limit", `Limit must be an integer between 1 and ${MAX_LIMIT}`);
-  }
+  const limit = resolveListLimit(q.limit, { defaultLimit: DEFAULT_LIMIT, maxLimit: MAX_LIMIT });
   const page = await agentRepo.list(ctx.organizationId, {
     orderBy: ["updatedAt", "desc"],
     limit,

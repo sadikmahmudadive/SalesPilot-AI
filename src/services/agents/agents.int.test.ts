@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { Timestamp } from "firebase-admin/firestore";
+
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NotFoundError, ValidationError } from "@/lib/errors";
@@ -47,6 +49,22 @@ const auditsOf = async (ctx: { organizationId: string }, action?: string) =>
   (await docsOf("auditLogs", ctx.organizationId)).filter(
     (d) => action === undefined || d.get("action") === action,
   );
+/**
+ * Gives the agents distinct, explicit `updatedAt` values (index 0 oldest, a few seconds apart, all
+ * in the past), so list order never depends on server-timestamp resolution or the random id
+ * tie-break.
+ */
+async function seedDistinctUpdatedAt(ids: string[]) {
+  const base = Date.now() - 600_000;
+  await Promise.all(
+    ids.map((id, i) =>
+      db()
+        .collection("agents")
+        .doc(id)
+        .update({ updatedAt: Timestamp.fromMillis(base + i * 5000) }),
+    ),
+  );
+}
 const rawAgent = async (id: string) => (await db().collection("agents").doc(id).get()).data()!;
 const rejection = async (p: Promise<unknown>): Promise<unknown> =>
   p.then(
@@ -403,6 +421,7 @@ describe("listAgents", () => {
     const a = await createAgent(ctx, make({ name: "A" }));
     const b = await createAgent(ctx, make({ name: "B" }));
     const c = await createAgent(ctx, make({ name: "C" }));
+    await seedDistinctUpdatedAt([a.id, b.id, c.id]);
     expect((await listAgents(ctx, {})).items.map((x) => x.id)).toEqual([c.id, b.id, a.id]);
 
     await updateAgent(ctx, a.id, patch({ name: "A2" }));
@@ -416,6 +435,7 @@ describe("listAgents", () => {
     const ctx = newCtx();
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) ids.push((await createAgent(ctx, make())).id);
+    await seedDistinctUpdatedAt(ids);
 
     const seen: string[] = [];
     let cursor: string | undefined;
