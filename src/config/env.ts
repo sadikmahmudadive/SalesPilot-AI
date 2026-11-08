@@ -24,8 +24,11 @@ const serverShape = {
       key
         .trim()
         .replace(/^["']|["']$/g, "")
+        .trim()
         .replace(/\\n/g, "\n"),
     )
+    // A value that is only quotes / whitespace becomes empty: reject it (names the variable only).
+    .pipe(z.string().min(1))
     .optional(),
   FIRESTORE_EMULATOR_HOST: optional,
   FIREBASE_AUTH_EMULATOR_HOST: optional,

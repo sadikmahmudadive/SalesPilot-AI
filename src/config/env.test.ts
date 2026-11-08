@@ -175,6 +175,50 @@ describe("getServerEnv", () => {
     expect(env.FIREBASE_PRIVATE_KEY).not.toContain("\\n");
   });
 
+  describe("FIREBASE_PRIVATE_KEY parsing", () => {
+    // As written in a .env file: backslash-n pairs, not real newlines.
+    const PEM = "-----BEGIN KEY-----\\nabc\\n-----END KEY-----\\n";
+    const PEM_REAL = "-----BEGIN KEY-----\nabc\n-----END KEY-----\n";
+    const keyFor = (raw: string): string | undefined => {
+      __resetEnvCacheForTests();
+      stubAll({ ...SERVER_VALUES, FIREBASE_PRIVATE_KEY: raw });
+      return getServerEnv().FIREBASE_PRIVATE_KEY;
+    };
+
+    it("strips surrounding double quotes", () => {
+      expect(keyFor(`"${PEM}"`)).toBe(PEM_REAL);
+    });
+
+    it("strips surrounding single quotes", () => {
+      expect(keyFor(`'${PEM}'`)).toBe(PEM_REAL);
+    });
+
+    it("trims surrounding whitespace (and quotes inside it)", () => {
+      expect(keyFor(`  ${PEM}  `)).toBe(PEM_REAL);
+      expect(keyFor(`  "${PEM}"  `)).toBe(PEM_REAL);
+    });
+
+    it("converts escaped \\n sequences to real newlines", () => {
+      expect(keyFor(PEM)).toBe(PEM_REAL);
+    });
+
+    it.each(['""', "''", '"   "', "   "])(
+      "rejects %j, naming the variable and not the value",
+      (raw) => {
+        __resetEnvCacheForTests();
+        stubAll({ ...SERVER_VALUES, FIREBASE_PRIVATE_KEY: raw });
+        let message = "";
+        try {
+          getServerEnv();
+        } catch (error) {
+          message = (error as Error).message;
+        }
+        expect(message).toContain("FIREBASE_PRIVATE_KEY");
+        expect(message).not.toContain("BEGIN");
+      },
+    );
+  });
+
   it("defaults SESSION_COOKIE_MAX_DAYS to 5 and accepts 1-14", () => {
     stubAll(SERVER_VALUES);
     expect(getServerEnv().SESSION_COOKIE_MAX_DAYS).toBe(5);
