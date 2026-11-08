@@ -14,6 +14,7 @@ import { getServerEnv } from "@/config/env";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/redirect";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminAuth } from "@/lib/firebase/admin";
+import { logger } from "@/lib/logger";
 
 // Defined in the pure redirect module so the proxy can share it; re-exported for server code.
 export { SESSION_COOKIE_NAME };
@@ -75,9 +76,49 @@ export async function createSessionCookie(
   }
 }
 
+/** Firebase Auth error code of `err` when it has one (e.g. `auth/session-cookie-expired`). */
+function errorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 /**
- * Verifies a session cookie value, including revocation. Returns null on ANY failure
- * (missing, malformed, tampered, expired, revoked, SDK/network error). Never throws.
+ * True when `err` means "this cookie / its user is not valid" (so the caller should treat the
+ * request as signed out), as opposed to "we could not find out" (network, quota, 5xx, bad server
+ * credentials), which must not sign the user out.
+ *
+ * Token and user problems from firebase-admin carry `auth/...` codes (`auth/session-cookie-expired`,
+ * `auth/session-cookie-revoked`, `auth/argument-error`, `auth/invalid-session-cookie-duration`,
+ * `auth/user-disabled`, `auth/user-not-found`, ...). Two cases are infrastructure despite the prefix:
+ * - `auth/internal-error`: the SDK's code for an unexpected backend or transport response.
+ * - `auth/argument-error` that is not about the cookie: when firebase-admin cannot download Google's
+ *   public certificates it reports the failure as `auth/argument-error` with the fetch error text.
+ *   Genuine cookie problems always name the "Firebase session cookie" in their message.
+ */
+function isInvalidSessionError(err: unknown): boolean {
+  const code = errorCode(err);
+  if (code === undefined || !code.startsWith("auth/")) return false;
+  if (code === "auth/internal-error") return false;
+  if (code === "auth/argument-error") {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) {
+      return /session cookie/i.test(message);
+    }
+  }
+  return true;
+}
+
+/**
+ * Verifies a session cookie value, including revocation.
+ *
+ * Returns null when there is no usable session: missing/empty input, or Firebase says the cookie or
+ * its user is invalid (malformed, tampered, expired, revoked, user disabled/deleted).
+ *
+ * Any other failure (network, quota, 5xx, `auth/internal-error`, missing server credentials) means we
+ * could not decide, so it is logged (error code only, never the cookie) and RETHROWN: callers answer
+ * 500 / render the error boundary and the browser keeps its cookie instead of being signed out by a
+ * transient outage.
  */
 export async function verifySessionValue(value: string | undefined): Promise<SessionUser | null> {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -85,8 +126,10 @@ export async function verifySessionValue(value: string | undefined): Promise<Ses
     const decoded = await adminAuth().verifySessionCookie(value, true);
     if (!decoded || typeof decoded.uid !== "string" || decoded.uid.length === 0) return null;
     return { uid: decoded.uid, email: typeof decoded.email === "string" ? decoded.email : null };
-  } catch {
-    return null;
+  } catch (err) {
+    if (isInvalidSessionError(err)) return null;
+    logger.warn("session_verify_unavailable", { code: errorCode(err) ?? "unknown" });
+    throw err;
   }
 }
 
@@ -139,7 +182,10 @@ export function clearSessionCookie(): string {
   return build("", 0, ["Expires=Thu, 01 Jan 1970 00:00:00 GMT"]);
 }
 
-/** Current user from the request's session cookie, or null. Call within a request scope. */
+/**
+ * Current user from the request's session cookie, or null. Call within a request scope.
+ * Rejects (does not return null) if verification could not be completed; see `verifySessionValue`.
+ */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   // Imported lazily so tests importing this module need no Next request scope. Errors from
   // cookies() are deliberately not caught: Next uses them to detect dynamic rendering.

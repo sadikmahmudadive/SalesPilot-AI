@@ -144,19 +144,68 @@ describe("verifySessionValue", () => {
     expect(auth.verifySessionCookie).not.toHaveBeenCalled();
   });
 
-  it("returns null (never throws) on any SDK failure", async () => {
-    auth.verifySessionCookie.mockRejectedValue(new Error("revoked"));
+  it.each([
+    "auth/session-cookie-expired",
+    "auth/session-cookie-revoked",
+    "auth/invalid-session-cookie",
+    "auth/argument-error",
+    "auth/user-disabled",
+    "auth/user-not-found",
+  ])("returns null for the Firebase Auth token/user error %s", async (code) => {
+    auth.verifySessionCookie.mockRejectedValue(
+      Object.assign(new Error("Firebase session cookie problem"), { code }),
+    );
     await expect(verifySessionValue("v")).resolves.toBeNull();
   });
 
-  it("returns null if the SDK throws synchronously", async () => {
+  it("returns null for an argument error that names the session cookie (decode / signature)", async () => {
+    auth.verifySessionCookie.mockRejectedValue(
+      Object.assign(new Error("Firebase session cookie has invalid signature."), {
+        code: "auth/argument-error",
+      }),
+    );
+    await expect(verifySessionValue("v")).resolves.toBeNull();
+  });
+
+  it.each([
+    [
+      "a plain network error",
+      Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }),
+    ],
+    ["an SDK internal error", Object.assign(new Error("boom"), { code: "auth/internal-error" })],
+    ["an app-level network error", Object.assign(new Error("x"), { code: "app/network-error" })],
+    ["an error without a code", new Error("503 Service Unavailable")],
+    [
+      "a failure to fetch Google's public keys (reported as argument-error)",
+      Object.assign(new Error("Error fetching public keys for Google certs: 503"), {
+        code: "auth/argument-error",
+      }),
+    ],
+  ])("rethrows %s and logs only its code", async (_label, error) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const COOKIE = "header.payload.SIGNATURE-secret-cookie-value";
+    auth.verifySessionCookie.mockRejectedValue(error);
+    await expect(verifySessionValue(COOKIE)).rejects.toBe(error);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = String(warn.mock.calls[0]![0]);
+    expect(line).toContain("session_verify_unavailable");
+    expect(line).not.toContain(COOKIE);
+    expect(line).not.toContain("SIGNATURE");
+    expect(line).not.toContain((error as Error).message);
+    warn.mockRestore();
+  });
+
+  it("rethrows if the SDK throws synchronously with a non-auth error", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     auth.verifySessionCookie.mockImplementation(() => {
       throw new Error("sync");
     });
-    await expect(verifySessionValue("v")).resolves.toBeNull();
+    await expect(verifySessionValue("v")).rejects.toThrow("sync");
+    warn.mockRestore();
   });
 
-  it("returns null if adminAuth() itself is unavailable", async () => {
+  it("rethrows if adminAuth() itself is unavailable (server misconfiguration is not a sign-out)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.resetModules();
     vi.doMock("@/lib/firebase/admin", () => ({
       adminAuth: () => {
@@ -165,8 +214,9 @@ describe("verifySessionValue", () => {
     }));
     vi.doMock("@/config/env", () => ({ getServerEnv: () => envState }));
     const fresh = await import("./session");
-    await expect(fresh.verifySessionValue("v")).resolves.toBeNull();
+    await expect(fresh.verifySessionValue("v")).rejects.toThrow("no credentials");
     vi.doUnmock("@/lib/firebase/admin");
+    warn.mockRestore();
   });
 
   it("returns null when the decoded token has no uid", async () => {
