@@ -17,6 +17,12 @@ export interface ToolContext {
   sessionId: string;
   channel: AgentChannel;
   actorUid: string;
+  /**
+   * Marks the session as escalated to a human (status + reason). Provided by the session layer
+   * (the engine wires it); `escalate_to_human` calls it on live channels only, and fails closed
+   * (`failed`) when it is absent. Never called on the test channel.
+   */
+  escalateSession?: (sessionId: string, reason: string) => Promise<void>;
 }
 
 /** What a write tool WOULD have done (test channel): returned instead of writing. */

@@ -12,8 +12,8 @@
  *   4. a thrown error becomes `failed`, logged with the tool name and an error code only.
  * Messages are static (see TOOL_MESSAGES): arguments are never echoed.
  *
- * CRM tools (lookup_customer, save_customer_info, escalate_to_human) are added to TOOL_REGISTRY
- * by a later task; until then they are allowed-but-unimplemented and execute as `denied`.
+ * WRITES. The write tools (save_customer_info, escalate_to_human) decide dry-run vs live from
+ * `ctx.channel` alone: `test` never writes, `whatsapp` / `voice` do.
  */
 import "server-only";
 
@@ -23,36 +23,42 @@ import { toStrictJsonSchema } from "@/lib/ai/strict-schema";
 import type { ToolSpec } from "@/lib/ai/provider";
 
 import { checkStockTool } from "./check-stock";
+import { escalateTool } from "./escalate";
 import { getPriceTool } from "./get-price";
+import { lookupCustomerTool } from "./lookup-customer";
 import { orderTotalTool } from "./order-total";
 import { productDetailsTool } from "./product-details";
+import { saveCustomerInfoTool } from "./save-customer-info";
 import { searchProductsTool } from "./search-products";
 import { toolFailure, type AgentTool, type ToolContext, type ToolOutcome } from "./types";
 
-export const TOOL_REGISTRY: Readonly<Partial<Record<ToolName, AgentTool<unknown, unknown>>>> =
-  Object.freeze({
+export const TOOL_REGISTRY: Readonly<Record<ToolName, AgentTool<unknown, unknown>>> = Object.freeze(
+  {
     search_products: searchProductsTool,
     get_product_details: productDetailsTool,
     get_price: getPriceTool,
     check_stock: checkStockTool,
     calculate_order_total: orderTotalTool,
-  });
+    lookup_customer: lookupCustomerTool,
+    save_customer_info: saveCustomerInfoTool,
+    escalate_to_human: escalateTool,
+  },
+);
 
 const isToolName = (name: string): name is ToolName =>
   (TOOL_NAMES as readonly string[]).includes(name);
 
-/** The registered tool the agent may use, or undefined. */
+/** The tool the agent may use, or undefined. */
 function allowedTool(agent: Agent, name: string): AgentTool<unknown, unknown> | undefined {
   if (!isToolName(name) || !agent.tools.includes(name)) return undefined;
   return TOOL_REGISTRY[name];
 }
 
-/** Provider tool specs for the agent's allowed (and implemented) tools, strict schemas. */
+/** Provider tool specs for the agent's allowed tools, strict schemas. */
 export function toolSpecsFor(agent: Agent): ToolSpec[] {
   const specs: ToolSpec[] = [];
   for (const name of agent.tools) {
     const tool = TOOL_REGISTRY[name];
-    if (!tool) continue;
     specs.push({
       name: tool.name,
       description: tool.description,

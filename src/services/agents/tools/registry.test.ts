@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { toStrictJsonSchema } from "@/lib/ai/strict-schema";
 import { TOOL_NAMES, agentInputSchema, type Agent, type ToolName } from "@/schemas/agent";
 
 import { PRODUCT_LIST_INDEXES, toFirestoreIndex } from "@/services/products/product-indexes";
@@ -60,6 +61,21 @@ function assertStrictObjects(node: StrictNode): void {
 }
 
 describe("TOOL_REGISTRY", () => {
+  it("registers all eight tools under their own name, and each converts to a strict schema", () => {
+    expect(Object.keys(TOOL_REGISTRY).sort()).toEqual([...TOOL_NAMES].sort());
+    for (const name of TOOL_NAMES) {
+      const tool = TOOL_REGISTRY[name];
+      expect(tool.name).toBe(name);
+      const schema = toStrictJsonSchema(tool.input);
+      expect(schema.type).toBe("object");
+      assertStrictObjects(schema as StrictNode);
+    }
+    expect(TOOL_NAMES.filter((n) => TOOL_REGISTRY[n].writes).sort()).toEqual([
+      "escalate_to_human",
+      "save_customer_info",
+    ]);
+  });
+
   it("registers the five catalog tools, read-only, keyed by their own name", () => {
     for (const name of CATALOG) {
       const tool = TOOL_REGISTRY[name];
@@ -98,9 +114,13 @@ describe("toolSpecsFor", () => {
     expect(toolSpecsFor(makeAgent({ tools: [] }))).toEqual([]);
   });
 
-  it("skips allowed tools that are not registered yet (CRM tools arrive later)", () => {
-    const agent = makeAgent({ tools: ["lookup_customer", "get_price"] });
-    expect(toolSpecsFor(agent).map((s) => s.name)).toEqual(["get_price"]);
+  it("includes the CRM tools when the agent has them", () => {
+    const agent = makeAgent({ tools: ["lookup_customer", "get_price", "escalate_to_human"] });
+    expect(toolSpecsFor(agent).map((s) => s.name)).toEqual([
+      "lookup_customer",
+      "get_price",
+      "escalate_to_human",
+    ]);
   });
 
   it("converts every registered tool to a strict schema", () => {
@@ -150,12 +170,19 @@ describe("executeTool (paths that never reach the database)", () => {
     }
   });
 
-  it("denies an allowed tool that has no implementation yet", async () => {
-    const crm = makeCtx(makeAgent({ tools: ["lookup_customer"] }));
+  it("validates CRM tool input before touching the database", async () => {
+    const crm = makeCtx(makeAgent({ tools: ["lookup_customer", "escalate_to_human"] }));
     expect(await executeTool(crm, "lookup_customer", "{}")).toMatchObject({
       ok: false,
-      code: "denied",
+      code: "invalid",
     });
+    expect(await executeTool(crm, "escalate_to_human", '{"reason":""}')).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
+    expect(
+      await executeTool(crm, "escalate_to_human", `{"reason":"${"x".repeat(301)}"}`),
+    ).toMatchObject({ ok: false, code: "invalid" });
   });
 
   it("denies when the agent belongs to another organization", async () => {
