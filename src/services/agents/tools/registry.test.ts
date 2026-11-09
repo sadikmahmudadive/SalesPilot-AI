@@ -9,7 +9,7 @@ import { PRODUCT_LIST_INDEXES, toFirestoreIndex } from "@/services/products/prod
 
 import { isProductInScope } from "./catalog-access";
 import { TOOL_REGISTRY, executeTool, normalizeNulls, toolSpecsFor } from "./registry";
-import { scoreFields, tokenize } from "./search-products";
+import { STOPWORDS, scoreFields, tokenize } from "./search-products";
 import type { ToolContext } from "./types";
 
 function makeAgent(over: Record<string, unknown> = {}): Agent {
@@ -260,6 +260,40 @@ describe("tokenize and scoreFields", () => {
     // Short field tokens never match in reverse ("a" is not a stem of "apple").
     expect(scoreFields(["apple"], f(["a"]))).toBe(0);
     expect(scoreFields(["bnx"], f(["bn"]))).toBe(0);
+  });
+
+  it("lets 1-2 character query tokens match only exactly (no prefix either way)", () => {
+    const f = (spec: string[]) => ({
+      name: [] as string[],
+      sku: [] as string[],
+      category: [] as string[],
+      spec,
+    });
+    expect(scoreFields(["xl"], f(["xl"]))).toBeGreaterThan(0);
+    expect(scoreFields(["xl"], f(["xlarge"]))).toBe(0);
+    expect(scoreFields(["m"], f(["m", "l"]))).toBeGreaterThan(0);
+    expect(scoreFields(["a"], f(["apple"]))).toBe(0);
+    expect(scoreFields(["do"], f(["dot"]))).toBe(0);
+  });
+
+  it("drops filler words from scoring, unless the query is only filler", () => {
+    const f = (name: string[]) => ({
+      name,
+      sku: [] as string[],
+      category: [] as string[],
+      spec: [] as string[],
+    });
+    expect(scoreFields(tokenize("do you have a red shirt"), f(["young", "dot", "apple"]))).toBe(0);
+    const real = scoreFields(tokenize("do you have a red shirt"), f(["red", "shirt"]));
+    expect(real).toBe(scoreFields(tokenize("red shirt"), f(["red", "shirt"])));
+    // Only filler: scored normally ("you" prefix-matches "young").
+    expect(scoreFields(tokenize("do you have"), f(["young"]))).toBeGreaterThan(0);
+    expect(scoreFields(tokenize("do you have"), f(["red"]))).toBe(0);
+    expect(scoreFields(tokenize("lal shirt ache"), f(["red", "shirt"]))).toBe(
+      scoreFields(tokenize("lal shirt"), f(["red", "shirt"])),
+    );
+    // Bangla-script filler words (escapes keep this file free of invisible characters).
+    expect(STOPWORDS.has(tokenize("আছে")[0]!)).toBe(true);
   });
 
   it("matches token prefixes, not substrings", () => {

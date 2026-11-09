@@ -16,6 +16,12 @@
  * query token matches a field token: forward when the field token starts with the query token,
  * and (tokens of 3+ characters) reverse when the query token starts with the field token, which
  * covers plurals and inflections ("shirts" ~ "shirt", Bangla "-er" endings) at a small penalty.
+ * Query tokens of 1-2 characters count only when they EQUAL a field token (no prefix match in
+ * either direction), so "xl" matches a size "xl" but not "xlarge", and "a" or "do" do not pile
+ * up matches on unrelated words. Filler words are also dropped from scoring (unless the query is
+ * only filler): English do, you, have, has, a, an, the, for, my, me, i, is, are, any, some,
+ * please, want, need, show; Banglish ache, ase, ki, chai, dao, den, koto; and the Bangla-script
+ * words for "is there", "what", "want", "give" and "how much" (see STOPWORDS).
  * Ranking: more matched tokens first, then the field weights (name > SKU > category name >
  * specification values), then the product name, then id. No match is an empty list, not an error.
  * There is no transliteration: Bangla and English spellings are different tokens.
@@ -55,6 +61,43 @@ export function tokenize(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
+/** Filler words ignored when scoring (see the header). Bangla entries are written as escapes. */
+export const STOPWORDS: ReadonlySet<string> = new Set([
+  "do",
+  "you",
+  "have",
+  "has",
+  "a",
+  "an",
+  "the",
+  "for",
+  "my",
+  "me",
+  "i",
+  "is",
+  "are",
+  "any",
+  "some",
+  "please",
+  "want",
+  "need",
+  "show",
+  "ache",
+  "ase",
+  "ki",
+  "chai",
+  "dao",
+  "den",
+  "koto",
+  "\u0986\u099b\u09c7",
+  "\u0995\u09bf",
+  "\u099a\u09be\u0987",
+  "\u09a6\u09bf\u09a8",
+  "\u0995\u09a4",
+]);
+/** Query tokens up to this length must equal a field token. */
+const MAX_EXACT_ONLY_LENGTH = 2;
+
 const WEIGHTS = { name: 40, sku: 30, category: 20, spec: 10 } as const;
 const EXACT_BONUS = 5;
 const REVERSE_PENALTY = 3;
@@ -74,14 +117,18 @@ export interface FieldTokens {
  * so the matched-token count dominates and field weights break ties.
  */
 export function scoreFields(queryTokens: readonly string[], fields: FieldTokens): number {
+  const meaningful = queryTokens.filter((q) => !STOPWORDS.has(q));
+  const tokens = meaningful.length > 0 ? meaningful : queryTokens;
   let matched = 0;
   let weights = 0;
-  for (const q of queryTokens) {
+  for (const q of tokens) {
     let best = 0;
     for (const key of ["name", "sku", "category", "spec"] as const) {
       for (const t of fields[key]) {
         let score = 0;
-        if (t.startsWith(q)) score = WEIGHTS[key] + (t === q ? EXACT_BONUS : 0);
+        if (q.length <= MAX_EXACT_ONLY_LENGTH) {
+          if (t === q) score = WEIGHTS[key] + EXACT_BONUS;
+        } else if (t.startsWith(q)) score = WEIGHTS[key] + (t === q ? EXACT_BONUS : 0);
         else if (t.length >= MIN_REVERSE_LENGTH && q.startsWith(t)) {
           score = WEIGHTS[key] - REVERSE_PENALTY;
         }

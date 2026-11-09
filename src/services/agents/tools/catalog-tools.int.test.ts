@@ -87,6 +87,7 @@ interface Seed {
   mug: string; // active, electronics, no variants, no stock
   hoodie: string; // draft, apparel
   cap: string; // archived, apparel
+  decoy: string; // active, no category: "Young Dot Apple" (filler-word bait)
   foreignShirt: string; // another organization
 }
 let seed: Seed;
@@ -186,6 +187,16 @@ beforeAll(async () => {
   await stock(ORG, cap.id, "default", 50);
   await archiveProduct(c, cap.id);
 
+  const decoy = await createProduct(
+    c,
+    productInputSchema.parse({
+      name: "Young Dot Apple",
+      sku: "YDA-1",
+      regularPriceMinor: 1000,
+      availability: "active",
+    }),
+  );
+
   const foreignCat = await createCategory(
     ctxOf(OTHER_ORG),
     categoryInputSchema.parse({ name: "Apparel" }),
@@ -212,6 +223,7 @@ beforeAll(async () => {
     mug: mug.id,
     hoodie: hoodie.id,
     cap: cap.id,
+    decoy: decoy.id,
     foreignShirt: foreignShirt.id,
   };
 }, 120_000);
@@ -257,7 +269,8 @@ describe("search_products", () => {
   it("finds by SKU (prefix and the full SKU)", async () => {
     expect(await searchIds(all(), { query: "tee" })).toEqual([seed.shirt]);
     expect(await searchIds(all(), { query: "TEE-001" })).toEqual([seed.shirt]);
-    expect((await searchIds(all(), { query: "bn-1" }))[0]).toBe(seed.bangla);
+    // "bn" is a 2-character token (exact match only) and matches the SKU token "bn" exactly.
+    expect((await searchIds(all(), { query: "bn-100" }))[0]).toBe(seed.bangla);
   });
 
   it("finds a Bangla product by a Bangla name token", async () => {
@@ -287,6 +300,15 @@ describe("search_products", () => {
     expect((await searchIds(all(), { query: "red cotton shirt for my son" }))[0]).toBe(seed.shirt);
     expect(await searchIds(all(), { query: "lal shirt ache?" })).toContain(seed.shirt);
     expect(await searchIds(all(), { query: "shirts" })).toEqual([seed.shirt]);
+  });
+
+  it("ignores filler words and short-token prefixes in natural phrasing", async () => {
+    const ids = await searchIds(all(), { query: "do you have a red shirt" });
+    expect(ids).toEqual([seed.shirt]);
+    expect(ids).not.toContain(seed.decoy);
+    // Only filler plus words that match nothing: empty, not junk.
+    expect(await searchIds(all(), { query: "do you have a xyzzy" })).toEqual([]);
+    expect(await searchIds(all(), { query: "please show me the plugh" })).toEqual([]);
   });
 
   it("matches Bangla inflections of a Bangla name", async () => {
@@ -347,12 +369,12 @@ describe("search_products", () => {
   });
 
   it("honours the optional categoryId filter and the limit", async () => {
-    const inCat = await searchIds(all(), { query: "e", categoryId: seed.electronics });
+    const inCat = await searchIds(all(), { query: "electronics", categoryId: seed.electronics });
     expect(inCat.sort()).toEqual([seed.speaker, seed.mug].sort());
     expect(
-      await searchIds(all(), { query: "e", categoryId: seed.electronics, limit: 1 }),
+      await searchIds(all(), { query: "electronics", categoryId: seed.electronics, limit: 1 }),
     ).toHaveLength(1);
-    expect(await searchIds(all(), { query: "e", categoryId: "nope" })).toEqual([]);
+    expect(await searchIds(all(), { query: "electronics", categoryId: "nope" })).toEqual([]);
   });
 
   it("accepts null for omitted optional arguments (strict mode)", async () => {
