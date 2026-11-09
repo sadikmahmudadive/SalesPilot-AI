@@ -31,6 +31,8 @@ export const PERMISSIONS = [
   "agents:read",
   "agents:write",
   "agents:test",
+  "inbox:read",
+  "inbox:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -47,8 +49,16 @@ export const PERMISSION_MATRIX: Readonly<Record<Role, ReadonlySet<Permission>>> 
     "uploads:customers",
     "agents:read",
     "agents:test",
+    "inbox:read",
+    "inbox:write",
   ]),
-  viewer: new Set<Permission>(["customers:read", "products:read", "inventory:read", "agents:read"]),
+  viewer: new Set<Permission>([
+    "customers:read",
+    "products:read",
+    "inventory:read",
+    "agents:read",
+    "inbox:read",
+  ]),
 };
 
 /** True only for a known role holding a known permission; everything else is denied. */

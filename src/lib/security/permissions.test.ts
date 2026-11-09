@@ -25,6 +25,8 @@ const ALL: readonly Permission[] = [
   "agents:read",
   "agents:write",
   "agents:test",
+  "inbox:read",
+  "inbox:write",
 ];
 
 const AGENT: readonly Permission[] = [
@@ -35,6 +37,8 @@ const AGENT: readonly Permission[] = [
   "uploads:customers",
   "agents:read",
   "agents:test",
+  "inbox:read",
+  "inbox:write",
 ];
 
 const VIEWER: readonly Permission[] = [
@@ -42,6 +46,7 @@ const VIEWER: readonly Permission[] = [
   "products:read",
   "inventory:read",
   "agents:read",
+  "inbox:read",
 ];
 
 const EXPECTED: Record<Role, readonly Permission[]> = {
