@@ -42,6 +42,7 @@ export interface RunAgentTurnInput {
   userText: string;
   signal?: AbortSignal;
   emit: (e: AgentEvent) => void;
+  contactPhoneE164?: string;
 }
 
 /**
@@ -204,6 +205,7 @@ export async function runAgentTurn(
     sessionId: input.sessionId,
     channel: session.channel,
     actorUid: input.ctx.uid,
+    contactPhoneE164: input.contactPhoneE164,
     escalateSession: async (_sId, reason) => {
       await markEscalated(input.ctx, input.sessionId, reason);
     },
