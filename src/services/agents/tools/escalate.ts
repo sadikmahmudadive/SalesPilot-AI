@@ -11,7 +11,13 @@ import { z } from "zod";
 
 import { logger } from "@/lib/logger";
 
-import { defineTool, toolFailure, type ToolContext, type ToolOutcome } from "./types";
+import {
+  defineTool,
+  isLiveChannel,
+  toolFailure,
+  type ToolContext,
+  type ToolOutcome,
+} from "./types";
 
 const inputSchema = z.object({
   reason: z
@@ -27,7 +33,7 @@ const outputSchema = z.object({ escalated: z.boolean() });
 type EscalateOutput = z.output<typeof outputSchema>;
 
 async function run(ctx: ToolContext, input: EscalateInput): Promise<ToolOutcome<EscalateOutput>> {
-  if (ctx.channel === "test") {
+  if (!isLiveChannel(ctx.channel)) {
     return {
       ok: true,
       data: { escalated: true },

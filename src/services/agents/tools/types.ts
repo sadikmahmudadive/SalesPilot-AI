@@ -18,12 +18,29 @@ export interface ToolContext {
   channel: AgentChannel;
   actorUid: string;
   /**
+   * LIVE channels only: the conversing customer's phone in E.164, set by the channel layer from
+   * the verified sender (never from model output). The customer tools act only on this number on
+   * live channels; a missing or different number is `denied`. Ignored on the test channel.
+   */
+  contactPhoneE164?: string;
+  /**
    * Marks the session as escalated to a human (status + reason). Provided by the session layer
    * (the engine wires it); `escalate_to_human` calls it on live channels only, and fails closed
    * (`failed`) when it is absent. Never called on the test channel.
    */
   escalateSession?: (sessionId: string, reason: string) => Promise<void>;
 }
+
+/**
+ * Channels whose tool calls really write. Explicit and closed: any channel not listed here is
+ * treated as a dry run, so a new or unexpected channel value can never write by accident.
+ */
+export const LIVE_CHANNELS: ReadonlySet<AgentChannel> = new Set<AgentChannel>([
+  "whatsapp",
+  "voice",
+]);
+
+export const isLiveChannel = (channel: AgentChannel): boolean => LIVE_CHANNELS.has(channel);
 
 /** What a write tool WOULD have done (test channel): returned instead of writing. */
 export interface DryRunAction {

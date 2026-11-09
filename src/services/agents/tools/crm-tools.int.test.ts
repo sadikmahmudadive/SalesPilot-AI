@@ -2,11 +2,28 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 
+const race = vi.hoisted(() => ({ pretendMissing: 0 }));
+vi.mock("./crm-access", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("./crm-access")>();
+  return {
+    ...orig,
+    // Simulates the race: the first lookups miss a customer that is created before the write.
+    findCustomerByPhone: async (...args: Parameters<typeof orig.findCustomerByPhone>) => {
+      if (race.pretendMissing > 0) {
+        race.pretendMissing -= 1;
+        return null;
+      }
+      return orig.findCustomerByPhone(...args);
+    },
+  };
+});
+
 import { adminDb } from "@/lib/firebase/admin";
 import { agentInputSchema, type Agent, type AgentChannel } from "@/schemas/agent";
 import { customerInputSchema } from "@/schemas/customer";
 import { createCustomer, getCustomer } from "@/services/crm/customers";
 
+import { dhakaDate } from "./ai-notes";
 import { executeTool } from "./registry";
 import type { ToolContext, ToolOutcome } from "./types";
 
@@ -151,7 +168,7 @@ describe("save_customer_info on the test channel (dry run)", () => {
       address: "Dhaka",
       email: "rahim@example.com",
       segment: "interested",
-      preferences: { notes: "wants a quote" },
+      preferences: { notes: `[AI ${dhakaDate()}] wants a quote` },
     });
     for (const internal of ["phoneE164", "whatsappE164", "tagsLower", "fullNameLower"]) {
       expect(r.dryRunAction?.fields).not.toHaveProperty(internal);
@@ -180,16 +197,35 @@ describe("save_customer_info on the test channel (dry run)", () => {
     expect(await count("auditLogs", org)).toBe(auditBefore);
   });
 
-  it("merges notes into the stored preferences in the dry run (the patch replaces the map)", async () => {
+  it("reports only the new dated note entry in the dry run (stored notes are not shown)", async () => {
     const org = newOrg();
-    await seedCustomer(org, { phone: "01811000003" });
+    const seeded = await seedCustomer(org, { phone: "01811000003" });
     const ctx = toolCtx(makeAgent(org), "test");
     const r = okOf(
       await call(ctx, "save_customer_info", { phone: "01811000003", notes: "prefers morning" }),
     );
-    expect(r.dryRunAction?.fields).toEqual({
-      preferences: { language: "bn", notes: "prefers morning" },
-    });
+    expect(r.dryRunAction?.fields).toEqual({ notes: `[AI ${dhakaDate()}] prefers morning` });
+    expect((await getCustomer(ctxOf(org), seeded.id)).preferences?.notes).toBe("likes red");
+  });
+
+  it("rejects a segment the assistant may not set, in the test channel too, with no write", async () => {
+    const org = newOrg();
+    const ctx = toolCtx(makeAgent(org), "test");
+    for (const segment of ["converted", "repeat_customer", "wholesale_customer", "inactive"]) {
+      expect(
+        await call(ctx, "save_customer_info", { phone: "01811000009", fullName: "A B", segment }),
+      ).toEqual({
+        ok: false,
+        code: "invalid",
+        message: "That segment can't be set by the assistant.",
+      });
+    }
+    expect(await count("customers", org)).toBe(0);
+    for (const segment of ["new_lead", "interested", "qualified_lead", "potential_buyer"]) {
+      okOf(
+        await call(ctx, "save_customer_info", { phone: "01811000009", fullName: "A B", segment }),
+      );
+    }
   });
 
   it("needs a name to create, with a static message", async () => {
@@ -273,7 +309,7 @@ describe("save_customer_info on live channels", () => {
     async (channel) => {
       const org = newOrg();
       const agent = makeAgent(org);
-      const ctx = toolCtx(agent, channel);
+      const ctx = toolCtx(agent, channel, { contactPhoneE164: "+8801911000001" });
       const r = okOf(
         await call(ctx, "save_customer_info", {
           phone: "01911000001",
@@ -290,7 +326,7 @@ describe("save_customer_info on live channels", () => {
         fullName: "Karim Hossain",
         phoneE164: "+8801911000001",
         segment: "qualified_lead",
-        preferences: { notes: "asked about wholesale" },
+        preferences: { notes: `[AI ${dhakaDate()}] asked about wholesale` },
       });
       const audit = await adminDb()
         .collection("auditLogs")
@@ -309,11 +345,11 @@ describe("save_customer_info on live channels", () => {
     },
   );
 
-  it("updates an existing customer with only the provided fields, merging notes", async () => {
+  it("updates an existing customer with only the provided fields, appending the AI note", async () => {
     const org = newOrg();
     const seeded = await seedCustomer(org, { phone: "01911000002" });
     const agent = makeAgent(org);
-    const ctx = toolCtx(agent, "whatsapp");
+    const ctx = toolCtx(agent, "whatsapp", { contactPhoneE164: "+8801911000002" });
     const r = okOf(
       await call(ctx, "save_customer_info", {
         phone: "01911000002",
@@ -324,7 +360,10 @@ describe("save_customer_info on live channels", () => {
     expect(r.data).toEqual({ action: "update", customerId: seeded.id });
     const stored = await getCustomer(ctxOf(org), seeded.id);
     expect(stored.segment).toBe("potential_buyer");
-    expect(stored.preferences).toEqual({ language: "bn", notes: "now prefers evening" });
+    expect(stored.preferences).toEqual({
+      language: "bn",
+      notes: `likes red\n[AI ${dhakaDate()}] now prefers evening`,
+    });
     expect(stored.fullName).toBe("Existing Person");
     expect(stored.email).toBe("existing@example.com");
     expect(stored.address).toBe("House 1, Road 2");
@@ -339,7 +378,7 @@ describe("save_customer_info on live channels", () => {
   it("never touches a customer of another organization", async () => {
     const org = newOrg();
     const foreign = await seedCustomer(OTHER_ORG, { phone: "01911000003" });
-    const ctx = toolCtx(makeAgent(org), "whatsapp");
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000003" });
     const r = okOf(
       await call(ctx, "save_customer_info", { phone: "01911000003", fullName: "Intruder" }),
     );
@@ -349,7 +388,7 @@ describe("save_customer_info on live channels", () => {
 
   it("fails closed with a static message when the write errors, logging no personal data", async () => {
     const org = newOrg();
-    const ctx = toolCtx(makeAgent(org), "whatsapp");
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000004" });
     const { logger } = await import("@/lib/logger");
     const spy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
     const blocker = adminDb().collection("customerPhones").doc(`${org}_+8801911000004`);
@@ -367,7 +406,147 @@ describe("save_customer_info on live channels", () => {
   });
 });
 
+describe("live channels are bound to the conversing customer", () => {
+  it("drops the oldest note lines first and keeps the new entry when notes get too long", async () => {
+    const org = newOrg();
+    const old = Array.from({ length: 9 }, (_, i) => `${i}`.repeat(100)).join("\n");
+    const seeded = await seedCustomer(org, {
+      phone: "01911000010",
+      preferences: { notes: old },
+    });
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000010" });
+    okOf(await call(ctx, "save_customer_info", { phone: "01911000010", notes: "z".repeat(300) }));
+    const notes = (await getCustomer(ctxOf(org), seeded.id)).preferences?.notes ?? "";
+    expect(notes.length).toBeLessThanOrEqual(1000);
+    expect(notes.endsWith(`[AI ${dhakaDate()}] ${"z".repeat(300)}`)).toBe(true);
+    expect(notes).not.toContain("0".repeat(100));
+    expect(notes).toContain("8".repeat(100));
+  });
+
+  it.each(["whatsapp", "voice"] as const)(
+    "denies lookup and save on %s for another number or without a contact, writing nothing",
+    async (channel) => {
+      const org = newOrg();
+      const seeded = await seedCustomer(org, { phone: "01911000011" });
+      const other = await seedCustomer(org, { phone: "01911000012", fullName: "Other Person" });
+      const wrong = toolCtx(makeAgent(org), channel, { contactPhoneE164: "+8801911000011" });
+      const none = toolCtx(makeAgent(org), channel);
+      for (const [ctx, target] of [
+        [wrong, "01911000012"],
+        [none, "01911000011"],
+      ] as const) {
+        const lookup = await call(ctx, "lookup_customer", { phone: target });
+        expect(lookup).toMatchObject({ ok: false, code: "denied" });
+        expect(JSON.stringify(lookup)).not.toContain("Other Person");
+        const save = await call(ctx, "save_customer_info", {
+          phone: target,
+          fullName: "Hijacked",
+          notes: "x",
+          segment: "interested",
+        });
+        expect(save).toMatchObject({ ok: false, code: "denied" });
+        const unknown = await call(ctx, "save_customer_info", {
+          phone: "01911000013",
+          fullName: "Brand New",
+        });
+        expect(unknown).toMatchObject({ ok: false, code: "denied" });
+      }
+      expect(await getCustomer(ctxOf(org), other.id)).toEqual(other);
+      expect(await getCustomer(ctxOf(org), seeded.id)).toEqual(seeded);
+      expect(await count("customers", org)).toBe(2);
+      expect(await count("auditLogs", org)).toBe(2); // the two seed creates only
+    },
+  );
+
+  it("allows the matching number in any input format, for lookup and save", async () => {
+    const org = newOrg();
+    await seedCustomer(org, { phone: "01911000014" });
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000014" });
+    for (const phone of ["01911000014", "+8801911000014", "8801911-000014"]) {
+      expect(okOf(await call(ctx, "lookup_customer", { phone })).data).toMatchObject({
+        exists: true,
+      });
+    }
+    expect(
+      okOf(await call(ctx, "save_customer_info", { phone: "+88 01911 000014", address: "A 1" }))
+        .data,
+    ).toMatchObject({ action: "update" });
+  });
+
+  it("rejects a segment the assistant may not set on live channels, with no write", async () => {
+    const org = newOrg();
+    const seeded = await seedCustomer(org, { phone: "01911000015" });
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000015" });
+    const r = await call(ctx, "save_customer_info", { phone: "01911000015", segment: "converted" });
+    expect(r).toEqual({
+      ok: false,
+      code: "invalid",
+      message: "That segment can't be set by the assistant.",
+    });
+    expect((await getCustomer(ctxOf(org), seeded.id)).segment).toBe("interested");
+  });
+
+  it("retries as an update once when the create loses a race for the same number", async () => {
+    const org = newOrg();
+    const seeded = await seedCustomer(org, { phone: "01911000016" });
+    const ctx = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000016" });
+    race.pretendMissing = 1;
+    const r = okOf(
+      await call(ctx, "save_customer_info", { phone: "01911000016", fullName: "Raced Name" }),
+    );
+    race.pretendMissing = 0;
+    expect(r.data).toEqual({ action: "update", customerId: seeded.id });
+    expect((await getCustomer(ctxOf(org), seeded.id)).fullName).toBe("Raced Name");
+    expect(await count("customers", org)).toBe(1);
+  });
+});
+
+describe("forged or stale phone locks", () => {
+  it.each([
+    ["points at another organization's customer", "own"],
+    ["carries a foreign organizationId", "foreign"],
+  ] as const)("treats a lock that %s as missing", async (_label, kind) => {
+    const org = newOrg();
+    const foreignOrg = newOrg();
+    const foreign = await seedCustomer(foreignOrg, { phone: "01911000020" });
+    const lock = adminDb().collection("customerPhones").doc(`${org}_+8801911000021`);
+    await lock.set({
+      organizationId: kind === "own" ? org : foreignOrg,
+      customerId: foreign.id,
+      phoneE164: "+8801911000021",
+    });
+    try {
+      const test = toolCtx(makeAgent(org), "test");
+      expect(okOf(await call(test, "lookup_customer", { phone: "01911000021" })).data).toEqual({
+        exists: false,
+      });
+      const dry = okOf(
+        await call(test, "save_customer_info", { phone: "01911000021", fullName: "Forger" }),
+      );
+      expect(dry.data).toEqual({ action: "create" });
+      const live = toolCtx(makeAgent(org), "whatsapp", { contactPhoneE164: "+8801911000021" });
+      const r = await call(live, "save_customer_info", {
+        phone: "01911000021",
+        fullName: "Forger",
+        notes: "x",
+      });
+      expect(r).toMatchObject({ ok: false, code: "failed" });
+      expect(await getCustomer(ctxOf(foreignOrg), foreign.id)).toEqual(foreign);
+    } finally {
+      await lock.delete();
+    }
+  });
+});
+
 describe("escalate_to_human", () => {
+  it("treats an unknown channel as a dry run (fails closed)", async () => {
+    const escalateSession = vi.fn(async () => undefined);
+    const ctx = toolCtx(makeAgent(ORG), "sms" as unknown as AgentChannel, { escalateSession });
+    const r = okOf(await call(ctx, "escalate_to_human", { reason: "help" }));
+    expect(r.dryRunAction?.kind).toBe("escalate");
+    expect(escalateSession).not.toHaveBeenCalled();
+  });
+
   it("returns a dry run on the test channel, calls nothing and leaves the session untouched", async () => {
     const org = newOrg();
     const session = adminDb().collection("agentSessionsTest").doc(randomUUID());

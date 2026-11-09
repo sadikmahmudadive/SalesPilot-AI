@@ -2,7 +2,8 @@
  * `lookup_customer`: does a customer with this phone number exist? Server-only.
  *
  * Returns only `{ exists, fullName?, segment? }`. The phone, email, address, notes and every
- * other field never reach the model. The lookup is scoped to `ctx.organizationId`.
+ * other field never reach the model. The lookup is scoped to `ctx.organizationId`. On live
+ * channels it only answers for the conversing customer's own number (`contactPhoneE164`).
  */
 import "server-only";
 
@@ -10,7 +11,7 @@ import { z } from "zod";
 
 import { CUSTOMER_SEGMENTS } from "@/schemas/customer";
 
-import { findCustomerByPhone, phoneE164Of } from "./crm-access";
+import { CONTACT_DENIED, findCustomerByPhone, mayAccessPhone, phoneE164Of } from "./crm-access";
 import { defineTool, toolFailure, type ToolContext, type ToolOutcome } from "./types";
 
 const inputSchema = z.object({
@@ -34,6 +35,7 @@ type LookupOutput = z.output<typeof outputSchema>;
 async function run(ctx: ToolContext, input: LookupInput): Promise<ToolOutcome<LookupOutput>> {
   const phoneE164 = phoneE164Of(input.phone);
   if (!phoneE164) return toolFailure("invalid", "That phone number isn't valid.");
+  if (!mayAccessPhone(ctx, phoneE164)) return toolFailure("denied", CONTACT_DENIED);
   const customer = await findCustomerByPhone(ctx.organizationId, phoneE164);
   if (!customer) return { ok: true, data: { exists: false } };
   return {

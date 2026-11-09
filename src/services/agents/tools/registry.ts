@@ -58,7 +58,8 @@ function allowedTool(agent: Agent, name: string): AgentTool<unknown, unknown> | 
 export function toolSpecsFor(agent: Agent): ToolSpec[] {
   const specs: ToolSpec[] = [];
   for (const name of agent.tools) {
-    const tool = TOOL_REGISTRY[name];
+    const tool: AgentTool<unknown, unknown> | undefined = TOOL_REGISTRY[name];
+    if (!tool) continue;
     specs.push({
       name: tool.name,
       description: tool.description,
