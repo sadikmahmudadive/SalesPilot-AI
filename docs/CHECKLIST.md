@@ -14,7 +14,7 @@ No UI has been run in a browser and no real external service has been used (see 
 
 - [~] 1. Foundation (auth, organizations, roles, security baseline, dashboard shell): logic tested, UI unverified
 - [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
-- [ ] 3. AI agents (RAG, tool calling): not started
+- [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
 - [ ] 4. WhatsApp and unified inbox: not started
 - [ ] 5. Orders, payments, courier: not started (stock reserve/release/commit exist for it)
 - [ ] 6. Voice calls: not started
@@ -48,6 +48,21 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 - [~] 21. Upload component: flow logic tested (`src/lib/uploads/upload-flow.test.ts`, `src/lib/uploads/xhr-upload.test.ts`, `src/lib/uploads/planned-deletes.test.ts`, `src/lib/uploads/focus-after-remove.test.ts`); component not seen in a browser, no real upload performed
 - [~] 22. Overview KPIs: `src/services/dashboard/overview.int.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/lead-segments.test.ts`; the page itself is unverified in a browser
 - [~] 23. Documentation and release gates: `scripts/check-bundle-secrets.mjs` scan function tested in `src/test/check-bundle-secrets.test.ts`; `npm run check:bundle` passes on the built bundle; guides are written but unexercised (below)
+
+### Phase 3a: AI Agents and Tool Calling
+
+- [x] 24. Agent domain (permissions, schemas, templates): `src/schemas/agent.test.ts`, `src/services/agents/templates.test.ts`, `src/lib/security/permissions.test.ts`
+- [x] 25. Agent service, repository, rules, indexes: `src/services/agents/agents.int.test.ts`, `src/services/agents/agent-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
+- [x] 26. Agent API routes: `src/app/api/agents/route.int.test.ts`
+- [x] 27. AI provider layer: `src/lib/ai/openai-provider.test.ts`, `src/lib/ai/mock-provider.test.ts`, `src/lib/ai/strict-schema.test.ts`, `src/lib/errors.test.ts`
+- [x] 28. Tool registry and catalog tools: `src/services/agents/tools/catalog-tools.int.test.ts`, `src/services/agents/tools/registry.test.ts`
+- [x] 29. CRM tools with channel-driven dry-run: `src/services/agents/tools/crm-tools.int.test.ts`, `src/services/agents/tools/ai-notes.test.ts`
+- [x] 30. Prompt assembly and unverified-figure check: `src/services/agents/prompt.test.ts`, `src/services/agents/figures.test.ts`
+- [x] 31. Sessions and bounded agent engine: `src/services/agents/sessions.int.test.ts`, `src/services/agents/engine.int.test.ts`, `src/services/agents/events.test.ts`
+- [x] 32. Session API with SSE streaming and usage guards: `src/app/api/agent-sessions/sessions.int.test.ts`, `src/config/env.test.ts`
+- [~] 33. Agents list and editor UI: form model tested (`src/components/agents/agent-form-model.test.ts`), navigation tested (`src/config/nav.test.ts`), production build verified; UI unverified in browser
+- [~] 34. Agent test console: SSE client & state tested (`src/lib/agents/sse-client.test.ts`, `src/lib/agents/console-state.test.ts`), production build verified; UI unverified in browser
+- [x] 35. OpenAI setup guide and Phase 3a gates: `docs/setup/openai.md`, bundle secrets clean (`npm run check:bundle`), full gate passed
 
 ## Unverified
 

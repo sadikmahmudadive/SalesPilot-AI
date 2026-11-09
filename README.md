@@ -10,7 +10,7 @@ Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has b
 | --- | -------------------------------------------------------------------------- | ------------------------------------ |
 | 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | implemented; UI not browser-verified |
 | 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
-| 3   | AI agents (RAG, tool calling)                                              | roadmap                              |
+| 3   | AI agents: Phase 3a tool calling, bounded engine, test console              | implemented; UI not browser-verified |
 | 4   | WhatsApp and unified inbox                                                 | roadmap                              |
 | 5   | Orders, payments, courier                                                  | roadmap                              |
 | 6   | Voice calls                                                                | roadmap                              |
@@ -102,7 +102,8 @@ Nothing is faked in the UI. Integrations are either real or absent.
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Firebase Auth and Firestore               | Emulators (`npm run emu`), project `demo-salespilot`.                                                               | The project is `salespilot-ai-9b1cd` (decided 2026-11-08); setup per [docs/setup/firebase.md](docs/setup/firebase.md) is not done yet. Always pass `--project` to Firebase CLI deploy commands.                                     |
 | Cloudinary                                | Not configured until `CLOUDINARY_*` are set; uploads answer 503 and the UI says so. Integration tests mock the SDK. | Set the three variables ([docs/setup/cloudinary.md](docs/setup/cloudinary.md)). Never exercised against a real account yet. |
-| WhatsApp, OpenAI, Twilio, SSLCommerz, n8n | Not built. The variables exist in `.env.example` for later sub-projects.                                            | Sub-projects 3 to 7.                                                                                                        |
+| OpenAI                                    | Not configured until `OPENAI_API_KEY` is set; agent routes answer 503 and console shows setup notice. Integration tests mock the provider. | Set `OPENAI_API_KEY` ([docs/setup/openai.md](docs/setup/openai.md)). Never exercised against real OpenAI in CI. |
+| WhatsApp, Twilio, SSLCommerz, n8n         | Not built. The variables exist in `.env.example` for later sub-projects.                                            | Sub-projects 4 to 7.                                                                                                        |
 
 ## Windows notes
 
@@ -121,5 +122,6 @@ The Firestore emulator runs as a Java process that `firebase emulators:exec` can
 
 - [Firebase](docs/setup/firebase.md): project, auth providers, service account, rules, indexes, TTL, smoke test.
 - [Cloudinary](docs/setup/cloudinary.md): account, keys, what the app signs, known limits, smoke test.
+- [OpenAI](docs/setup/openai.md): API key, model options, limits, smoke test.
 - [Vercel](docs/setup/vercel.md): import, environment variables, build, preview versus production.
 - [Checklist](docs/CHECKLIST.md): sub-project status, verified versus unverified, open decisions.
