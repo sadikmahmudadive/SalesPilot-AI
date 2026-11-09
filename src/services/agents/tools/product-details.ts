@@ -31,7 +31,6 @@ const outputSchema = z.object({
   category: z.string().optional(),
   description: z.string().optional(),
   priceText: z.string(),
-  availability: z.string(),
   variants: z.array(
     z.object({ id: z.string(), size: z.string().optional(), color: z.string().optional() }),
   ),
@@ -54,7 +53,6 @@ async function run(ctx: ToolContext, input: DetailsInput): Promise<ToolOutcome<D
     name: product.name,
     sku: product.sku,
     priceText: formatMoneyMinor(retailMinor(product)),
-    availability: product.availability,
     variants: product.variants.map((v) => ({
       id: v.id,
       ...(v.size !== undefined ? { size: v.size } : {}),

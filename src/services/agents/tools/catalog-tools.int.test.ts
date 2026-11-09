@@ -257,7 +257,7 @@ describe("search_products", () => {
   it("finds by SKU (prefix and the full SKU)", async () => {
     expect(await searchIds(all(), { query: "tee" })).toEqual([seed.shirt]);
     expect(await searchIds(all(), { query: "TEE-001" })).toEqual([seed.shirt]);
-    expect(await searchIds(all(), { query: "bn-1" })).toEqual([seed.bangla]);
+    expect((await searchIds(all(), { query: "bn-1" }))[0]).toBe(seed.bangla);
   });
 
   it("finds a Bangla product by a Bangla name token", async () => {
@@ -272,9 +272,30 @@ describe("search_products", () => {
     expect(await searchIds(all(), { query: "sonic" })).toEqual([seed.speaker]);
   });
 
-  it("returns an empty result (not an error) for a query that matches nothing", async () => {
-    const r = await run(all(), "search_products", { query: "lal shirt" });
-    expect(r).toEqual({ ok: true, data: { results: [] } });
+  it("returns an empty result (not an error) for a query that matches no token", async () => {
+    expect(await run(all(), "search_products", { query: "xyzzy" })).toEqual({
+      ok: true,
+      data: { results: [] },
+    });
+    expect(await run(all(), "search_products", { query: "xyzzy plugh" })).toEqual({
+      ok: true,
+      data: { results: [] },
+    });
+  });
+
+  it("finds products from natural, Banglish and plural phrasing", async () => {
+    expect((await searchIds(all(), { query: "red cotton shirt for my son" }))[0]).toBe(seed.shirt);
+    expect(await searchIds(all(), { query: "lal shirt ache?" })).toContain(seed.shirt);
+    expect(await searchIds(all(), { query: "shirts" })).toEqual([seed.shirt]);
+  });
+
+  it("matches Bangla inflections of a Bangla name", async () => {
+    expect(await searchIds(all(), { query: "শার্টের" })).toEqual([seed.bangla]);
+  });
+
+  it("ranks a product matching more query tokens above one matching fewer", async () => {
+    const ids = await searchIds(all(), { query: "bluetooth shirt cotton" });
+    expect(ids).toEqual([seed.shirt, seed.speaker]);
   });
 
   it("breaks score ties by product name", async () => {
@@ -291,7 +312,6 @@ describe("search_products", () => {
       name: "Red Cotton Shirt",
       sku: "TEE-001",
       priceText: formatMoneyMinor(120000),
-      availability: "active",
       stockStatus: "in_stock",
     });
   });

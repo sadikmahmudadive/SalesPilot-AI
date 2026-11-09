@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { TOOL_NAMES, agentInputSchema, type Agent, type ToolName } from "@/schemas/agent";
+
+import { PRODUCT_LIST_INDEXES, toFirestoreIndex } from "@/services/products/product-indexes";
 
 import { isProductInScope } from "./catalog-access";
 import { TOOL_REGISTRY, executeTool, normalizeNulls, toolSpecsFor } from "./registry";
@@ -230,11 +235,31 @@ describe("tokenize and scoreFields", () => {
     spec: tokenize("Cotton Regular"),
   };
 
-  it("requires every query token to match somewhere", () => {
-    expect(scoreFields(tokenize("lal shirt"), fields)).toBe(0);
-    expect(scoreFields(tokenize("shirt"), fields)).toBeGreaterThan(0);
-    expect(scoreFields(tokenize("red shirt"), fields)).toBeGreaterThan(0);
+  it("matches when at least one query token matches, and not at all otherwise", () => {
+    expect(scoreFields(tokenize("lal shirt"), fields)).toBeGreaterThan(0);
+    expect(scoreFields(tokenize("xyzzy"), fields)).toBe(0);
+    expect(scoreFields(tokenize("xyzzy plugh"), fields)).toBe(0);
     expect(scoreFields([], fields)).toBe(0);
+  });
+
+  it("ranks more matched tokens above a stronger field with fewer matches", () => {
+    const q = ["red", "cotton"];
+    const empty = { name: [] as string[], sku: [] as string[], category: [] as string[] };
+    const two = scoreFields(q, { ...empty, spec: ["red", "cotton"] });
+    const one = scoreFields(q, { ...empty, name: ["red"], spec: [] });
+    expect(two).toBeGreaterThan(one);
+  });
+
+  it("matches plurals and inflections in the reverse direction, at a small penalty", () => {
+    const f = (name: string[]) => ({ name, sku: [], category: [], spec: [] });
+    const exact = scoreFields(["shirt"], f(["shirt"]));
+    const plural = scoreFields(["shirts"], f(["shirt"]));
+    expect(plural).toBeGreaterThan(0);
+    expect(plural).toBeLessThan(exact);
+    expect(scoreFields(tokenize("শার্টের"), f(tokenize("লাল শার্ট")))).toBeGreaterThan(0);
+    // Short field tokens never match in reverse ("a" is not a stem of "apple").
+    expect(scoreFields(["apple"], f(["a"]))).toBe(0);
+    expect(scoreFields(["bnx"], f(["bn"]))).toBe(0);
   });
 
   it("matches token prefixes, not substrings", () => {
@@ -261,5 +286,29 @@ describe("tokenize and scoreFields", () => {
     const exact = scoreFields(["shirt"], { name: ["shirt"], sku: [], category: [], spec: [] });
     const prefix = scoreFields(["shirt"], { name: ["shirts"], sku: [], category: [], spec: [] });
     expect(exact).toBeGreaterThan(prefix);
+  });
+});
+
+describe("search_products query index", () => {
+  it("is served by the products index (organizationId, archived, availability, nameLower)", () => {
+    const spec = PRODUCT_LIST_INDEXES.find(
+      (i) =>
+        i.equalityField === "availability" &&
+        i.orderField === "nameLower" &&
+        i.direction === "ASCENDING",
+    );
+    expect(spec).toBeDefined();
+    const file = JSON.parse(
+      readFileSync(path.resolve(import.meta.dirname, "../../../../firestore.indexes.json"), "utf8"),
+    ) as { indexes: unknown[] };
+    const wanted = JSON.stringify(toFirestoreIndex(spec!));
+    expect(file.indexes.map((i) => JSON.stringify(i))).toContain(wanted);
+    expect(toFirestoreIndex(spec!).fields.map((f) => f.fieldPath)).toEqual([
+      "organizationId",
+      "archived",
+      "availability",
+      "nameLower",
+      "__name__",
+    ]);
   });
 });

@@ -2,16 +2,23 @@
  * `search_products`: keyword search over the organization's catalog, limited to what the agent
  * may see. Server-only.
  *
- * READ BOUND. At most 1000 non-archived products of the organization are read (one query ordered
- * by `nameLower`, served by the existing (organizationId, archived, nameLower) index); the rest
- * is filtered in memory (`active` and in scope). Semantic search arrives with RAG.
+ * READ BOUND AND COST. One query per call reads at most 1000 products of the organization
+ * (`archived == false AND availability == "active"`, ordered by `nameLower`; served by the
+ * existing (organizationId, archived, availability, nameLower) index), so drafts and archived
+ * products never use up the cap. Each call therefore costs up to 1000 document reads plus one
+ * category list (<= 200) and a handful of inventory reads; a cache is deferred. When the read
+ * hits the cap a warning with the organization id is logged and products beyond the first 1000
+ * (by name) are not searchable. Scope is filtered in memory. Semantic search arrives with RAG.
  *
  * MATCHING. Text (query, name, SKU, category name, specification values) is NFKC-normalised,
  * lower-cased, stripped of invisible format characters and split on anything that is not a letter,
- * digit or combining mark (so Bangla words stay whole). EVERY query token must match the START of
- * some field token (exact matches score higher), otherwise the product is not a result: "lal
- * shirt" finds nothing unless something is both "lal" and "shirt". A token scores by the best
- * field it matches: name > SKU > category name > specification values. Ties go to the name.
+ * digit or combining mark (so Bangla words stay whole). A product is a result when AT LEAST ONE
+ * query token matches a field token: forward when the field token starts with the query token,
+ * and (tokens of 3+ characters) reverse when the query token starts with the field token, which
+ * covers plurals and inflections ("shirts" ~ "shirt", Bangla "-er" endings) at a small penalty.
+ * Ranking: more matched tokens first, then the field weights (name > SKU > category name >
+ * specification values), then the product name, then id. No match is an empty list, not an error.
+ * There is no transliteration: Bangla and English spellings are different tokens.
  */
 import "server-only";
 
@@ -19,6 +26,7 @@ import { z } from "zod";
 
 import { adminDb } from "@/lib/firebase/admin";
 import { formatMoneyMinor } from "@/lib/format";
+import { logger } from "@/lib/logger";
 import { PRODUCTS, productRepo, type ProductDoc } from "@/repositories/products";
 import { listCategories } from "@/services/products/categories";
 
@@ -37,9 +45,6 @@ export const SEARCH_READ_LIMIT = 1000;
 export const SEARCH_MAX_RESULTS = 5;
 const MAX_QUERY_TOKENS = 10;
 
-const WEIGHTS = { name: 40, sku: 30, category: 20, spec: 10 } as const;
-const EXACT_BONUS = 5;
-
 /** NFKC + lower-case + split on non letter/digit/mark. Invisible format characters are removed. */
 export function tokenize(text: string): string[] {
   return text
@@ -50,6 +55,13 @@ export function tokenize(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
+const WEIGHTS = { name: 40, sku: 30, category: 20, spec: 10 } as const;
+const EXACT_BONUS = 5;
+const REVERSE_PENALTY = 3;
+const MIN_REVERSE_LENGTH = 3;
+/** One matched token is worth more than any possible field-weight total (10 * 45 = 450). */
+const MATCH_UNIT = 1000;
+
 export interface FieldTokens {
   name: readonly string[];
   sku: readonly string[];
@@ -57,22 +69,31 @@ export interface FieldTokens {
   spec: readonly string[];
 }
 
-/** 0 when any query token matches nothing (or there are no tokens), else the summed best scores. */
+/**
+ * 0 when no query token matches anything, else `matchedTokens * 1000 + summed best field scores`,
+ * so the matched-token count dominates and field weights break ties.
+ */
 export function scoreFields(queryTokens: readonly string[], fields: FieldTokens): number {
-  if (queryTokens.length === 0) return 0;
-  let total = 0;
+  let matched = 0;
+  let weights = 0;
   for (const q of queryTokens) {
     let best = 0;
     for (const key of ["name", "sku", "category", "spec"] as const) {
       for (const t of fields[key]) {
-        if (!t.startsWith(q)) continue;
-        best = Math.max(best, WEIGHTS[key] + (t === q ? EXACT_BONUS : 0));
+        let score = 0;
+        if (t.startsWith(q)) score = WEIGHTS[key] + (t === q ? EXACT_BONUS : 0);
+        else if (t.length >= MIN_REVERSE_LENGTH && q.startsWith(t)) {
+          score = WEIGHTS[key] - REVERSE_PENALTY;
+        }
+        best = Math.max(best, score);
       }
     }
-    if (best === 0) return 0;
-    total += best;
+    if (best > 0) {
+      matched += 1;
+      weights += best;
+    }
   }
-  return total;
+  return matched * MATCH_UNIT + weights;
 }
 
 const inputSchema = z.object({
@@ -81,7 +102,7 @@ const inputSchema = z.object({
     .trim()
     .min(1)
     .max(100)
-    .describe("Keywords: product name, SKU, category or a specification value."),
+    .describe("A few short keywords: product name, SKU, category or a specification value."),
   categoryId: z.string().min(1).max(200).optional().describe("Only search this category."),
   limit: z
     .number()
@@ -100,7 +121,6 @@ const outputSchema = z.object({
       name: z.string(),
       sku: z.string(),
       priceText: z.string(),
-      availability: z.string(),
       stockStatus: z.enum(["in_stock", "low", "out_of_stock"]),
     }),
   ),
@@ -117,11 +137,15 @@ async function run(ctx: ToolContext, input: SearchInput): Promise<ToolOutcome<Se
       .collection(PRODUCTS)
       .where("organizationId", "==", orgId)
       .where("archived", "==", false)
+      .where("availability", "==", "active")
       .orderBy("nameLower")
       .limit(SEARCH_READ_LIMIT)
       .get(),
     listCategories({ organizationId: orgId, uid: ctx.actorUid }),
   ]);
+  if (snap.size >= SEARCH_READ_LIMIT) {
+    logger.warn("agent product search hit the read cap", { organizationId: orgId });
+  }
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
 
   const scored: Array<{ doc: ProductDoc; score: number }> = [];
@@ -162,7 +186,6 @@ async function run(ctx: ToolContext, input: SearchInput): Promise<ToolOutcome<Se
       name: p.name,
       sku: p.sku,
       priceText: formatMoneyMinor(retailMinor(p)),
-      availability: p.availability as string,
       stockStatus,
     };
   });
@@ -172,10 +195,11 @@ async function run(ctx: ToolContext, input: SearchInput): Promise<ToolOutcome<Se
 export const searchProductsTool = defineTool<SearchInput, SearchOutput>({
   name: "search_products",
   description:
-    "Search the product catalog by keywords (name, SKU, category or specification value). " +
-    "Returns up to 5 matching products with price text and stock status. Every keyword must " +
-    "match. Use this before recommending or quoting any product; an empty list means nothing " +
-    "matched.",
+    "Search the product catalog by a few short keywords (name, SKU, category or specification " +
+    "value), not whole sentences. Returns up to 5 products with price text and stock status, " +
+    "best match first; a product matches when any keyword matches. Try both Bangla and English " +
+    "spellings, because words are not transliterated. An empty list means nothing matched. " +
+    "Use this before recommending or quoting any product.",
   input: inputSchema,
   output: outputSchema,
   writes: false,

@@ -11,7 +11,7 @@
  */
 import "server-only";
 
-import { LOW_STOCK_THRESHOLD } from "@/config/inventory";
+import { stockLevelOf } from "@/config/inventory";
 import { NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { DEFAULT_VARIANT_ID, type Product } from "@/schemas/product";
@@ -106,10 +106,10 @@ export async function readAvailable(
   return out;
 }
 
-/** `available <= LOW_STOCK_THRESHOLD` is low (so 5 is low, 6 is not); 0 is out of stock. */
+/** Shared stock rule (see `stockLevelOf`) under the tool vocabulary. */
 export function stockStatusOf(available: number): StockStatus {
-  if (available <= 0) return "out_of_stock";
-  return available <= LOW_STOCK_THRESHOLD ? "low" : "in_stock";
+  const level = stockLevelOf(available);
+  return level === "out" ? "out_of_stock" : level === "low" ? "low" : "in_stock";
 }
 
 /** Retail unit price: the sale price when there is one, else the regular price. */

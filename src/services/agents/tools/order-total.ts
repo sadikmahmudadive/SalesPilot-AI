@@ -38,7 +38,10 @@ import { defineTool, type ToolContext, type ToolOutcome } from "./types";
 export const MAX_ORDER_LINES = 20;
 export const MAX_LINE_QUANTITY = 1000;
 export const DELIVERY_NOTE = "Delivery charges are not available yet.";
-const EXCLUDED_NOTE = "Lines with a flag are not included in the subtotal.";
+const EXCLUDED_NOTE =
+  "Lines with a flag are not in the subtotal. invalid_variant: ask which size or color. " +
+  "insufficient_stock: offer the available quantity. out_of_scope or archived: say the item " +
+  "is not offered.";
 
 const LINE_FLAGS = ["out_of_scope", "archived", "invalid_variant", "insufficient_stock"] as const;
 
@@ -185,8 +188,10 @@ export const orderTotalTool = defineTool<TotalInput, TotalOutput>({
   description:
     "Calculate the total of up to 20 order lines (productId, optional variantId, quantity) for " +
     "a retail or wholesale customer. Returns line totals and the subtotal in paisa and taka " +
-    "text. Lines that are unavailable or exceed stock are flagged and left out of the subtotal. " +
-    "Delivery charges are not included. Always use this instead of doing the arithmetic yourself.",
+    "text. Lines with a flag are NOT included in the subtotal (excludedLines counts them). " +
+    "Flags: invalid_variant - ask which size or color; insufficient_stock - offer the " +
+    "available quantity; out_of_scope or archived - say that item is not offered. Delivery " +
+    "charges are not included. Always use this instead of doing the arithmetic yourself.",
   input: inputSchema,
   output: outputSchema,
   writes: false,
