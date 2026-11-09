@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
-import { Bot } from "lucide-react";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { AgentList } from "@/components/agents/agent-list";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
 
 export const metadata: Metadata = { title: "AI Agents" };
 
-export default function Page() {
-  return (
-    <ComingLater
-      phase={3}
-      title="AI Agents"
-      icon={Bot}
-      description="Configure and monitor the AI agents that answer customers, check stock and prepare orders on your behalf, with their instructions and activity in one place."
-    />
-  );
+export default async function AgentsPage() {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  return <AgentList role={ctx.role} />;
 }

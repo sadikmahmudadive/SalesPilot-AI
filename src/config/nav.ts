@@ -37,7 +37,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Unified Inbox", href: "/inbox", icon: Inbox, phase: 4 },
-  { label: "AI Agents", href: "/agents", icon: Bot, phase: 3 },
+  { label: "AI Agents", href: "/agents", icon: Bot, permission: "agents:read" },
   { label: "Customers", href: "/customers", icon: Users, permission: "customers:read" },
   { label: "Products", href: "/products", icon: Boxes, permission: "products:read" },
   { label: "Inventory", href: "/inventory", icon: PackageSearch, permission: "inventory:read" },
