@@ -51,7 +51,7 @@ export function buildSystemPrompt({ agent, organizationName, now }: BuildPromptI
   sections.push(styleInstruction);
 
   // Languages & Language Rule
-  const langList = agent.languages.join(", ");
+  const langList = (agent.languages ?? []).join(", ");
   sections.push(
     `LANGUAGE RULE:\n- Supported languages: ${langList}\n- Reply in the language the customer uses (Bangla, English, or Banglish).\n- Always preserve product names exactly as stored in the catalog; do not translate product names.`,
   );
