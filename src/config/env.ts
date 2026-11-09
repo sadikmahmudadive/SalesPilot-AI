@@ -51,6 +51,10 @@ const serverShape = {
   OPENAI_API_KEY: optional,
   OPENAI_CHAT_MODEL: optional,
   OPENAI_REALTIME_MODEL: optional,
+  AI_DAILY_MESSAGE_LIMIT: z.preprocess(
+    (value) => (value === undefined ? 500 : Number(value)),
+    z.number().int().min(1).max(100_000),
+  ),
 
   TWILIO_ACCOUNT_SID: optional,
   TWILIO_AUTH_TOKEN: optional,

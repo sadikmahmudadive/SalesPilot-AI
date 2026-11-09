@@ -22,6 +22,7 @@ const ALL_KEYS = [
   "OPENAI_API_KEY",
   "OPENAI_CHAT_MODEL",
   "OPENAI_REALTIME_MODEL",
+  "AI_DAILY_MESSAGE_LIMIT",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
@@ -230,6 +231,19 @@ describe("getServerEnv", () => {
   it.each(["0", "15", "2.5", "abc"])("rejects SESSION_COOKIE_MAX_DAYS=%s", (value) => {
     stubAll({ ...SERVER_VALUES, SESSION_COOKIE_MAX_DAYS: value });
     expect(() => getServerEnv()).toThrow(/SESSION_COOKIE_MAX_DAYS/);
+  });
+
+  it("defaults AI_DAILY_MESSAGE_LIMIT to 500 and accepts 1-100000", () => {
+    stubAll(SERVER_VALUES);
+    expect(getServerEnv().AI_DAILY_MESSAGE_LIMIT).toBe(500);
+    __resetEnvCacheForTests();
+    vi.stubEnv("AI_DAILY_MESSAGE_LIMIT", "1000");
+    expect(getServerEnv().AI_DAILY_MESSAGE_LIMIT).toBe(1000);
+  });
+
+  it.each(["0", "100001", "-5", "abc"])("rejects AI_DAILY_MESSAGE_LIMIT=%s", (value) => {
+    stubAll({ ...SERVER_VALUES, AI_DAILY_MESSAGE_LIMIT: value });
+    expect(() => getServerEnv()).toThrow(/AI_DAILY_MESSAGE_LIMIT/);
   });
 
   it("memoizes the parsed result", () => {

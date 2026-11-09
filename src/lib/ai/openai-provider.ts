@@ -247,9 +247,16 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): ChatProvider 
 }
 
 let cached: { apiKey: string; provider: ChatProvider } | undefined;
+let providerOverride: ChatProvider | undefined;
+
+/** Test seam: overrides the provider returned by getChatProvider. Pass undefined to clear. */
+export function setChatProviderOverride(provider: ChatProvider | undefined): void {
+  providerOverride = provider;
+}
 
 /** Provider for the configured OpenAI account. Throws IntegrationNotConfiguredError without a key. */
 export function getChatProvider(): ChatProvider {
+  if (providerOverride) return providerOverride;
   if (!isConfigured("openai")) throw new IntegrationNotConfiguredError("openai");
   const apiKey = getServerEnv().OPENAI_API_KEY as string;
   if (!cached || cached.apiKey !== apiKey) {
