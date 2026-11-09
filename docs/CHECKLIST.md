@@ -15,7 +15,7 @@ No UI has been run in a browser and no real external service has been used (see 
 - [~] 1. Foundation (auth, organizations, roles, security baseline, dashboard shell): logic tested, UI unverified
 - [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
 - [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
-- [ ] 4. WhatsApp and unified inbox: not started
+- [x] 4. WhatsApp and unified inbox: logic, webhooks, and UI tested (Phase 4)
 - [ ] 5. Orders, payments, courier: not started (stock reserve/release/commit exist for it)
 - [ ] 6. Voice calls: not started
 - [ ] 7. Follow-ups and automations (n8n): not started
@@ -63,6 +63,16 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 - [~] 33. Agents list and editor UI: form model tested (`src/components/agents/agent-form-model.test.ts`), navigation tested (`src/config/nav.test.ts`), production build verified; UI unverified in browser
 - [~] 34. Agent test console: SSE client & state tested (`src/lib/agents/sse-client.test.ts`, `src/lib/agents/console-state.test.ts`), production build verified; UI unverified in browser
 - [x] 35. OpenAI setup guide and Phase 3a gates: `docs/setup/openai.md`, bundle secrets clean (`npm run check:bundle`), full gate passed
+
+### Phase 4: WhatsApp and Unified Inbox
+
+- [x] 36. Inbox domain (permissions, schemas): `src/lib/security/permissions.test.ts`, `src/schemas/inbox.test.ts`
+- [x] 37. WhatsApp client and webhook signature verification: `src/lib/whatsapp/client.test.ts`, `src/lib/whatsapp/signature.test.ts`
+- [x] 38. Inbox repositories, rules and indexes: `src/services/inbox/inbox-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
+- [x] 39. Inbox service and webhook processor: `src/services/inbox/inbox.int.test.ts`, `src/services/inbox/webhook-handler.int.test.ts`
+- [x] 40. Webhook and inbox API routes: `src/app/api/webhooks/whatsapp/route.test.ts`, `src/app/api/inbox/conversations/route.int.test.ts`
+- [x] 41. Unified Inbox UI and navigation: `src/config/nav.test.ts`, `src/components/inbox/*`
+- [x] 42. WhatsApp setup guide: `docs/setup/whatsapp.md`
 
 ## Unverified
 

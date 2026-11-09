@@ -41,11 +41,11 @@
 - `MESSAGE_STATUSES = ['received', 'sent', 'delivered', 'read', 'failed'] as const`.
 - Schemas: `conversationSchema`, `inboxMessageSchema`, `conversationListQuerySchema`, `sendMessageInputSchema`, `updateConversationSchema`.
 
-- [ ] **Step 1: Failing tests.** Write schema and permission tests.
-- [ ] **Step 2: Run** `npx vitest run --project unit src/lib/security/permissions.test.ts src/schemas/inbox.test.ts` -> FAIL.
-- [ ] **Step 3: Implement.** Add permissions and schemas.
-- [ ] **Step 4: Run** -> PASS; `npm run typecheck`.
-- [ ] **Step 5: Commit** `feat(inbox): permissions and inbox schemas`.
+- [x] **Step 1: Failing tests.** Write schema and permission tests.
+- [x] **Step 2: Run** `npx vitest run --project unit src/lib/security/permissions.test.ts src/schemas/inbox.test.ts` -> FAIL.
+- [x] **Step 3: Implement.** Add permissions and schemas.
+- [x] **Step 4: Run** -> PASS; `npm run typecheck`.
+- [x] **Step 5: Commit** `feat(inbox): permissions and inbox schemas`.
 
 ---
 
@@ -63,11 +63,11 @@
   - `sendTextMessage(to: string, body: string): Promise<{ messageId: string }>`
   - `markMessageAsRead(messageId: string): Promise<boolean>`
 
-- [ ] **Step 1: Failing tests.** Test signature verification with valid/tampered payloads, test client requests and error mapping with mocked fetch.
-- [ ] **Step 2: Run** `npx vitest run --project unit src/lib/whatsapp` -> FAIL.
-- [ ] **Step 3: Implement.** Webhook signature verification and Meta Graph API client.
-- [ ] **Step 4: Run** -> PASS; `npm run typecheck`.
-- [ ] **Step 5: Commit** `feat(whatsapp): client and webhook signature verification`.
+- [x] **Step 1: Failing tests.** Test signature verification with valid/tampered payloads, test client requests and error mapping with mocked fetch.
+- [x] **Step 2: Run** `npx vitest run --project unit src/lib/whatsapp` -> FAIL.
+- [x] **Step 3: Implement.** Webhook signature verification and Meta Graph API client.
+- [x] **Step 4: Run** -> PASS; `npm run typecheck`.
+- [x] **Step 5: Commit** `feat(whatsapp): client and webhook signature verification`.
 
 ---
 
@@ -84,11 +84,11 @@
 - Composite indexes for `conversations` (`organizationId ASC, lastActivityAt DESC`, `organizationId ASC, status ASC, lastActivityAt DESC`).
 - Security rules: org members can read `conversations` and `messages`; client writes denied.
 
-- [ ] **Step 1: Failing tests.** Index equality tests and tenancy rules tests.
-- [ ] **Step 2: Run** `npm run test:int` -> FAIL.
-- [ ] **Step 3: Implement.** Repositories, indexes, and rules.
-- [ ] **Step 4: Run** -> PASS.
-- [ ] **Step 5: Commit** `feat(inbox): repositories, rules and indexes`.
+- [x] **Step 1: Failing tests.** Index equality tests and tenancy rules tests.
+- [x] **Step 2: Run** `npm run test:int` -> FAIL.
+- [x] **Step 3: Implement.** Repositories, indexes, and rules.
+- [x] **Step 4: Run** -> PASS.
+- [x] **Step 5: Commit** `feat(inbox): repositories, rules and indexes`.
 
 ---
 
@@ -104,11 +104,11 @@
 - `updateConversation(ctx, id, patch: { status?, assignedUserId?, assignedAgentId? })`: takeover, hand back to AI, resolve.
 - `processWhatsAppWebhook(rawPayload: unknown)`: extracts messages/statuses, links CRM customer, invokes `runAgentTurn` on live WhatsApp channel, sends automated reply, or marks for human reply.
 
-- [ ] **Step 1: Failing tests.** Test conversation lifecycle, human message sending, webhook handling, and AI agent auto-reply.
-- [ ] **Step 2: Run** `npm run test:int` -> FAIL.
-- [ ] **Step 3: Implement.** Service methods and webhook processor.
-- [ ] **Step 4: Run** -> PASS.
-- [ ] **Step 5: Commit** `feat(inbox): inbox service and webhook processor`.
+- [x] **Step 1: Failing tests.** Test conversation lifecycle, human message sending, webhook handling, and AI agent auto-reply.
+- [x] **Step 2: Run** `npm run test:int` -> FAIL.
+- [x] **Step 3: Implement.** Service methods and webhook processor.
+- [x] **Step 4: Run** -> PASS.
+- [x] **Step 5: Commit** `feat(inbox): inbox service and webhook processor`.
 
 ---
 
@@ -129,11 +129,11 @@
 - `GET /api/inbox/conversations/[id]/messages` (`inbox:read`).
 - `POST /api/inbox/conversations/[id]/messages` (`inbox:write`, rate-limited).
 
-- [ ] **Step 1: Failing tests.** Route handler tests with mock session and real emulator.
-- [ ] **Step 2: Run** `npm run test:int` -> FAIL.
-- [ ] **Step 3: Implement.** Route handlers.
-- [ ] **Step 4: Run** -> PASS.
-- [ ] **Step 5: Commit** `feat(inbox): webhook and inbox API routes`.
+- [x] **Step 1: Failing tests.** Route handler tests with mock session and real emulator.
+- [x] **Step 2: Run** `npm run test:int` -> FAIL.
+- [x] **Step 3: Implement.** Route handlers.
+- [x] **Step 4: Run** -> PASS.
+- [x] **Step 5: Commit** `feat(inbox): webhook and inbox API routes`.
 
 ---
 
@@ -147,10 +147,10 @@
 - Create `src/components/inbox/customer-sidebar.tsx`
 - Create `src/components/inbox/inbox-shell.tsx`
 
-- [ ] **Step 1: Unit tests.** Test models, helper formatting, and hooks.
-- [ ] **Step 2: Implement.** Interactive 3-pane components.
-- [ ] **Step 3: Run** `npm run test:unit` -> PASS; `npm run typecheck`.
-- [ ] **Step 4: Commit** `feat(inbox): unified inbox UI components and hooks`.
+- [x] **Step 1: Unit tests.** Test models, helper formatting, and hooks.
+- [x] **Step 2: Implement.** Interactive 3-pane components.
+- [x] **Step 3: Run** `npm run test:unit` -> PASS; `npm run typecheck`.
+- [x] **Step 4: Commit** `feat(inbox): unified inbox UI components and hooks`.
 
 ---
 
@@ -160,10 +160,10 @@
 - Modify `src/app/(dashboard)/inbox/page.tsx`
 - Modify `src/config/nav.ts`, `src/config/nav.test.ts`
 
-- [ ] **Step 1: Failing test.** `src/config/nav.test.ts` expects `/inbox` to be accessible with `inbox:read` permission (no longer `phase: 4`).
-- [ ] **Step 2: Implement.** Replace `ComingLater` with `InboxShell` on `/inbox`, update `NAV_ITEMS`.
-- [ ] **Step 3: Run** `npm run test:unit` -> PASS; `npm run typecheck && npm run build`.
-- [ ] **Step 4: Commit** `feat(inbox): activate unified inbox page and navigation`.
+- [x] **Step 1: Failing test.** `src/config/nav.test.ts` expects `/inbox` to be accessible with `inbox:read` permission (no longer `phase: 4`).
+- [x] **Step 2: Implement.** Replace `ComingLater` with `InboxShell` on `/inbox`, update `NAV_ITEMS`.
+- [x] **Step 3: Run** `npm run test:unit` -> PASS; `npm run typecheck && npm run build`.
+- [x] **Step 4: Commit** `feat(inbox): activate unified inbox page and navigation`.
 
 ---
 
@@ -173,13 +173,13 @@
 - Create `docs/setup/whatsapp.md`
 - Modify `docs/CHECKLIST.md`, `README.md`
 
-- [ ] **Step 1: Write setup guide.** Meta App creation, WhatsApp Business API setup, webhook configuration, verify token.
-- [ ] **Step 2: Update checklist and readme.** Mark Sub-project 4 as completed.
-- [ ] **Step 3: Run full release gate:**
+- [x] **Step 1: Write setup guide.** Meta App creation, WhatsApp Business API setup, webhook configuration, verify token.
+- [x] **Step 2: Update checklist and readme.** Mark Sub-project 4 as completed.
+- [x] **Step 3: Run full release gate:**
   - `npm run typecheck`
   - `npm run lint`
   - `npm run test:unit`
   - `npm run test:int`
   - `npm run build`
   - `npm run check:bundle`
-- [ ] **Step 4: Commit** `docs: record Phase 4 WhatsApp and Unified Inbox completion`.
+- [x] **Step 4: Commit** `docs: record Phase 4 WhatsApp and Unified Inbox completion`.

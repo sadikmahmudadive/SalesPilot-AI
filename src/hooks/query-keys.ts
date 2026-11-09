@@ -26,3 +26,11 @@ export const agentKeys = {
   list: (params: object) => [...agentKeys.lists(), params] as const,
   detail: (id: string) => [...agentKeys.all, "detail", id] as const,
 };
+
+export const inboxKeys = {
+  all: ["inbox"] as const,
+  conversations: () => [...inboxKeys.all, "conversations"] as const,
+  conversationList: (params: object) => [...inboxKeys.conversations(), "list", params] as const,
+  conversationDetail: (id: string) => [...inboxKeys.conversations(), "detail", id] as const,
+  messages: (conversationId: string) => [...inboxKeys.all, "messages", conversationId] as const,
+};

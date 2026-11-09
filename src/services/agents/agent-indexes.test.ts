@@ -68,6 +68,7 @@ describe("other collections in firestore.indexes.json", () => {
       "agentSessions",
       "agents",
       "categories",
+      "conversations",
       "customers",
       "inventory",
       "products",

@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
-import { Inbox } from "lucide-react";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { InboxShell } from "@/components/inbox/inbox-shell";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { can } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Unified Inbox" };
 
-export default function Page() {
-  return (
-    <ComingLater
-      phase={4}
-      title="Unified Inbox"
-      icon={Inbox}
-      description="Every customer conversation from WhatsApp, Messenger, Instagram and email will arrive in one shared inbox, with AI-suggested replies and clear handoff to your team."
-    />
-  );
+export default async function InboxPage() {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  const canWrite = can(ctx.role, "inbox:write");
+  return <InboxShell canWrite={canWrite} />;
 }

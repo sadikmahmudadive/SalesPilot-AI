@@ -11,7 +11,7 @@ Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has b
 | 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | implemented; UI not browser-verified |
 | 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
 | 3   | AI agents: Phase 3a tool calling, bounded engine, test console              | implemented; UI not browser-verified |
-| 4   | WhatsApp and unified inbox                                                 | roadmap                              |
+| 4   | WhatsApp and unified inbox                                                 | implemented; UI not browser-verified |
 | 5   | Orders, payments, courier                                                  | roadmap                              |
 | 6   | Voice calls                                                                | roadmap                              |
 | 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
