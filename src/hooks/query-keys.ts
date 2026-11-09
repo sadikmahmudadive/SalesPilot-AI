@@ -19,3 +19,10 @@ export const inventoryKeys = {
   lists: () => [...inventoryKeys.all, "list"] as const,
   list: (params: object) => [...inventoryKeys.lists(), params] as const,
 };
+
+export const agentKeys = {
+  all: ["agents"] as const,
+  lists: () => [...agentKeys.all, "list"] as const,
+  list: (params: object) => [...agentKeys.lists(), params] as const,
+  detail: (id: string) => [...agentKeys.all, "detail", id] as const,
+};

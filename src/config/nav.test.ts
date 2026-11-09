@@ -38,7 +38,7 @@ describe("NAV_ITEMS", () => {
 
   it("only the pages built in this plan have no phase", () => {
     const built = NAV_ITEMS.filter((i) => i.phase === undefined).map((i) => i.label);
-    expect(built).toEqual(["Overview", "Customers", "Products", "Inventory", "Settings"]);
+    expect(built).toEqual(["Overview", "AI Agents", "Customers", "Products", "Inventory", "Settings"]);
   });
 
   it("assigns the planned phases", () => {
@@ -47,7 +47,6 @@ describe("NAV_ITEMS", () => {
     );
     expect(phases).toEqual({
       "/inbox": 4,
-      "/agents": 3,
       "/orders": 5,
       "/voice": 6,
       "/automations": 7,
@@ -56,11 +55,12 @@ describe("NAV_ITEMS", () => {
     });
   });
 
-  it("gates customers, products and inventory on their read permissions", () => {
+  it("gates customers, products, inventory and agents on their read permissions", () => {
     const perms = Object.fromEntries(
       NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]),
     );
     expect(perms).toEqual({
+      "/agents": "agents:read",
       "/customers": "customers:read",
       "/products": "products:read",
       "/inventory": "inventory:read",
