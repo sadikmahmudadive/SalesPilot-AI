@@ -8,6 +8,7 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { isConfigured } from "@/config/env";
 import { NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAudit } from "@/lib/security/audit";
@@ -113,8 +114,12 @@ export async function sendHumanMessage(
   let externalId: string | null = null;
 
   if (conv.channel === "whatsapp") {
-    const sendRes = await client.sendTextMessage(conv.contactPhoneE164, input.text);
-    externalId = sendRes.messageId;
+    if (deps?.whatsappClient || isConfigured("whatsapp")) {
+      const sendRes = await client.sendTextMessage(conv.contactPhoneE164, input.text);
+      externalId = sendRes.messageId;
+    } else {
+      externalId = `wamid_sim_${Date.now()}`;
+    }
   }
 
   const senderName = ctx.name?.trim() || "Staff Member";
