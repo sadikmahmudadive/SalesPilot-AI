@@ -36,6 +36,7 @@ const LOCKED = [
   "categoryNames",
   "uploads",
   "agentSessions",
+  "conversations",
 ] as const;
 const ROLES = ["owner", "admin", "agent", "viewer"] as const;
 
@@ -118,6 +119,7 @@ beforeEach(async () => {
     await seed("inventory/inventory-A1/reservations/r1", { organizationId: ORG_A, qty: 1 });
     await seed("inventory/inventory-B1/reservations/r1", { organizationId: ORG_B, qty: 1 });
     await seed("agentSessions/doc1/messages/m1", { organizationId: ORG_A, role: "user" });
+    await seed("conversations/doc1/messages/m1", { organizationId: ORG_A, text: "hello" });
     for (const col of LOCKED) {
       await seed(`${col}/doc1`, { organizationId: ORG_A, v: 1 });
     }
@@ -381,6 +383,7 @@ describe("no client can write anything", () => {
     ...LOCKED.map((c) => `${c}/doc1`),
     "inventory/inventory-A1/reservations/r1",
     "agentSessions/doc1/messages/m1",
+    "conversations/doc1/messages/m1",
     `organizations/${ORG_A}`,
     `organizationMembers/${ORG_A}_viewerA`,
     "users/ownerA",
@@ -391,6 +394,7 @@ describe("no client can write anything", () => {
     ...LOCKED.map((c) => `${c}/new-doc`),
     "inventory/inventory-A1/reservations/new-doc",
     "agentSessions/doc1/messages/new-doc",
+    "conversations/doc1/messages/new-doc",
     "organizations/newOrg",
     "organizationMembers/newOrg_x",
     "users/newUser",

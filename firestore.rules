@@ -96,6 +96,15 @@ service cloud.firestore {
       }
     }
 
+    // Customer inbox conversations and messages: server only (Admin SDK).
+    match /conversations/{id} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
     // Confirmed Cloudinary uploads: written and read by the server only (Admin SDK). The products
     // service trusts these records, so no client may read or forge one.
     match /uploads/{id} {
