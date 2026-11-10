@@ -37,6 +37,12 @@ const LOCKED = [
   "uploads",
   "agentSessions",
   "conversations",
+  "orders",
+  "orderEvents",
+  "orderCounters",
+  "orderNumbers",
+  "orderIdempotency",
+  "orderSettings",
 ] as const;
 const ROLES = ["owner", "admin", "agent", "viewer"] as const;
 

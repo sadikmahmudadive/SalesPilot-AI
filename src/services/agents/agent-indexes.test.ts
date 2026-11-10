@@ -71,6 +71,8 @@ describe("other collections in firestore.indexes.json", () => {
       "conversations",
       "customers",
       "inventory",
+      "orderEvents",
+      "orders",
       "products",
     ]);
   });
