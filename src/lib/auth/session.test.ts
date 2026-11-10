@@ -147,7 +147,6 @@ describe("verifySessionValue", () => {
   it.each([
     "auth/session-cookie-expired",
     "auth/session-cookie-revoked",
-    "auth/invalid-session-cookie",
     "auth/argument-error",
     "auth/user-disabled",
     "auth/user-not-found",
@@ -222,6 +221,54 @@ describe("verifySessionValue", () => {
   it("returns null when the decoded token has no uid", async () => {
     auth.verifySessionCookie.mockResolvedValue({ email: "a@b.co" });
     await expect(verifySessionValue("v")).resolves.toBeNull();
+  });
+});
+
+describe("isInvalidSessionError allowlist", () => {
+  const rejectWith = (code: string | undefined, message = "x") =>
+    auth.verifySessionCookie.mockRejectedValue(
+      code === undefined ? new Error(message) : Object.assign(new Error(message), { code }),
+    );
+
+  it.each([
+    "auth/session-cookie-expired",
+    "auth/session-cookie-revoked",
+    "auth/user-disabled",
+    "auth/user-not-found",
+  ])("resolves null for the session-ending code %s", async (code) => {
+    rejectWith(code);
+    await expect(verifySessionValue("v")).resolves.toBeNull();
+  });
+
+  it("resolves null for auth/argument-error that names the session cookie", async () => {
+    rejectWith("auth/argument-error", "Decoding Firebase session cookie failed");
+    await expect(verifySessionValue("v")).resolves.toBeNull();
+  });
+
+  it("rejects for auth/argument-error with an empty message", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    rejectWith("auth/argument-error", "");
+    await expect(verifySessionValue("v")).rejects.toThrow();
+    warn.mockRestore();
+  });
+
+  it.each([
+    "auth/quota-exceeded",
+    "auth/insufficient-permission",
+    "auth/internal-error",
+    "auth/network-request-failed",
+  ])("rethrows the infrastructure code %s instead of signing out", async (code) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    rejectWith(code);
+    await expect(verifySessionValue("v")).rejects.toMatchObject({ code });
+    warn.mockRestore();
+  });
+
+  it("rethrows a codeless Error", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    rejectWith(undefined, "boom");
+    await expect(verifySessionValue("v")).rejects.toThrow("boom");
+    warn.mockRestore();
   });
 });
 

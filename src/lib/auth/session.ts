@@ -83,30 +83,34 @@ function errorCode(err: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+/** Firebase Auth codes that definitively mean "this session / its user is no longer valid". */
+const SESSION_ENDING_CODES: ReadonlySet<string> = new Set([
+  "auth/session-cookie-expired",
+  "auth/session-cookie-revoked",
+  "auth/user-disabled",
+  "auth/user-not-found",
+]);
+
 /**
- * True when `err` means "this cookie / its user is not valid" (so the caller should treat the
- * request as signed out), as opposed to "we could not find out" (network, quota, 5xx, bad server
- * credentials), which must not sign the user out.
+ * True only when `err` definitively means "this cookie / its user is not valid" (so the caller should
+ * treat the request as signed out). This is an ALLOWLIST on purpose: an Auth outage (quota, permission,
+ * network, 5xx, bad server credentials, `auth/internal-error`) must never log everyone out, so every
+ * other error is treated as "we could not find out" and rethrown by the caller.
  *
- * Token and user problems from firebase-admin carry `auth/...` codes (`auth/session-cookie-expired`,
- * `auth/session-cookie-revoked`, `auth/argument-error`, `auth/invalid-session-cookie-duration`,
- * `auth/user-disabled`, `auth/user-not-found`, ...). Two cases are infrastructure despite the prefix:
- * - `auth/internal-error`: the SDK's code for an unexpected backend or transport response.
- * - `auth/argument-error` that is not about the cookie: when firebase-admin cannot download Google's
- *   public certificates it reports the failure as `auth/argument-error` with the fetch error text.
- *   Genuine cookie problems always name the "Firebase session cookie" in their message.
+ * Allowed: `auth/session-cookie-expired`, `auth/session-cookie-revoked`, `auth/user-disabled`,
+ * `auth/user-not-found`, plus `auth/argument-error` whose message names the "session cookie" (malformed
+ * or tampered cookie). An `auth/argument-error` without such a message is not trusted: firebase-admin
+ * reports a failed download of Google's public certificates the same way.
  */
 function isInvalidSessionError(err: unknown): boolean {
   const code = errorCode(err);
-  if (code === undefined || !code.startsWith("auth/")) return false;
-  if (code === "auth/internal-error") return false;
+  if (code === undefined) return false;
+  if (SESSION_ENDING_CODES.has(code)) return true;
   if (code === "auth/argument-error") {
     const message = (err as { message?: unknown }).message;
-    if (typeof message === "string" && message.length > 0) {
-      return /session cookie/i.test(message);
-    }
+    return typeof message === "string" && /session cookie/i.test(message);
   }
-  return true;
+  return false;
 }
 
 /**
