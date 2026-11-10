@@ -12,7 +12,7 @@ import {
   type MockInstance,
 } from "vitest";
 
-import { InventoryBusyError, NotFoundError } from "@/lib/errors";
+import { ConflictError, InventoryBusyError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { logger } from "@/lib/logger";
 import { idempotencyRef } from "@/repositories/orders";
@@ -23,7 +23,7 @@ import { createCustomer } from "@/services/crm/customers";
 import { adjustStock } from "@/services/inventory/stock";
 import { archiveProduct, createProduct } from "@/services/products/products";
 
-import { createDraftOrder, updateDraftOrder, type DraftInput } from "./drafts";
+import { STALE_EDIT_MS, createDraftOrder, updateDraftOrder, type DraftInput } from "./drafts";
 import { OrderExpiredError, OrderTransitionError } from "./state-machine";
 import { OrderLineError, holdKey, releaseLines } from "./stock-holds";
 
@@ -163,10 +163,21 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   if (warnings === "none") expect(warn).not.toHaveBeenCalled();
   if (warnings === "expected") expect(warn).toHaveBeenCalled();
   warn.mockRestore();
 });
+
+/**
+ * Pins `Date` `ms` ahead of now (only Date is faked: timers and promises, which the Firestore
+ * client relies on, keep running). Restored in afterEach.
+ */
+function pinClockAhead(ms: number) {
+  const target = Date.now() + ms;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(target);
+}
 
 /** The id inside a hold key `ord_{orderId}_r{revision}_l{index}`. */
 const orderIdOfKey = (key: string) => /^ord_(.+)_r\d+_l\d+$/.exec(key)?.[1];
@@ -1038,6 +1049,7 @@ describe("releasingLines and stale pendingLines", () => {
   it("an edit releases pendingLines left by an older revision, then proceeds", async () => {
     const ctx = newCtx();
     const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
+    pinClockAhead(STALE_EDIT_MS + 60_000); // the crashed edit's pendingLines are now stale
 
     const updated = await updateDraftOrder(ctx, draft.id, {
       lines: [{ productId: b.id, quantity: 1 }],
@@ -1053,6 +1065,7 @@ describe("releasingLines and stale pendingLines", () => {
   it("a patch without lines also releases stale pendingLines", async () => {
     const ctx = newCtx();
     const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
+    pinClockAhead(STALE_EDIT_MS + 60_000);
 
     const updated = await updateDraftOrder(ctx, draft.id, { notes: "Gift wrap" });
 
@@ -1060,5 +1073,124 @@ describe("releasingLines and stale pendingLines", () => {
     expect(await reservation(b.id, "default", staleKey)).toMatchObject({ status: "released" });
     expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 0 });
     expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 1 });
+  });
+});
+
+describe("edits racing in-flight reservations (R10)", () => {
+  it("an edit while pendingLines are fresh (an edit in flight) is refused and touches nothing", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const draft = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 1 }]),
+    );
+    const inFlightKey = holdKey(draft.id, 2, 0);
+    await actualStock.reserveStock(ctx.organizationId, b.id, "default", 2, inFlightKey);
+    await db()
+      .collection("orders")
+      .doc(draft.id)
+      .update({
+        pendingLines: [lineOf(b, 2, inFlightKey)],
+        revision: 2,
+        updatedAt: Timestamp.now(),
+      });
+    pinClockAhead(STALE_EDIT_MS - 60_000); // still inside the window
+
+    for (const call of [
+      () => updateDraftOrder(ctx, draft.id, { notes: "x" }),
+      () => updateDraftOrder(ctx, draft.id, { lines: [{ productId: b.id, quantity: 1 }] }),
+    ]) {
+      const err = await rejection(call());
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as ConflictError).message).toBe("Another change to this order is in progress");
+    }
+    const stored = await rawOrder(draft.id);
+    expect(stored.revision).toBe(2);
+    expect(stored.pendingLines.map((l: { holdKey: string }) => l.holdKey)).toEqual([inFlightKey]);
+    expect(await reservation(b.id, "default", inFlightKey)).toMatchObject({ status: "reserved" });
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+
+  it("an edit of a draft whose holds are still pending is refused", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const orderId = await writePendingDraft(
+      ctx,
+      customer.id,
+      [{ product: a, quantity: 1 }],
+      `key-${randomUUID()}`,
+    );
+
+    for (const call of [
+      () => updateDraftOrder(ctx, orderId, { notes: "x" }),
+      () => updateDraftOrder(ctx, orderId, { lines: [{ productId: a.id, quantity: 2 }] }),
+    ]) {
+      const err = await rejection(call());
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as ConflictError).message).toBe("This order is still being prepared, try again");
+    }
+    const stored = await rawOrder(orderId);
+    expect(stored).toMatchObject({ revision: 1, stockState: "pending", pendingLines: null });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  it("when both the release and the park of late-reserved lines fail, the error is rethrown", async () => {
+    warnings = "expected";
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    seam.beforeReserve = async (key) => {
+      seam.beforeReserve = null;
+      // The order vanishes (so parking fails) and releases fail.
+      await db().collection("orders").doc(orderIdOfKey(key)!).delete();
+      seam.failRelease = true;
+    };
+
+    const err = await rejection(
+      createDraftOrder(ctx, draftInput(customer.id, [{ productId: a.id, quantity: 1 }])),
+    );
+
+    expect(err).not.toBeInstanceOf(OrderExpiredError);
+    expect((err as Error).message).toBe("Order is missing");
+    expect(warn).toHaveBeenCalledWith("order stock to release could not be recorded", {
+      orderId: expect.any(String),
+    });
+  });
+
+  it("a resumed replay that hits busy on an order already held neither cancels it nor releases its holds", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const key = `key-${randomUUID()}`;
+    const orderId = await writePendingDraft(ctx, customer.id, [{ product: a, quantity: 2 }], key);
+    const lineKey = holdKey(orderId, 1, 0);
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      // The original creator finishes first (reserve + Transaction B) ...
+      await actualStock.reserveStock(ctx.organizationId, a.id, "default", 2, lineKey);
+      const ref = db().collection("orders").doc(orderId);
+      const lines = (await ref.get()).data()!.lines as Array<Record<string, unknown>>;
+      await ref.update({
+        stockState: "held",
+        lines: lines.map((l) => ({ ...l, holdState: "held" })),
+      });
+      // ... and the replay's own reserve then loses to contention.
+      throw new InventoryBusyError();
+    };
+
+    const order = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 2 }], { idempotencyKey: key }),
+    );
+
+    expect(order).toMatchObject({ id: orderId, status: "draft", stockState: "held" });
+    expect(await rawOrder(orderId)).toMatchObject({ status: "draft", stockState: "held" });
+    expect(await reservation(a.id, "default", lineKey)).toMatchObject({ status: "reserved" });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+    const types = (await docsOf("orderEvents", ctx.organizationId)).map((d) => d.data().type);
+    expect(types).not.toContain("status_changed");
   });
 });

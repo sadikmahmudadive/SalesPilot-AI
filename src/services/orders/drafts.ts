@@ -22,9 +22,11 @@
  * (`hasReleasingLines: true`), re-prices, extends the hold and records the `updated` event and
  * audit; then `releasingLines` are released and a final transaction clears them (on failure they
  * stay for the sweep). A failed reserve releases the new lines and clears `pendingLines`; the old
- * lines stay held. `pendingLines` left by an earlier failed or crashed edit are released (or moved
- * to `releasingLines`) by the next edit. A patch without `lines` is one transaction, touches no
- * stock and does not extend the hold.
+ * lines stay held. An edit needs `stockState: "held"` (a draft whose creator or replay is still
+ * reserving is refused). `pendingLines` untouched for `STALE_EDIT_MS` belong to an edit that
+ * crashed or failed: the next edit releases them (or moves them to `releasingLines`); fresher
+ * ones are an edit in flight and the new edit is refused. A patch without `lines` is one
+ * transaction, touches no stock and does not extend the hold.
  *
  * RELEASING LINES. Any stock that may still be reserved for lines no longer in `lines` or
  * `pendingLines` (replaced lines, or lines reserved after their draft ended) is kept in
@@ -102,7 +104,10 @@ export interface DraftInput {
 
 const STOCK_OPTIONS: StockOptions = { maxAttempts: 3 };
 const SERVICE = "Orders";
-const EDIT_IN_PROGRESS = "This draft is being edited, please try again";
+const CHANGE_IN_PROGRESS = "Another change to this order is in progress";
+const NOT_READY = "This order is still being prepared, try again";
+/** pendingLines untouched for longer than this belong to an edit that crashed or gave up. */
+export const STALE_EDIT_MS = 5 * 60_000;
 const HOLD_FAILED = "The stock hold for this order could not be placed";
 
 type LineData = Omit<OrderLine, "holdKey" | "holdState">;
@@ -331,6 +336,14 @@ function assertEditable(order: Order): void {
   if (isExpired(order)) throw new OrderExpiredError();
 }
 
+/**
+ * An edit needs every line held: while a creator or replay is still reserving (`pending`), an
+ * edit releasing the old lines could orphan a reservation that lands afterwards.
+ */
+function assertHeld(order: Order): void {
+  if (order.stockState !== "held") throw new ConflictError(NOT_READY);
+}
+
 const holdUntil = (settings: OrderSettings) =>
   Timestamp.fromMillis(Date.now() + settings.draftHoldMinutes * 60_000);
 
@@ -350,10 +363,10 @@ function mergeLines(existing: readonly OrderLine[] | null, added: readonly Order
 
 /**
  * Records `lines` in the order's `releasingLines` (whatever its status), so the sweep can release
- * them. Returns false (logged) when even that write fails.
+ * them. Throws (logged) when even that write fails.
  */
 async function parkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
-  if (lines.length === 0) return true;
+  if (lines.length === 0) return;
   const ref = orderRepo.docRef(orderId);
   try {
     await adminDb().runTransaction(async (tx) => {
@@ -365,17 +378,19 @@ async function parkLines(orgId: string, orderId: string, lines: readonly OrderLi
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
-    return true;
-  } catch {
+  } catch (error) {
     logger.warn("order stock to release could not be recorded", { orderId });
-    return false;
+    throw error;
   }
 }
 
-/** Releases `lines`, or parks them when that fails. True when they are free or reachable. */
+/**
+ * Releases `lines`, or parks them in `releasingLines` when that fails. When both fail the error
+ * is rethrown: the lines are never silently dropped.
+ */
 async function releaseOrPark(orgId: string, orderId: string, lines: readonly OrderLine[]) {
-  if (await tryRelease(orgId, orderId, lines)) return true;
-  return parkLines(orgId, orderId, lines);
+  if (await tryRelease(orgId, orderId, lines)) return;
+  await parkLines(orgId, orderId, lines);
 }
 
 /** Drops released `lines` from `releasingLines`; the flag clears when none remain. */
@@ -533,6 +548,12 @@ async function holdDraft(
   const orgId = ctx.organizationId;
   const failure = await reserveInOrder(orgId, lines);
   if (failure) {
+    // A concurrent creator or replay may already have held these very lines: then they are live
+    // holds of a good order, not leftovers to release, and the order must not be cancelled.
+    const live = await orderRepo.get(orgId, orderId);
+    if (live?.status === "draft" && live.revision === revision && live.stockState === "held") {
+      return live;
+    }
     const released = await tryRelease(orgId, orderId, failure.toRelease);
     await cancelUnheldDraft(ctx, orderId, revision, released);
     throw publicError(failure);
@@ -565,7 +586,8 @@ async function holdDraft(
 /**
  * Transaction C: cancels a draft whose lines could not all be reserved. `released` says whether
  * the compensation release succeeded; when it did not, `stockState: "releasing"` leaves the
- * release to the sweep. A draft whose lines an edit already replaced is left alone. Failures are
+ * release to the sweep. Only a draft still `pending` at this revision is cancelled: one already
+ * held (by a concurrent replay) or whose lines an edit replaced is left alone. Failures are
  * logged (order id only), never thrown: the caller rethrows the original error, and an
  * uncancelled draft still expires.
  */
@@ -580,7 +602,14 @@ async function cancelUnheldDraft(
   try {
     await adminDb().runTransaction(async (tx) => {
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-      if (!order || order.status !== "draft" || order.revision !== revision) return;
+      if (
+        !order ||
+        order.status !== "draft" ||
+        order.revision !== revision ||
+        order.stockState !== "pending"
+      ) {
+        return;
+      }
       const next = transition(order, "cancel");
       tx.update(ref, {
         status: next.status,
@@ -677,19 +706,22 @@ export async function updateDraftOrder(
   const current = await orderRepo.get(orgId, orderId);
   if (!current) throw new NotFoundError();
   assertEditable(current);
+  assertHeld(current);
+  // pendingLines are an edit in flight unless untouched for STALE_EDIT_MS.
+  if (current.pendingLines && Date.now() - Date.parse(current.updatedAt) <= STALE_EDIT_MS) {
+    throw new ConflictError(CHANGE_IN_PROGRESS);
+  }
   const settings = await getOrderSettings(orgId);
   const ref = orderRepo.docRef(orderId);
   const detail = changed.join(", ");
 
-  // pendingLines left by an earlier edit that crashed or could not release them: release them
-  // (or park them in releasingLines) so this edit can replace them.
+  // Stale pendingLines (an earlier edit crashed or could not release them): release them, or
+  // park them in releasingLines, so this edit can replace them. Throws if neither works.
   const stale = pendingKeys(current);
-  if (current.pendingLines && !(await releaseOrPark(orgId, orderId, current.pendingLines))) {
-    throw new ConflictError(EDIT_IN_PROGRESS);
-  }
+  if (current.pendingLines) await releaseOrPark(orgId, orderId, current.pendingLines);
   /** The transaction must see exactly the pendingLines handled above (else a concurrent edit). */
   const assertPendingUnchanged = (order: Order) => {
-    if (pendingKeys(order) !== stale) throw new ConflictError(EDIT_IN_PROGRESS);
+    if (pendingKeys(order) !== stale) throw new ConflictError(CHANGE_IN_PROGRESS);
   };
 
   const record = (tx: Transaction, before: Order, revision: number, pricing: PricingResult) => {
@@ -719,6 +751,7 @@ export async function updateDraftOrder(
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
       if (!order) throw new NotFoundError();
       assertEditable(order);
+      assertHeld(order);
       assertPendingUnchanged(order);
       const { fields, pricing } = patchedFields(order, patch, order.lines, settings, false);
       tx.update(ref, { ...fields, ...(stale ? { pendingLines: null } : {}) });
@@ -742,7 +775,8 @@ export async function updateDraftOrder(
     const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
     if (!order) throw new NotFoundError();
     assertEditable(order);
-    if (order.revision !== current.revision) throw new ConflictError(EDIT_IN_PROGRESS);
+    assertHeld(order);
+    if (order.revision !== current.revision) throw new ConflictError(CHANGE_IN_PROGRESS);
     assertPendingUnchanged(order);
     tx.update(ref, {
       pendingLines: newLines,
@@ -785,7 +819,7 @@ export async function updateDraftOrder(
     // The draft ended (expired and swept) or another edit took over while these lines were
     // reserved: give them back, or keep them reachable.
     await releaseOrPark(orgId, orderId, newLines);
-    throw swapped.draft ? new ConflictError(EDIT_IN_PROGRESS) : new OrderTransitionError();
+    throw swapped.draft ? new ConflictError(CHANGE_IN_PROGRESS) : new OrderTransitionError();
   }
 
   // The replaced lines (and anything parked earlier) no longer hold anything for this order.
