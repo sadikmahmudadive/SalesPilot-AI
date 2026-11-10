@@ -163,21 +163,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   if (warnings === "none") expect(warn).not.toHaveBeenCalled();
   if (warnings === "expected") expect(warn).toHaveBeenCalled();
   warn.mockRestore();
 });
 
 /**
- * Pins `Date` `ms` ahead of now (only Date is faked: timers and promises, which the Firestore
- * client relies on, keep running). Restored in afterEach.
+ * A stored `updatedAt` `ms` in the past. Staleness is pinned by backdating the stored time, not
+ * by faking `Date`: jumping the process clock minutes ahead makes the Firestore gRPC client fail
+ * its own deadlines ("DEADLINE_EXCEEDED ... Waiting for LB pick").
  */
-function pinClockAhead(ms: number) {
-  const target = Date.now() + ms;
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(target);
-}
+const updatedAgo = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
 
 /** The id inside a hold key `ord_{orderId}_r{revision}_l{index}`. */
 const orderIdOfKey = (key: string) => /^ord_(.+)_r\d+_l\d+$/.exec(key)?.[1];
@@ -1042,14 +1038,17 @@ describe("releasingLines and stale pendingLines", () => {
     await db()
       .collection("orders")
       .doc(draft.id)
-      .update({ pendingLines: [lineOf(b, 2, staleKey)], revision: 2 });
+      .update({
+        pendingLines: [lineOf(b, 2, staleKey)],
+        revision: 2,
+        updatedAt: updatedAgo(STALE_EDIT_MS + 60_000), // untouched for over 5 minutes: stale
+      });
     return { draft, a, b, staleKey };
   }
 
   it("an edit releases pendingLines left by an older revision, then proceeds", async () => {
     const ctx = newCtx();
     const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
-    pinClockAhead(STALE_EDIT_MS + 60_000); // the crashed edit's pendingLines are now stale
 
     const updated = await updateDraftOrder(ctx, draft.id, {
       lines: [{ productId: b.id, quantity: 1 }],
@@ -1065,7 +1064,6 @@ describe("releasingLines and stale pendingLines", () => {
   it("a patch without lines also releases stale pendingLines", async () => {
     const ctx = newCtx();
     const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
-    pinClockAhead(STALE_EDIT_MS + 60_000);
 
     const updated = await updateDraftOrder(ctx, draft.id, { notes: "Gift wrap" });
 
@@ -1094,9 +1092,8 @@ describe("edits racing in-flight reservations (R10)", () => {
       .update({
         pendingLines: [lineOf(b, 2, inFlightKey)],
         revision: 2,
-        updatedAt: Timestamp.now(),
+        updatedAt: updatedAgo(STALE_EDIT_MS - 60_000), // 4 minutes ago: still inside the window
       });
-    pinClockAhead(STALE_EDIT_MS - 60_000); // still inside the window
 
     for (const call of [
       () => updateDraftOrder(ctx, draft.id, { notes: "x" }),
