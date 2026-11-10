@@ -1,10 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import { Timestamp } from "firebase-admin/firestore";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { InventoryBusyError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
+import { logger } from "@/lib/logger";
+import { idempotencyRef } from "@/repositories/orders";
 import { customerInputSchema } from "@/schemas/customer";
 import { shippingAddressSchema, type Order, type OrderLineInput } from "@/schemas/order";
 import { productInputSchema, type Product } from "@/schemas/product";
@@ -14,7 +25,7 @@ import { archiveProduct, createProduct } from "@/services/products/products";
 
 import { createDraftOrder, updateDraftOrder, type DraftInput } from "./drafts";
 import { OrderExpiredError, OrderTransitionError } from "./state-machine";
-import { OrderLineError, holdKey } from "./stock-holds";
+import { OrderLineError, holdKey, releaseLines } from "./stock-holds";
 
 // Failure seams on the stock service: run a hook before a reserve (to change stock between the
 // availability check and the reservation) and make a release throw (to prove compensation
@@ -138,10 +149,36 @@ async function rejection(p: Promise<unknown>): Promise<unknown> {
   );
 }
 
+// Every logger.warn is captured (no log noise). A test that expects warnings sets `warnings`
+// to "expected" (asserted) or "allowed" (e.g. contention warnings in the race test); otherwise
+// none may be logged.
+let warn: MockInstance<typeof logger.warn>;
+let warnings: "none" | "expected" | "allowed" = "none";
+
 beforeEach(() => {
   seam.beforeReserve = null;
   seam.failRelease = false;
+  warnings = "none";
+  warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 });
+
+afterEach(() => {
+  if (warnings === "none") expect(warn).not.toHaveBeenCalled();
+  if (warnings === "expected") expect(warn).toHaveBeenCalled();
+  warn.mockRestore();
+});
+
+/** The id inside a hold key `ord_{orderId}_r{revision}_l{index}`. */
+const orderIdOfKey = (key: string) => /^ord_(.+)_r\d+_l\d+$/.exec(key)?.[1];
+
+/** What the expiry sweep does to a draft it cancels (status only; its release is not run). */
+const sweepCancel = (orderId: string) =>
+  db().collection("orders").doc(orderId).update({
+    status: "cancelled",
+    cancelReason: "expired",
+    stockState: "released",
+    holdExpiresAt: null,
+  });
 
 afterAll(async () => {
   for (const org of orgs) {
@@ -207,6 +244,8 @@ describe("createDraftOrder", () => {
       revision: 1,
       stockState: "held",
       pendingLines: null,
+      releasingLines: null,
+      hasReleasingLines: false,
       subtotalMinor: 2 * 50000 + 80000 + 3 * 80000,
       discountMinor: 0,
       deliveryChargeMinor: 6000,
@@ -405,6 +444,7 @@ describe("createDraftOrder", () => {
   });
 
   it("race: ten concurrent drafts of 1 against stock 5 hold exactly 5", async () => {
+    warnings = "allowed"; // contention can log "inventory transaction gave up"
     const ctx = newCtx();
     const customer = await seedCustomer(ctx);
     const p = await seedProduct(ctx, { stock: 5 });
@@ -484,6 +524,7 @@ describe("createDraftOrder", () => {
   });
 
   it("a release failure during compensation still cancels, leaves stockState releasing and rethrows the original error", async () => {
+    warnings = "expected";
     const ctx = newCtx();
     const customer = await seedCustomer(ctx);
     const a = await seedProduct(ctx, { stock: 5 });
@@ -515,6 +556,7 @@ describe("createDraftOrder", () => {
     });
     // Line 0 is still reserved; the sweep finishes the release from stockState "releasing".
     expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 1 });
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { orderId: expect.any(String) });
   });
 });
 
@@ -542,6 +584,8 @@ describe("updateDraftOrder", () => {
       revision: 2,
       stockState: "held",
       pendingLines: null,
+      releasingLines: null,
+      hasReleasingLines: false,
       subtotalMinor: 90000,
       discountMinor: 5000,
       deliveryChargeMinor: 6000,
@@ -577,7 +621,7 @@ describe("updateDraftOrder", () => {
     expect(actions.sort()).toEqual(["order.create", "order.update"]);
   });
 
-  it("a patch without lines re-prices and keeps the holds", async () => {
+  it("a patch without lines re-prices, keeps the holds and does not extend the hold", async () => {
     const ctx = newCtx();
     const a = await seedProduct(ctx, { stock: 5, regularPriceMinor: 10000 });
     const draft = await draftWith(ctx, [{ productId: a.id, quantity: 2 }]);
@@ -597,6 +641,7 @@ describe("updateDraftOrder", () => {
       paymentStatus: "awaiting_payment",
       notes: "Call first",
       lines: draft.lines,
+      holdExpiresAt: draft.holdExpiresAt,
     });
     expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
   });
@@ -674,5 +719,346 @@ describe("updateDraftOrder", () => {
     await expect(updateDraftOrder(ctx, "bad/id", { notes: "x" })).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+// ---- fix round 1: replays, late reservations, releasingLines, stale pendingLines -----------
+
+function lineOf(product: Product, quantity: number, key: string, holdState = "pending") {
+  return {
+    productId: product.id,
+    variantId: "default",
+    productName: product.name,
+    variantLabel: null,
+    sku: product.sku,
+    unitPriceMinor: product.regularPriceMinor,
+    quantity,
+    lineTotalMinor: product.regularPriceMinor * quantity,
+    holdKey: key,
+    holdState,
+  };
+}
+
+/** A draft exactly as Transaction A leaves it (lines pending), as if its creator then crashed. */
+async function writePendingDraft(
+  ctx: Ctx,
+  customerId: string,
+  items: Array<{ product: Product; quantity: number }>,
+  idempotencyKey: string,
+): Promise<string> {
+  const orderId = db().collection("orders").doc().id;
+  const lines = items.map((it, i) => lineOf(it.product, it.quantity, holdKey(orderId, 1, i)));
+  const subtotalMinor = lines.reduce((sum, l) => sum + l.lineTotalMinor, 0);
+  await db()
+    .collection("orders")
+    .doc(orderId)
+    .set({
+      organizationId: ctx.organizationId,
+      orderNumber: "SP-000001",
+      status: "draft",
+      source: "staff",
+      createdBy: { kind: "user", uid: ctx.uid },
+      customerId,
+      customerSnapshot: { name: "Md. Rahim", phoneE164: "+8801712000000" },
+      shippingAddress: address(),
+      lines,
+      pendingLines: null,
+      releasingLines: null,
+      hasReleasingLines: false,
+      revision: 1,
+      subtotalMinor,
+      discountMinor: 0,
+      deliveryChargeMinor: 6000,
+      totalMinor: subtotalMinor + 6000,
+      currency: "BDT",
+      paymentMethod: "cod",
+      paymentStatus: "cod_pending",
+      holdExpiresAt: Timestamp.fromMillis(Date.now() + 30 * 60_000),
+      stockState: "pending",
+      conversationId: null,
+      notes: null,
+      idempotencyKey,
+      confirmedAt: null,
+      cancelledAt: null,
+      cancelReason: null,
+      refund: null,
+      allowUnpaidReason: null,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  await idempotencyRef(ctx.organizationId, idempotencyKey).set({
+    organizationId: ctx.organizationId,
+    orderId,
+  });
+  return orderId;
+}
+
+describe("idempotent replay of a pending draft", () => {
+  it("resumes reserving the stored lines and returns the held order", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const key = `key-${randomUUID()}`;
+    const orderId = await writePendingDraft(
+      ctx,
+      customer.id,
+      [
+        { product: a, quantity: 2 },
+        { product: b, quantity: 1 },
+      ],
+      key,
+    );
+    // The creator got as far as reserving line 0 before it stopped.
+    await actualStock.reserveStock(ctx.organizationId, a.id, "default", 2, holdKey(orderId, 1, 0));
+
+    const order = await createDraftOrder(
+      ctx,
+      draftInput(
+        customer.id,
+        [
+          { productId: a.id, quantity: 2 },
+          { productId: b.id, quantity: 1 },
+        ],
+        { idempotencyKey: key },
+      ),
+    );
+
+    expect(order).toMatchObject({ id: orderId, status: "draft", stockState: "held" });
+    expect(order.lines.map((l) => l.holdState)).toEqual(["held", "held"]);
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 1 });
+    expect(await docsOf("orders", ctx.organizationId)).toHaveLength(1);
+  });
+
+  it("a resumed replay that cannot reserve is cancelled like a create", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const b = await seedProduct(ctx, { stock: 2 });
+    const key = `key-${randomUUID()}`;
+    const orderId = await writePendingDraft(ctx, customer.id, [{ product: b, quantity: 3 }], key);
+
+    const err = await rejection(
+      createDraftOrder(
+        ctx,
+        draftInput(customer.id, [{ productId: b.id, quantity: 3 }], { idempotencyKey: key }),
+      ),
+    );
+
+    expect(err).toBeInstanceOf(OrderLineError);
+    expect((err as OrderLineError).details).toEqual([{ path: "lines.0", message: "out_of_stock" }]);
+    expect(await rawOrder(orderId)).toMatchObject({
+      status: "cancelled",
+      cancelReason: "stock_unavailable",
+      stockState: "released",
+    });
+    expect(await counts(b.id)).toEqual({ onHand: 2, reserved: 0 });
+  });
+
+  it("when a concurrent replay holds the draft first, the original call returns the held order", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 2 }]);
+    let replayed: Order | null = null;
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      replayed = await createDraftOrder(ctx, input); // a double submit, while we are reserving
+    };
+
+    const order = await createDraftOrder(ctx, input);
+
+    expect(replayed).not.toBeNull();
+    expect(replayed!.id).toBe(order.id);
+    expect(replayed!.stockState).toBe("held");
+    expect(order).toMatchObject({ stockState: "held", status: "draft" });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+});
+
+describe("late reservations", () => {
+  it("the sweep cancelling a draft during its reserves: the stock is given back (B finds it ended)", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    seam.beforeReserve = async (key) => {
+      seam.beforeReserve = null;
+      await sweepCancel(orderIdOfKey(key)!);
+    };
+
+    const err = await rejection(
+      createDraftOrder(ctx, draftInput(customer.id, [{ productId: a.id, quantity: 2 }])),
+    );
+
+    expect(err).toBeInstanceOf(OrderExpiredError);
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 0 });
+    const [order] = (await docsOf("orders", ctx.organizationId)).map((d) => d.data());
+    expect(order).toMatchObject({
+      status: "cancelled",
+      releasingLines: null,
+      hasReleasingLines: false,
+    });
+  });
+
+  it("if giving that stock back fails, the lines are parked in releasingLines of the cancelled order", async () => {
+    warnings = "expected";
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    seam.beforeReserve = async (key) => {
+      seam.beforeReserve = null;
+      await sweepCancel(orderIdOfKey(key)!);
+      seam.failRelease = true;
+    };
+
+    const err = await rejection(
+      createDraftOrder(ctx, draftInput(customer.id, [{ productId: a.id, quantity: 2 }])),
+    );
+
+    expect(err).toBeInstanceOf(OrderExpiredError);
+    const [doc] = await docsOf("orders", ctx.organizationId);
+    const stored = doc!.data();
+    expect(stored.status).toBe("cancelled");
+    expect(stored.hasReleasingLines).toBe(true);
+    expect(stored.releasingLines.map((l: { holdKey: string }) => l.holdKey)).toEqual([
+      holdKey(doc!.id, 1, 0),
+    ]);
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+
+    seam.failRelease = false;
+    await releaseLines(ctx.organizationId, stored.releasingLines);
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  it("the sweep cancelling a draft during an edit's reserves: the new lines are given back (T2 finds it ended)", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const draft = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 1 }]),
+    );
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      await sweepCancel(draft.id);
+    };
+
+    const err = await rejection(
+      updateDraftOrder(ctx, draft.id, { lines: [{ productId: b.id, quantity: 2 }] }),
+    );
+
+    expect(err).toBeInstanceOf(OrderTransitionError);
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 0 });
+    expect(await reservation(b.id, "default", holdKey(draft.id, 2, 0))).toMatchObject({
+      status: "released",
+    });
+    expect((await rawOrder(draft.id)).hasReleasingLines).toBe(false);
+  });
+
+  it("if giving an edit's new lines back fails, they are parked in releasingLines", async () => {
+    warnings = "expected";
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const draft = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 1 }]),
+    );
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      await sweepCancel(draft.id);
+      seam.failRelease = true;
+    };
+
+    const err = await rejection(
+      updateDraftOrder(ctx, draft.id, { lines: [{ productId: b.id, quantity: 2 }] }),
+    );
+
+    expect(err).toBeInstanceOf(OrderTransitionError);
+    const stored = await rawOrder(draft.id);
+    expect(stored.hasReleasingLines).toBe(true);
+    expect(stored.releasingLines.map((l: { holdKey: string }) => l.holdKey)).toEqual([
+      holdKey(draft.id, 2, 0),
+    ]);
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+});
+
+describe("releasingLines and stale pendingLines", () => {
+  it("a failed release of the replaced lines keeps them in releasingLines, reserved, until released", async () => {
+    warnings = "expected";
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const draft = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 2 }]),
+    );
+    seam.failRelease = true;
+
+    const updated = await updateDraftOrder(ctx, draft.id, {
+      lines: [{ productId: b.id, quantity: 1 }],
+    });
+
+    expect(updated).toMatchObject({ revision: 2, stockState: "held", hasReleasingLines: true });
+    expect(updated.releasingLines).toEqual(draft.lines);
+    expect(await reservation(a.id, "default", holdKey(draft.id, 1, 0))).toMatchObject({
+      status: "reserved",
+    });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 1 });
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { orderId: draft.id });
+
+    seam.failRelease = false;
+    await releaseLines(ctx.organizationId, updated.releasingLines!);
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  async function draftWithStalePending(ctx: Ctx) {
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 5 });
+    const draft = await createDraftOrder(
+      ctx,
+      draftInput(customer.id, [{ productId: a.id, quantity: 1 }]),
+    );
+    // An earlier edit (revision 2) reserved its line and then crashed before Transaction 2.
+    const staleKey = holdKey(draft.id, 2, 0);
+    await actualStock.reserveStock(ctx.organizationId, b.id, "default", 2, staleKey);
+    await db()
+      .collection("orders")
+      .doc(draft.id)
+      .update({ pendingLines: [lineOf(b, 2, staleKey)], revision: 2 });
+    return { draft, a, b, staleKey };
+  }
+
+  it("an edit releases pendingLines left by an older revision, then proceeds", async () => {
+    const ctx = newCtx();
+    const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
+
+    const updated = await updateDraftOrder(ctx, draft.id, {
+      lines: [{ productId: b.id, quantity: 1 }],
+    });
+
+    expect(updated).toMatchObject({ revision: 3, stockState: "held", pendingLines: null });
+    expect(updated.lines.map((l) => l.holdKey)).toEqual([holdKey(draft.id, 3, 0)]);
+    expect(await reservation(b.id, "default", staleKey)).toMatchObject({ status: "released" });
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 1 });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  it("a patch without lines also releases stale pendingLines", async () => {
+    const ctx = newCtx();
+    const { draft, a, b, staleKey } = await draftWithStalePending(ctx);
+
+    const updated = await updateDraftOrder(ctx, draft.id, { notes: "Gift wrap" });
+
+    expect(updated).toMatchObject({ revision: 2, pendingLines: null, notes: "Gift wrap" });
+    expect(await reservation(b.id, "default", staleKey)).toMatchObject({ status: "released" });
+    expect(await counts(b.id)).toEqual({ onHand: 5, reserved: 0 });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 1 });
   });
 });

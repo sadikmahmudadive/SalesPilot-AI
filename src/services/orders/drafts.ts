@@ -11,15 +11,24 @@
  *   3. lines are reserved one by one (key `ord_{orderId}_r{revision}_l{i}`);
  *   4. Transaction B marks the lines `held` and `stockState: "held"`.
  * A crash after 2 leaves a draft whose hold expires: the sweep cancels it and releases every key
- * (a never-reserved key counts as free). A reserve failure releases the lines reserved so far
+ * (a never-reserved key counts as free). An idempotent replay of a draft still `pending` resumes
+ * steps 3-4 (the keys are idempotent). A reserve failure releases the lines reserved so far
  * and cancels the draft (`stock_unavailable`) in Transaction C; when that release itself fails,
  * Transaction C records `stockState: "releasing"` instead, so the sweep finishes the release.
  *
  * UPDATE (`updateDraftOrder`). Transaction 1 writes the new revision's lines as `pendingLines`
- * (`pending`, new keys) and bumps `revision`; they are reserved; Transaction 2 swaps them in as
- * `lines` (held), re-prices, extends the hold and records the `updated` event and audit; then the
- * old lines are released. A failed reserve releases the new lines and clears `pendingLines`; the
- * old lines stay held. A patch without `lines` is one transaction and touches no stock.
+ * (`pending`, new keys), bumps `revision` and extends the hold; they are reserved; Transaction 2
+ * swaps them in as `lines` (held), moves the old lines to `releasingLines`
+ * (`hasReleasingLines: true`), re-prices, extends the hold and records the `updated` event and
+ * audit; then `releasingLines` are released and a final transaction clears them (on failure they
+ * stay for the sweep). A failed reserve releases the new lines and clears `pendingLines`; the old
+ * lines stay held. `pendingLines` left by an earlier failed or crashed edit are released (or moved
+ * to `releasingLines`) by the next edit. A patch without `lines` is one transaction, touches no
+ * stock and does not extend the hold.
+ *
+ * RELEASING LINES. Any stock that may still be reserved for lines no longer in `lines` or
+ * `pendingLines` (replaced lines, or lines reserved after their draft ended) is kept in
+ * `releasingLines` until released, so no reservation is ever unreachable.
  *
  * Stock calls use `{ maxAttempts: 3 }`: these run inside HTTP requests and AI tool calls.
  */
@@ -328,7 +337,71 @@ const holdUntil = (settings: OrderSettings) =>
 const withHold = (lines: readonly OrderLine[], holdState: OrderLine["holdState"]): OrderLine[] =>
   lines.map((l) => ({ ...l, holdState }));
 
+// ---- releasing lines -----------------------------------------------------------------------
+
+const keySet = (lines: readonly OrderLine[]) => new Set(lines.map((l) => l.holdKey));
+
+/** `existing` plus every line of `added` whose key it does not hold yet. */
+function mergeLines(existing: readonly OrderLine[] | null, added: readonly OrderLine[]) {
+  const base = existing ?? [];
+  const known = keySet(base);
+  return [...base, ...added.filter((l) => !known.has(l.holdKey))];
+}
+
+/**
+ * Records `lines` in the order's `releasingLines` (whatever its status), so the sweep can release
+ * them. Returns false (logged) when even that write fails.
+ */
+async function parkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+  if (lines.length === 0) return true;
+  const ref = orderRepo.docRef(orderId);
+  try {
+    await adminDb().runTransaction(async (tx) => {
+      const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
+      if (!order) throw new Error("Order is missing");
+      tx.update(ref, {
+        releasingLines: mergeLines(order.releasingLines, lines),
+        hasReleasingLines: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return true;
+  } catch {
+    logger.warn("order stock to release could not be recorded", { orderId });
+    return false;
+  }
+}
+
+/** Releases `lines`, or parks them when that fails. True when they are free or reachable. */
+async function releaseOrPark(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+  if (await tryRelease(orgId, orderId, lines)) return true;
+  return parkLines(orgId, orderId, lines);
+}
+
+/** Drops released `lines` from `releasingLines`; the flag clears when none remain. */
+async function unparkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+  const ref = orderRepo.docRef(orderId);
+  const done = keySet(lines);
+  try {
+    await adminDb().runTransaction(async (tx) => {
+      const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
+      if (!order?.releasingLines) return;
+      const rest = order.releasingLines.filter((l) => !done.has(l.holdKey));
+      tx.update(ref, {
+        releasingLines: rest.length > 0 ? rest : null,
+        hasReleasingLines: rest.length > 0,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch {
+    logger.warn("order released stock could not be cleared", { orderId });
+  }
+}
+
 // ---- create --------------------------------------------------------------------------------
+
+/** What Transaction A writes; only `holdExpiresAt` differs from `Order` (a Timestamp). */
+type NewOrderData = Omit<OrgCreateInput<Order>, "holdExpiresAt"> & { holdExpiresAt: Timestamp };
 
 export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promise<Order> {
   assertOrgCtx(ctx, SERVICE);
@@ -338,10 +411,10 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
   // 1. The customer must exist in this organization.
   const customer = await loadCustomer(orgId, input.customerId);
 
-  // 2. A replay returns the existing order, with no new writes.
+  // 2. A replay returns the existing order (resuming its holds if its creator stopped early).
   const idemRef = idempotencyRef(orgId, input.idempotencyKey);
   const replayId = lockedOrderId(await idemRef.get(), orgId);
-  if (replayId) return getStored(orgId, replayId);
+  if (replayId) return resumeReplay(ctx, replayId);
 
   // 3-4. Catalog, stock and pricing checks (reads only).
   const resolved = await resolveLines(ctx, input.lines);
@@ -366,7 +439,7 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
     if (raced) return raced;
     const orderNumber = await nextOrderNumber(tx, orgId); // last read; writes follow
 
-    const data = {
+    const data: NewOrderData = {
       orderNumber,
       status: "draft",
       source: input.source,
@@ -376,6 +449,8 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
       shippingAddress: input.shippingAddress,
       lines,
       pendingLines: null,
+      releasingLines: null,
+      hasReleasingLines: false,
       revision: 1,
       ...pricing,
       currency: "BDT",
@@ -392,7 +467,10 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
       refund: null,
       allowUnpaidReason: null,
     };
-    const order = orderRepo.build(orgId, data as unknown as OrgCreateInput<Order>, orderId);
+    // The repository types `holdExpiresAt` as its read form (ISO string); it is stored as a
+    // Timestamp so the sweep can query it.
+    const stored = { ...data, holdExpiresAt: data.holdExpiresAt as unknown as string };
+    const order = orderRepo.build(orgId, stored, orderId);
     tx.create(order.ref, order.data);
     tx.create(orderNumberRef(orgId, orderNumber), { organizationId: orgId, orderId });
     tx.create(idemRef, { organizationId: orgId, orderId });
@@ -422,50 +500,87 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
     });
     return null;
   });
-  if (existingId) return getStored(orgId, existingId);
+  if (existingId) return resumeReplay(ctx, existingId);
 
-  // 6. Reserve line by line; on failure release what was reserved and cancel (Transaction C).
+  // 6-7. Reserve the lines, then Transaction B (or C on failure).
+  return holdDraft(ctx, orderId, lines, 1);
+}
+
+/**
+ * The order of an idempotency replay. A draft still `pending` (its creator crashed after
+ * Transaction A, or is still running) resumes reserving its stored lines; the keys are
+ * idempotent, so lines the creator already reserved are not reserved twice.
+ */
+async function resumeReplay(ctx: OrderCtx, orderId: string): Promise<Order> {
+  const order = await getStored(ctx.organizationId, orderId);
+  if (order.status !== "draft" || order.stockState !== "pending" || isExpired(order)) {
+    return order;
+  }
+  return holdDraft(ctx, orderId, order.lines, order.revision);
+}
+
+/**
+ * Steps 6-7 for a draft whose `lines` (revision `revision`) are stored `pending`: reserve them in
+ * order, then Transaction B marks them held. A reserve failure releases what was reserved and
+ * cancels the draft (Transaction C) before rethrowing.
+ */
+async function holdDraft(
+  ctx: OrderCtx,
+  orderId: string,
+  lines: readonly OrderLine[],
+  revision: number,
+): Promise<Order> {
+  const orgId = ctx.organizationId;
   const failure = await reserveInOrder(orgId, lines);
   if (failure) {
     const released = await tryRelease(orgId, orderId, failure.toRelease);
-    await cancelUnheldDraft(ctx, orderId, released);
+    await cancelUnheldDraft(ctx, orderId, revision, released);
     throw publicError(failure);
   }
 
-  // 7. Transaction B: every line held.
+  // Transaction B: every line held.
   const ref = orderRepo.docRef(orderId);
-  const marked = await adminDb().runTransaction(async (tx) => {
+  const outcome = await adminDb().runTransaction(async (tx) => {
     const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-    if (!order || order.status !== "draft" || order.stockState !== "pending") return false;
+    if (!order || order.status !== "draft") return "ended" as const;
+    if (order.revision !== revision) return "replaced" as const;
+    if (order.stockState === "held") return "held" as const; // a concurrent replay got there first
+    if (order.stockState !== "pending") return "ended" as const;
     tx.update(ref, {
       lines: withHold(order.lines, "held"),
       stockState: "held",
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return true;
+    return "held" as const;
   });
-  if (!marked) {
-    // The draft ended while its lines were being reserved (the hold expired and the sweep
-    // cancelled it): give the stock back, since the sweep may have released before we reserved.
-    await tryRelease(orgId, orderId, lines);
-    throw new OrderExpiredError();
-  }
-  return getStored(orgId, orderId);
+  if (outcome === "held") return getStored(orgId, orderId);
+
+  // These lines no longer belong to a live draft (it ended, or an edit replaced them) and may
+  // have been reserved after they were released: give the stock back, or keep it reachable.
+  await releaseOrPark(orgId, orderId, lines);
+  if (outcome === "replaced") return getStored(orgId, orderId);
+  throw new OrderExpiredError();
 }
 
 /**
  * Transaction C: cancels a draft whose lines could not all be reserved. `released` says whether
  * the compensation release succeeded; when it did not, `stockState: "releasing"` leaves the
- * release to the sweep. Failures are logged (order id only), never thrown: the caller rethrows
- * the original error, and an uncancelled draft still expires.
+ * release to the sweep. A draft whose lines an edit already replaced is left alone. Failures are
+ * logged (order id only), never thrown: the caller rethrows the original error, and an
+ * uncancelled draft still expires.
  */
-async function cancelUnheldDraft(ctx: OrderCtx, orderId: string, released: boolean) {
+async function cancelUnheldDraft(
+  ctx: OrderCtx,
+  orderId: string,
+  revision: number,
+  released: boolean,
+) {
   const orgId = ctx.organizationId;
   const ref = orderRepo.docRef(orderId);
   try {
     await adminDb().runTransaction(async (tx) => {
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-      if (!order || order.status !== "draft") return;
+      if (!order || order.status !== "draft" || order.revision !== revision) return;
       const next = transition(order, "cancel");
       tx.update(ref, {
         status: next.status,
@@ -511,12 +626,16 @@ const PATCH_FIELDS = [
   "notes",
 ] as const;
 
-/** Every field a patch changes besides lines/stock, priced against `lines`. */
+/**
+ * Every field a patch changes besides lines/stock, priced against `lines`. The hold is extended
+ * only when the lines change (`extendHold`).
+ */
 function patchedFields(
   order: Order,
   patch: OrderDraftPatch,
   lines: readonly OrderLine[],
   settings: OrderSettings,
+  extendHold: boolean,
 ): { fields: Record<string, unknown>; pricing: PricingResult } {
   const shippingAddress = patch.shippingAddress ?? order.shippingAddress;
   const paymentMethod = patch.paymentMethod ?? order.paymentMethod;
@@ -534,11 +653,14 @@ function patchedFields(
       paymentStatus: initialPaymentStatus(paymentMethod),
       ...pricing,
       notes: patch.notes === undefined ? order.notes : blankToNull(patch.notes),
-      holdExpiresAt: holdUntil(settings),
+      ...(extendHold ? { holdExpiresAt: holdUntil(settings) } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     },
   };
 }
+
+const pendingKeys = (order: Pick<Order, "pendingLines">) =>
+  order.pendingLines ? order.pendingLines.map((l) => l.holdKey).join(",") : null;
 
 export async function updateDraftOrder(
   ctx: OrderCtx,
@@ -555,10 +677,20 @@ export async function updateDraftOrder(
   const current = await orderRepo.get(orgId, orderId);
   if (!current) throw new NotFoundError();
   assertEditable(current);
-  if (current.pendingLines !== null) throw new ConflictError(EDIT_IN_PROGRESS);
   const settings = await getOrderSettings(orgId);
   const ref = orderRepo.docRef(orderId);
   const detail = changed.join(", ");
+
+  // pendingLines left by an earlier edit that crashed or could not release them: release them
+  // (or park them in releasingLines) so this edit can replace them.
+  const stale = pendingKeys(current);
+  if (current.pendingLines && !(await releaseOrPark(orgId, orderId, current.pendingLines))) {
+    throw new ConflictError(EDIT_IN_PROGRESS);
+  }
+  /** The transaction must see exactly the pendingLines handled above (else a concurrent edit). */
+  const assertPendingUnchanged = (order: Order) => {
+    if (pendingKeys(order) !== stale) throw new ConflictError(EDIT_IN_PROGRESS);
+  };
 
   const record = (tx: Transaction, before: Order, revision: number, pricing: PricingResult) => {
     const event = buildOrderEvent(orgId, {
@@ -581,15 +713,15 @@ export async function updateDraftOrder(
     });
   };
 
-  // No lines: one transaction, no stock steps.
+  // No lines: one transaction, no stock steps, the hold is not extended.
   if (patch.lines === undefined) {
     await adminDb().runTransaction(async (tx) => {
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
       if (!order) throw new NotFoundError();
       assertEditable(order);
-      if (order.pendingLines !== null) throw new ConflictError(EDIT_IN_PROGRESS);
-      const { fields, pricing } = patchedFields(order, patch, order.lines, settings);
-      tx.update(ref, fields);
+      assertPendingUnchanged(order);
+      const { fields, pricing } = patchedFields(order, patch, order.lines, settings, false);
+      tx.update(ref, { ...fields, ...(stale ? { pendingLines: null } : {}) });
       record(tx, order, order.revision, pricing);
     });
     return getStored(orgId, orderId);
@@ -603,47 +735,64 @@ export async function updateDraftOrder(
     holdKey: holdKey(orderId, revision, i),
     holdState: "pending",
   }));
-  patchedFields(current, patch, newLines, settings); // fail fast on pricing (discount, overflow)
+  patchedFields(current, patch, newLines, settings, true); // fail fast on pricing
 
-  // Transaction 1: the new revision's lines as pendingLines.
+  // Transaction 1: the new revision's lines as pendingLines; the hold is extended.
   await adminDb().runTransaction(async (tx) => {
     const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
     if (!order) throw new NotFoundError();
     assertEditable(order);
-    if (order.pendingLines !== null || order.revision !== current.revision) {
-      throw new ConflictError(EDIT_IN_PROGRESS);
-    }
-    tx.update(ref, { pendingLines: newLines, revision, updatedAt: FieldValue.serverTimestamp() });
+    if (order.revision !== current.revision) throw new ConflictError(EDIT_IN_PROGRESS);
+    assertPendingUnchanged(order);
+    tx.update(ref, {
+      pendingLines: newLines,
+      revision,
+      holdExpiresAt: holdUntil(settings),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
 
   const failure = await reserveInOrder(orgId, newLines);
   if (failure) {
     const released = await tryRelease(orgId, orderId, failure.toRelease);
-    // When the release failed, pendingLines stay: the sweep releases them with the draft.
+    // When the release failed, pendingLines stay: a later edit, a cancel or the sweep frees them.
     if (released) await clearPendingLines(orgId, orderId, revision);
     throw publicError(failure);
   }
 
-  // Transaction 2: swap in the new lines (held), re-price, extend the hold, event and audit.
-  const oldLines = await adminDb().runTransaction(async (tx) => {
+  // Transaction 2: swap in the new lines (held), move the old ones to releasingLines, re-price,
+  // extend the hold, event and audit.
+  const swapped = await adminDb().runTransaction(async (tx) => {
     const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
     if (!order || order.status !== "draft" || order.revision !== revision || !order.pendingLines) {
-      return null;
+      return { ok: false as const, draft: order?.status === "draft" };
     }
     const held = withHold(newLines, "held");
-    const { fields, pricing } = patchedFields(order, patch, held, settings);
-    tx.update(ref, { ...fields, lines: held, pendingLines: null, stockState: "held" });
+    const releasing = mergeLines(order.releasingLines, order.lines);
+    const { fields, pricing } = patchedFields(order, patch, held, settings, true);
+    tx.update(ref, {
+      ...fields,
+      lines: held,
+      pendingLines: null,
+      stockState: "held",
+      releasingLines: releasing,
+      hasReleasingLines: true,
+    });
     record(tx, order, revision, pricing);
-    return order.lines;
+    return { ok: true as const, releasing };
   });
-  if (!oldLines) {
-    // The draft ended (expired and swept) while the new lines were reserved: give them back.
-    await tryRelease(orgId, orderId, newLines);
-    throw new OrderTransitionError();
+  if (!swapped.ok) {
+    // The draft ended (expired and swept) or another edit took over while these lines were
+    // reserved: give them back, or keep them reachable.
+    await releaseOrPark(orgId, orderId, newLines);
+    throw swapped.draft ? new ConflictError(EDIT_IN_PROGRESS) : new OrderTransitionError();
   }
 
-  // The replaced lines no longer hold anything for this order.
-  await tryRelease(orgId, orderId, oldLines);
+  // The replaced lines (and anything parked earlier) no longer hold anything for this order.
+  // If the release fails they stay in releasingLines for the sweep.
+  if (await tryRelease(orgId, orderId, swapped.releasing)) {
+    await unparkLines(orgId, orderId, swapped.releasing);
+  }
   return getStored(orgId, orderId);
 }
 

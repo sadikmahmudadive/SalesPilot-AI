@@ -68,7 +68,9 @@ const MAX_MONEY_MINOR = 1_000_000_000;
 
 // Static messages: they never echo the submitted value (it may be PII).
 const ID_MESSAGE = "Enter a valid id";
-const id = z.string({ error: ID_MESSAGE }).refine((v) => isValidIdSegment(v), { error: ID_MESSAGE });
+const id = z
+  .string({ error: ID_MESSAGE })
+  .refine((v) => isValidIdSegment(v), { error: ID_MESSAGE });
 
 const reasonText = z
   .string({ error: "Enter a reason" })
@@ -221,6 +223,13 @@ export interface Order {
   shippingAddress: ShippingAddress;
   lines: OrderLine[];
   pendingLines: OrderLine[] | null;
+  /**
+   * Lines that left the order (replaced by an edit, or reserved after the order ended) whose
+   * stock may still be reserved. Kept reachable until released; `hasReleasingLines` is the
+   * single-field flag the sweep queries.
+   */
+  releasingLines: OrderLine[] | null;
+  hasReleasingLines: boolean;
   revision: number;
   subtotalMinor: number;
   discountMinor: number;
