@@ -23,6 +23,7 @@ import "server-only";
 import { z } from "zod";
 
 import { formatMoneyMinor } from "@/lib/format";
+import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "@/schemas/order";
 import type { Product } from "@/schemas/product";
 
 import {
@@ -35,8 +36,8 @@ import {
 } from "./catalog-access";
 import { defineTool, type ToolContext, type ToolOutcome } from "./types";
 
-export const MAX_ORDER_LINES = 20;
-export const MAX_LINE_QUANTITY = 1000;
+// The limits live in the pure order schema; re-exported so existing imports keep working.
+export { MAX_LINE_QUANTITY, MAX_ORDER_LINES };
 export const DELIVERY_NOTE = "Delivery charges are not available yet.";
 const EXCLUDED_NOTE =
   "Lines with a flag are not in the subtotal. invalid_variant: ask which size or color. " +
