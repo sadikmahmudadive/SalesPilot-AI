@@ -120,7 +120,7 @@ function createdByOf(ctx: OrderCtx): Order["createdBy"] {
     : { kind: "user", uid: ctx.uid };
 }
 
-function eventActorOf(ctx: OrderCtx): OrderEvent["actor"] {
+export function eventActorOf(ctx: OrderCtx): OrderEvent["actor"] {
   if (ctx.actor?.kind === "ai") return { kind: "ai", id: ctx.actor.agentId };
   if (ctx.actor?.kind === "system") return { kind: "system", id: ctx.actor.id };
   return { kind: "user", id: ctx.uid };

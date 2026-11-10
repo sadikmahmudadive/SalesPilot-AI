@@ -43,6 +43,8 @@ export const orderRepo = new OrgRepository<Order>(ORDERS, {
     "customerId",
     "orderNumber",
     "customerSnapshot.phoneE164",
+    // Range only (`from`/`to` of the list), on the field the list is ordered by.
+    "createdAt",
   ],
   sortable: ["createdAt"],
 });
