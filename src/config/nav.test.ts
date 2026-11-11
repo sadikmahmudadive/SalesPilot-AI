@@ -36,7 +36,7 @@ describe("NAV_ITEMS", () => {
     expect([...NAV_ITEMS.map((i) => i.href)].sort()).toEqual([...PROTECTED_PREFIXES].sort());
   });
 
-  it("only the pages built in this plan have no phase", () => {
+  it("only the pages built so far have no phase", () => {
     const built = NAV_ITEMS.filter((i) => i.phase === undefined).map((i) => i.label);
     expect(built).toEqual([
       "Overview",
@@ -45,6 +45,7 @@ describe("NAV_ITEMS", () => {
       "Customers",
       "Products",
       "Inventory",
+      "Orders",
       "Settings",
     ]);
   });
@@ -54,7 +55,6 @@ describe("NAV_ITEMS", () => {
       NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]),
     );
     expect(phases).toEqual({
-      "/orders": 5,
       "/voice": 6,
       "/automations": 7,
       "/analytics": 8,
