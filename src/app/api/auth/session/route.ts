@@ -21,6 +21,7 @@ import {
   serializeSessionCookie,
   verifySessionValue,
 } from "@/lib/auth/session";
+import { clientIp } from "@/lib/api/client-ip";
 import { assertJsonSameOrigin } from "@/lib/api/csrf";
 import { newRequestId, toErrorResponse } from "@/lib/api/respond";
 import { ValidationError } from "@/lib/errors";
@@ -32,17 +33,6 @@ const RATE_LIMIT = { limit: 10, windowSec: 60 } as const;
 
 // Firebase ID tokens are ~1-2 KB; the cap only bounds abuse.
 const bodySchema = z.object({ idToken: z.string().min(1).max(8192) });
-
-/**
- * Client IP for rate limiting. The first x-forwarded-for entry is client-controlled in general;
- * it is trusted here ONLY because the deployment platform (Vercel) overwrites x-forwarded-for
- * with the real client address. Do not deploy behind a proxy that appends to it.
- */
-function clientIp(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (forwarded) return forwarded;
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
-}
 
 function json(body: unknown, setCookie?: string): Response {
   const headers = new Headers({ "Cache-Control": "no-store" });

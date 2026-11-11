@@ -240,6 +240,11 @@ export interface Order {
   paymentStatus: PaymentStatus;
   holdExpiresAt: string | null;
   stockState: StockState;
+  /**
+   * Set by the sweep when committing the stock failed terminally (a reservation was released or
+   * is unknown: corruption). The sweep no longer retries such an order; staff must fix inventory.
+   */
+  stockAlert: "commit_failed" | null;
   conversationId: string | null;
   notes: string | null;
   idempotencyKey: string;

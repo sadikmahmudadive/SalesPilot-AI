@@ -46,7 +46,7 @@ Add these in Project Settings > Environment Variables, choosing the environments
 | `CLOUDINARY_API_KEY`                                                                                                                                          | optional (uploads)           | secret          | Cloudinary console                                                             |
 | `CLOUDINARY_API_SECRET`                                                                                                                                       | optional (uploads)           | secret          | Cloudinary console                                                             |
 | `ENCRYPTION_KEY`                                                                                                                                              | optional now                 | secret          | Reserved for storing integration credentials; generate 32 random bytes, base64 |
-| `CRON_SECRET`                                                                                                                                                 | optional now                 | secret          | Reserved for cron endpoints; generate a long random string                     |
+| `CRON_SECRET`                                                                                                                                                 | required for the order sweep | secret          | Authorises the cron route (section 6); `openssl rand -base64 32`               |
 | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_REALTIME_MODEL`                                                                                                | optional                     | secret          | Not used yet (sub-project 3)                                                   |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `META_GRAPH_API_VERSION` | optional                     | secret          | Not used yet (sub-project 4)                                                   |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_WEBHOOK_SECRET`                                                                     | optional                     | secret          | Not used yet (sub-project 6)                                                   |
@@ -81,7 +81,26 @@ The app replaces each `\n` sequence with a real line break when it reads the var
 
 Security headers (CSP, HSTS, frame, referrer) are built in `src/config/security-headers.ts` and applied in `next.config.ts`. They allow only the origins the app needs today. If you add a custom domain for Firebase `authDomain`, load images from another host, or embed another service, update that file and its test (`src/config/security-headers.test.ts`) rather than loosening the policy elsewhere. Keep `authDomain` on `*.firebaseapp.com` unless you do that.
 
-## 6. After the first deploy
+## 6. Cron: order hold-expiry sweep
+
+`vercel.json` registers one cron job:
+
+```json
+{ "crons": [{ "path": "/api/cron/orders/expire", "schedule": "*/10 * * * *" }] }
+```
+
+Every 10 minutes it calls `GET /api/cron/orders/expire`, which cancels expired draft and unpaid online orders, releases their stock, and finishes stock releases and commits that were interrupted (`src/services/orders/sweep.ts`). A run stops starting new orders after 45 seconds and returns `{ expired, released, committed, errors }`; the next run continues.
+
+1. Generate a secret: `openssl rand -base64 32`.
+2. Add it as `CRON_SECRET` (Sensitive) in Project Settings > Environment Variables for Production. Vercel Cron then sends `Authorization: Bearer <CRON_SECRET>` with each call. Redeploy after adding it.
+3. Without `CRON_SECRET` the route answers `503 NOT_CONFIGURED`; a missing or wrong header answers `401`. The route is also rate limited to 30 calls per minute per IP.
+4. Check runs under Project > Settings > Cron Jobs (and the function logs). An order whose stock commit failed for good is marked `stockAlert: "commit_failed"`, logged as an error, and no longer retried: fix its inventory by hand.
+
+**Plan limits.** Vercel Cron runs only on Production deployments. On the **Hobby** plan a cron job may run at most **once a day** (and only within the scheduled hour), so the `*/10` schedule is not accepted there. On Hobby either change the schedule to a daily one (for example `"0 3 * * *"`) or keep a daily Vercel job and have an external scheduler (for example a GitHub Actions schedule or an uptime monitor that can send headers) call the same URL more often with the `Authorization: Bearer <CRON_SECRET>` header. Correctness does not depend on the cron's timing: reads already treat a draft past its hold as expired, and the sweep only frees the stock later. Pro and Enterprise plans run the 10-minute schedule as is.
+
+This has not been verified on a live deployment yet.
+
+## 7. After the first deploy
 
 1. Redeploy once after all variables are in place, so `NEXT_PUBLIC_*` values are inlined.
 2. Deploy Firestore rules and indexes to the Firebase project ([firebase.md](firebase.md), section 4) and wait for indexes to reach `READY`.

@@ -393,21 +393,33 @@ async function releaseOrPark(orgId: string, orderId: string, lines: readonly Ord
   await parkLines(orgId, orderId, lines);
 }
 
-/** Drops released `lines` from `releasingLines`; the flag clears when none remain. */
-async function unparkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+/**
+ * Drops released `lines` from `releasingLines` (lines parked meanwhile stay); the flag clears
+ * when none remain. Throws when the write fails. Also used by the sweep.
+ */
+export async function dropReleasingLines(
+  orgId: string,
+  orderId: string,
+  lines: readonly OrderLine[],
+): Promise<void> {
   const ref = orderRepo.docRef(orderId);
   const done = keySet(lines);
-  try {
-    await adminDb().runTransaction(async (tx) => {
-      const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-      if (!order?.releasingLines) return;
-      const rest = order.releasingLines.filter((l) => !done.has(l.holdKey));
-      tx.update(ref, {
-        releasingLines: rest.length > 0 ? rest : null,
-        hasReleasingLines: rest.length > 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+  await adminDb().runTransaction(async (tx) => {
+    const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
+    if (!order || (!order.releasingLines && !order.hasReleasingLines)) return;
+    const rest = (order.releasingLines ?? []).filter((l) => !done.has(l.holdKey));
+    tx.update(ref, {
+      releasingLines: rest.length > 0 ? rest : null,
+      hasReleasingLines: rest.length > 0,
+      updatedAt: FieldValue.serverTimestamp(),
     });
+  });
+}
+
+/** `dropReleasingLines`, logged instead of thrown (the sweep retries what is left). */
+async function unparkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+  try {
+    await dropReleasingLines(orgId, orderId, lines);
   } catch {
     logger.warn("order released stock could not be cleared", { orderId });
   }
@@ -473,6 +485,7 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
       paymentStatus: initialPaymentStatus(input.paymentMethod),
       holdExpiresAt: holdUntil(settings),
       stockState: "pending",
+      stockAlert: null,
       conversationId: input.conversationId ?? null,
       notes: blankToNull(input.notes),
       idempotencyKey: input.idempotencyKey,

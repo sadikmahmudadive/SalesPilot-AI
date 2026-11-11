@@ -11,9 +11,13 @@
  * As in customer-indexes.ts, every (filter, createdAt) pair gets BOTH directions, each with
  * `__name__` in the same direction as the order field.
  *
- * Cross-organization sweep queries (Task 6) have no `organizationId` clause:
- *   - orders where status == "draft"/"confirmed" ... AND holdExpiresAt <= now (hold expiry),
- *   - orders where stockState in (releasing, committing) ... ordered by updatedAt (stuck stock).
+ * Cross-organization sweep queries (sweep.ts) have no `organizationId` clause:
+ *   - orders where status == "draft"/"confirmed" AND holdExpiresAt <= now ORDER BY holdExpiresAt
+ *     (hold expiry, one query per status),
+ *   - orders where stockState == releasing/committing/pending AND updatedAt <= cutoff ORDER BY
+ *     updatedAt (stuck stock, one query per state),
+ *   - orders where hasReleasingLines == true ORDER BY __name__ (parked lines): a single-field
+ *     equality, served by the automatic single-field index, so no entry here.
  *
  * `orderEvents` timeline: `organizationId == org AND orderId == id ORDER BY createdAt ASC`.
  * Production verification requires `firebase deploy --only firestore:indexes`.

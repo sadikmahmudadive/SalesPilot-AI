@@ -33,10 +33,12 @@
  *           (logged) and returns the shipped order; a terminal one (a released or unknown key:
  *           corruption) is logged as an error and surfaces a `ConflictError`.
  * Lines parked in `releasingLines` concurrently (a late reservation of an ended draft) are kept:
- * T2 only drops the keys it released.
+ * T2 only drops the keys it released. The T2 steps are exported (`linesToRelease`,
+ * `finishRelease`, `finishCommit`) so the sweep (sweep.ts) finishes an interrupted release or
+ * commit with exactly the same end state.
  *
- * Stock calls pass `{ maxAttempts: 3 }` for staff and AI callers (HTTP paths); the system actor
- * (the cron sweep) keeps the default budget.
+ * Stock calls pass `{ maxAttempts: 3 }` for every actor: staff and AI callers run inside HTTP
+ * requests, and the cron sweep has a bounded runtime, so one hot stock unit can't eat its budget.
  */
 import "server-only";
 
@@ -66,13 +68,19 @@ import { commitLines, releaseLines } from "./stock-holds";
 const SERVICE = "Orders";
 const NOT_READY = "This order is still being prepared, try again";
 const CHANGE_IN_PROGRESS = "Another change to this order is in progress";
-const NOT_EXPIRED = "This order is no longer expired";
 const COMMIT_FAILED = "The stock for this order could not be committed";
 const RETURN_NOTE = "Stock was not restocked; record returned items with an inventory adjustment";
 const MAX_REASON = 300;
 
-const stockOptions = (ctx: OrderCtx): StockOptions | undefined =>
-  ctx.actor?.kind === "system" ? undefined : { maxAttempts: 3 };
+export const STOCK_OPTIONS: StockOptions = { maxAttempts: 3 };
+
+/** `cancelOrder(..., "expire")` found the hold extended (an edit) after the sweep's query. */
+export class OrderNotExpiredError extends ConflictError {
+  constructor() {
+    super("This order is no longer expired");
+    this.name = "OrderNotExpiredError";
+  }
+}
 
 function reasonOf(value: unknown, path: string): string {
   const text = typeof value === "string" ? value.trim() : "";
@@ -167,6 +175,81 @@ async function applyTransition(
   });
 }
 
+/**
+ * The keys a release must free: `lines`, `pendingLines` and `releasingLines`, each once. Throws
+ * on an order whose `lines` is not a list (corrupt: nothing is safe to finish).
+ */
+export function linesToRelease(
+  order: Pick<Order, "lines" | "pendingLines" | "releasingLines">,
+): OrderLine[] {
+  if (!Array.isArray(order.lines)) throw new Error("Order lines are corrupt");
+  return uniqueLines(order.lines, order.pendingLines, order.releasingLines);
+}
+
+/**
+ * T2 of a release, after `released` (from `linesToRelease`) were all released: lines
+ * `released`, `stockState: "released"`, `pendingLines` cleared, the released keys dropped from
+ * `releasingLines` (anything parked concurrently stays reachable), event `stock_released`.
+ * A no-op unless the order is still `releasing`.
+ */
+export async function finishRelease(
+  ctx: OrderCtx,
+  orderId: string,
+  released: readonly OrderLine[],
+): Promise<void> {
+  const done = keySet(released);
+  await finishStock(
+    ctx,
+    orderId,
+    "releasing",
+    (order) => ({
+      lines: order.lines.map((l) => ({ ...l, holdState: "released" })),
+      stockState: "released",
+      pendingLines: null,
+      ...remainingReleasing(
+        uniqueLines(order.releasingLines, order.pendingLines).filter((l) => !done.has(l.holdKey)),
+      ),
+    }),
+    "stock_released",
+  );
+}
+
+/**
+ * After the `lines` of `order` (read at or after T1 of the ship) were committed: releases its
+ * stale `releasingLines` (best effort: on failure they stay for the sweep), then T2 of a commit:
+ * lines `committed`, `stockState: "committed"`, the released keys dropped, event
+ * `stock_committed`. A no-op unless the order is still `committing`.
+ */
+export async function finishCommit(ctx: OrderCtx, order: Order): Promise<void> {
+  const orgId = ctx.organizationId;
+  const orderId = order.id;
+  // Lines replaced by an edit whose release failed: nothing ships from them, give them back.
+  let released = new Set<string>();
+  const stale = order.hasReleasingLines ? (order.releasingLines ?? []) : [];
+  if (stale.length > 0) {
+    try {
+      await releaseLines(orgId, stale, STOCK_OPTIONS);
+      released = keySet(stale);
+    } catch {
+      logger.warn("order stale stock release failed; the sweep will finish it", { orderId });
+    }
+  }
+
+  await finishStock(
+    ctx,
+    orderId,
+    "committing",
+    (current) => ({
+      lines: current.lines.map((l) => ({ ...l, holdState: "committed" })),
+      stockState: "committed",
+      ...(released.size > 0
+        ? remainingReleasing((current.releasingLines ?? []).filter((l) => !released.has(l.holdKey)))
+        : {}),
+    }),
+    "stock_committed",
+  );
+}
+
 /** Records a finished stock step (T2): an event, no audit (the status change was audited). */
 async function finishStock(
   ctx: OrderCtx,
@@ -237,8 +320,11 @@ export async function startProcessing(
   return getStored(ctx.organizationId, orderId);
 }
 
-/** Busy inventory and outages are retryable (the sweep finishes); anything else is terminal. */
-function isTerminalStockError(error: unknown): boolean {
+/**
+ * Busy inventory and outages are retryable (the sweep finishes); a released or unknown key
+ * (`ConflictError` / `NotFoundError`) is terminal.
+ */
+export function isTerminalStockError(error: unknown): boolean {
   if (error instanceof InventoryBusyError) return false;
   return error instanceof ConflictError || error instanceof NotFoundError;
 }
@@ -250,10 +336,9 @@ export async function markShipped(ctx: OrderCtx, orderId: string): Promise<Order
     return { next, fields: { stockState: "committing", holdExpiresAt: null } };
   });
   const orgId = ctx.organizationId;
-  const options = stockOptions(ctx);
 
   try {
-    await commitLines(orgId, before.lines, options);
+    await commitLines(orgId, before.lines, STOCK_OPTIONS);
   } catch (error) {
     if (isTerminalStockError(error)) {
       logger.error("order stock commit failed: a reservation is no longer held", { orderId });
@@ -263,31 +348,7 @@ export async function markShipped(ctx: OrderCtx, orderId: string): Promise<Order
     return getStored(orgId, orderId);
   }
 
-  // Lines replaced by an edit whose release failed: nothing ships from them, give them back.
-  let released = new Set<string>();
-  const stale = before.hasReleasingLines ? (before.releasingLines ?? []) : [];
-  if (stale.length > 0) {
-    try {
-      await releaseLines(orgId, stale, options);
-      released = keySet(stale);
-    } catch {
-      logger.warn("order stale stock release failed; the sweep will finish it", { orderId });
-    }
-  }
-
-  await finishStock(
-    ctx,
-    orderId,
-    "committing",
-    (order) => ({
-      lines: order.lines.map((l) => ({ ...l, holdState: "committed" })),
-      stockState: "committed",
-      ...(released.size > 0
-        ? remainingReleasing((order.releasingLines ?? []).filter((l) => !released.has(l.holdKey)))
-        : {}),
-    }),
-    "stock_committed",
-  );
+  await finishCommit(ctx, before);
   return getStored(orgId, orderId);
 }
 
@@ -325,7 +386,7 @@ export async function cancelOrder(
       action === "expire" &&
       (order.holdExpiresAt === null || Date.parse(order.holdExpiresAt) > now)
     ) {
-      throw new ConflictError(NOT_EXPIRED);
+      throw new OrderNotExpiredError();
     }
     return {
       next,
@@ -341,31 +402,16 @@ export async function cancelOrder(
   });
   const orgId = ctx.organizationId;
 
-  const toRelease = uniqueLines(before.lines, before.pendingLines, before.releasingLines);
+  const toRelease = linesToRelease(before);
   try {
-    await releaseLines(orgId, toRelease, stockOptions(ctx));
+    await releaseLines(orgId, toRelease, STOCK_OPTIONS);
   } catch {
     // The cancel stands; the sweep finishes the release (stockState stays "releasing").
     logger.warn("order stock release failed; the sweep will finish it", { orderId });
     return getStored(orgId, orderId);
   }
 
-  const done = keySet(toRelease);
-  await finishStock(
-    ctx,
-    orderId,
-    "releasing",
-    (order) => ({
-      lines: order.lines.map((l) => ({ ...l, holdState: "released" })),
-      stockState: "released",
-      pendingLines: null,
-      // Anything not released here (parked concurrently) stays reachable for the sweep.
-      ...remainingReleasing(
-        uniqueLines(order.releasingLines, order.pendingLines).filter((l) => !done.has(l.holdKey)),
-      ),
-    }),
-    "stock_released",
-  );
+  await finishRelease(ctx, orderId, toRelease);
   return getStored(orgId, orderId);
 }
 
