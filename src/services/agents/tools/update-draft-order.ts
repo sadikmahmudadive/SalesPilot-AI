@@ -3,8 +3,10 @@
  * draft. Server-only.
  *
  * LIVE. The draft is the session's open draft of the contact customer (`openDraftFor`); none is
- * `not_found` (an only-expired one is the hold-expired message). New lines are scope-checked
- * first; the recipient phone stays the contact's. Service errors map to static messages.
+ * `not_found` (an only-expired one is the hold-expired message). Changed lines are scope- and
+ * stock-checked first (the draft's own held quantities credited); lines equal to the stored ones
+ * are left out of the patch, so they are not reserved twice. The recipient phone stays the
+ * contact's. Service errors map to static messages.
  *
  * TEST CHANNEL. No draft is ever stored there, so the dry run previews the change from the
  * arguments alone: it needs the items and the address (to price the delivery charge); the
@@ -33,6 +35,7 @@ import {
   paymentMethodInputSchema,
   previewFields,
   previewSummary,
+  sameLines,
   sessionDrafts,
   shippingAddressOf,
   type DraftOutput,
@@ -84,8 +87,10 @@ async function run(ctx: ToolContext, input: UpdateInput): Promise<ToolOutcome<Dr
   }
 
   const patch: OrderDraftPatch = {};
-  if (input.lines) {
-    const checked = await checkLines(ctx, input.lines);
+  // Unchanged lines are dropped from the patch: re-reserving them would need the stock twice.
+  if (input.lines && !sameLines(draft.lines, input.lines)) {
+    // The draft's own held stock is credited to its edit.
+    const checked = await checkLines(ctx, input.lines, draft.lines);
     if (!checked.ok) return checked;
     patch.lines = checked.lines.map((l) => ({
       productId: l.productId,
@@ -99,6 +104,8 @@ async function run(ctx: ToolContext, input: UpdateInput): Promise<ToolOutcome<Dr
     patch.shippingAddress = shippingAddress;
   }
   if (input.paymentMethod) patch.paymentMethod = input.paymentMethod;
+  // Only unchanged lines were sent: nothing changes, so the draft is reported as it is.
+  if (Object.keys(patch).length === 0) return { ok: true, data: draftSummary(draft) };
 
   return guarded("edit", async () => {
     const updated = await updateDraftOrder(orderCtxOf(ctx), draft.id, patch);

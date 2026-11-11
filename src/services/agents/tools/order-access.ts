@@ -40,12 +40,13 @@ import {
   PAYMENT_METHODS,
   type DeliveryZone,
   type Order,
+  type OrderLine,
   type OrderSettings,
   type PaymentMethod,
   type ShippingAddress,
   shippingAddressSchema,
 } from "@/schemas/order";
-import type { Product } from "@/schemas/product";
+import { DEFAULT_VARIANT_ID, type Product } from "@/schemas/product";
 import { variantLabelOf } from "@/services/inventory/inventory-query";
 import { eventActorOf } from "@/services/orders/drafts";
 import { priceOrder } from "@/services/orders/pricing";
@@ -86,6 +87,8 @@ export const ORDER_MESSAGES = {
   notEditable: "That order can't be changed any more.",
   noDraftToUpdate: "There is no open order to update.",
   noDraftToConfirm: "There is no open order to confirm.",
+  alreadyConfirmed: "This order is already confirmed.",
+  cannotRecreate: "This order can't be created again in this conversation.",
   confirmFirst: "Ask the customer to confirm the summary first.",
   badAddress: "The delivery address is incomplete.",
   nothingToChange: "There is nothing to change.",
@@ -148,16 +151,22 @@ export async function contactCustomer(ctx: ToolContext): Promise<CustomerDoc | n
   return findCustomerByPhone(ctx.organizationId, phone);
 }
 
-/** The customer's drafts created by the AI in this session, newest first (expired included). */
-export async function sessionDrafts(ctx: ToolContext, customerId: string): Promise<Order[]> {
+/** The customer's orders created by the AI in this session (any status), newest first. */
+export async function sessionOrders(ctx: ToolContext, customerId: string): Promise<Order[]> {
   const orders = await listCustomerOrders(orderCtxOf(ctx), customerId, SESSION_DRAFT_WINDOW);
   return orders.filter(
-    (o) =>
-      o.status === "draft" &&
-      o.createdBy.kind === "ai" &&
-      o.createdBy.sessionId === ctx.sessionId,
+    (o) => o.createdBy.kind === "ai" && o.createdBy.sessionId === ctx.sessionId,
   );
 }
+
+/** The customer's drafts created by the AI in this session, newest first (expired included). */
+export async function sessionDrafts(ctx: ToolContext, customerId: string): Promise<Order[]> {
+  return (await sessionOrders(ctx, customerId)).filter((o) => o.status === "draft");
+}
+
+/** True for an order that went past `draft` and was not cancelled (confirmed or later). */
+export const isConfirmedOrLater = (order: Pick<Order, "status">): boolean =>
+  order.status !== "draft" && order.status !== "cancelled";
 
 /** Newest draft of this customer created by this session whose hold has not expired. */
 export async function openDraftFor(ctx: ToolContext, customerId: string): Promise<Order | null> {
@@ -223,6 +232,23 @@ export function shippingAddressOf(address: AddressInput, phoneE164: string): Shi
 
 // ---- line checks (reads only) --------------------------------------------------------------
 
+/** The unit an input line names (`default` for a product without variants). */
+const inputUnit = (l: LineInput) => ({
+  productId: l.productId,
+  variantId: l.variantId ?? DEFAULT_VARIANT_ID,
+  quantity: l.quantity,
+});
+const storedUnit = (l: OrderLine) => ({
+  productId: l.productId,
+  variantId: l.variantId,
+  quantity: l.quantity,
+});
+
+/** True when `lines` (as the model sent them) are exactly the stored lines, in order. */
+export function sameLines(stored: readonly OrderLine[], lines: readonly LineInput[]): boolean {
+  return stableJson(stored.map(storedUnit)) === stableJson(lines.map(inputUnit));
+}
+
 export interface CheckedLine {
   productId: string;
   variantId: string;
@@ -245,6 +271,7 @@ const lineName = (product: Product, variantId: string): string =>
 export async function checkLines(
   ctx: ToolContext,
   lines: readonly LineInput[],
+  ownHolds: readonly OrderLine[] = [],
 ): Promise<{ ok: true; lines: CheckedLine[] } | Failure> {
   const ids = [...new Set(lines.map((l) => l.productId))];
   const loaded = await Promise.all(ids.map((id) => loadProduct(ctx, id)));
@@ -270,6 +297,13 @@ export async function checkLines(
     ctx,
     resolved.map((r) => ({ productId: r.product.id, variantId: r.variantId })),
   );
+  // Stock the session's own draft already holds counts as available to that draft's edit.
+  const credit = new Map<string, number>();
+  for (const held of ownHolds) {
+    if (held.holdState !== "held") continue;
+    const key = unitKey(held);
+    credit.set(key, (credit.get(key) ?? 0) + held.quantity);
+  }
   const wanted = new Map<string, number>();
   const out: CheckedLine[] = [];
   for (const [i, r] of resolved.entries()) {
@@ -277,7 +311,9 @@ export async function checkLines(
     const key = unitKey({ productId: r.product.id, variantId: r.variantId });
     const total = (wanted.get(key) ?? 0) + quantity;
     wanted.set(key, total);
-    if (total > (available.get(key) ?? 0)) return toolFailure("invalid", ORDER_MESSAGES.outOfStock);
+    if (total > (available.get(key) ?? 0) + (credit.get(key) ?? 0)) {
+      return toolFailure("invalid", ORDER_MESSAGES.outOfStock);
+    }
     const unitPriceMinor = retailMinor(r.product);
     out.push({
       productId: r.product.id,
@@ -412,8 +448,11 @@ export async function recordConfirmationQuote(
         after: { type: "confirmation_quote", length: text.length },
       });
     });
-  } catch {
-    logger.warn("order confirmation quote could not be recorded", { orderId });
+  } catch (err) {
+    logger.warn("order confirmation quote could not be recorded", {
+      orderId,
+      error: err instanceof Error ? err.name : "unknown",
+    });
   }
 }
 

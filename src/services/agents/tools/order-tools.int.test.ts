@@ -327,6 +327,29 @@ describe("create_draft_order on a live channel", () => {
     expect(await ordersOf(customer.id)).toHaveLength(2);
   });
 
+  it("stops with a static message once the derived keys run out", async () => {
+    const { phone, customer } = await seedContact();
+    const ctx = liveCtx(makeAgent(), phone);
+    const args = createArgs([{ productId: cap.id, quantity: 1 }]);
+    for (let i = 0; i < 5; i += 1) {
+      okOf(await call(ctx, "create_draft_order", args));
+      const open = (await ordersOf(customer.id)).filter(
+        (o) => (o.holdExpiresAt as Timestamp).toMillis() > Date.now(),
+      );
+      expect(open).toHaveLength(1);
+      await db()
+        .collection("orders")
+        .doc(open[0]!.id)
+        .update({ holdExpiresAt: Timestamp.fromMillis(Date.now() - 60_000) });
+    }
+    expect(await call(ctx, "create_draft_order", args)).toEqual({
+      ok: false,
+      code: "failed",
+      message: "This order can't be created again in this conversation.",
+    });
+    expect(await ordersOf(customer.id)).toHaveLength(5);
+  });
+
   it("a different session of the same contact starts its own draft", async () => {
     const { phone, customer } = await seedContact();
     const agent = makeAgent();
@@ -389,6 +412,62 @@ describe("create_draft_order on a live channel", () => {
       createArgs([{ productId: gadget.id, quantity: 6 }]),
     );
     expect(over).toEqual({ ok: false, code: "invalid", message: "One item is out of stock." });
+  });
+});
+
+describe("tight stock: the draft's own hold never blocks it (R16)", () => {
+  it("an identical retry and same-line address changes succeed with every unit held", async () => {
+    const tight = await seedProduct("Last Three", 30000, apparelId, 3);
+    const { phone, customer } = await seedContact();
+    const ctx = liveCtx(makeAgent(), phone);
+    const args = createArgs([{ productId: tight.id, quantity: 3 }]);
+    const first = okOf(await call(ctx, "create_draft_order", args));
+    expect(await reservedOf(tight.id)).toBe(3);
+
+    // Identical retry: the same order, nothing reserved again.
+    const retry = okOf(await call(ctx, "create_draft_order", args));
+    expect(retry.data.orderNumber).toBe(first.data.orderNumber);
+
+    // Same lines, new address through create: an address-only update (no re-reserve).
+    const moved = okOf(
+      await call(ctx, "create_draft_order", {
+        ...args,
+        address: { ...address, line1: "House 9, Road 9", zone: "outside_dhaka" },
+      }),
+    );
+    expect(moved.data.orderNumber).toBe(first.data.orderNumber);
+    expect(moved.data.deliveryChargeText).toBe(formatMoneyMinor(12000));
+
+    // Same lines again through update_draft_order, with a payment change.
+    const paid = okOf(
+      await call(ctx, "update_draft_order", {
+        lines: [{ productId: tight.id, quantity: 3 }],
+        paymentMethod: "online",
+      }),
+    );
+    expect(paid.data).toMatchObject({ orderNumber: first.data.orderNumber, paymentMethod: "online" });
+
+    const orders = await ordersOf(customer.id);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({
+      revision: 1,
+      paymentMethod: "online",
+      shippingAddress: { line1: "House 9, Road 9", zone: "outside_dhaka" },
+    });
+    expect(await reservedOf(tight.id)).toBe(3);
+  });
+
+  it("credits the draft's own hold in the pre-check, but still refuses more than exists", async () => {
+    const tight = await seedProduct("Last Two", 30000, apparelId, 2);
+    const { phone } = await seedContact();
+    const ctx = liveCtx(makeAgent(), phone);
+    okOf(
+      await call(ctx, "create_draft_order", createArgs([{ productId: tight.id, quantity: 2 }])),
+    );
+    expect(
+      await call(ctx, "update_draft_order", { lines: [{ productId: tight.id, quantity: 3 }] }),
+    ).toEqual({ ok: false, code: "invalid", message: "One item is out of stock." });
+    expect(await reservedOf(tight.id)).toBe(2);
   });
 });
 
@@ -503,10 +582,36 @@ describe("confirm_order", () => {
     expect(events[0]!.detail).not.toMatch(/[\u0000-\u001f]/);
     expect(summarizeToolResult("confirm_order", r)).toBe(`Confirmed ${String(order.orderNumber)}`);
 
-    // Nothing open any more.
-    expect(
-      await call(ctx, "confirm_order", { customerConfirmed: true, confirmationQuote: "yes" }),
-    ).toEqual({ ok: false, code: "not_found", message: "There is no open order to confirm." });
+    // Confirming again is idempotent: the same order, alreadyConfirmed, no second note event.
+    const again = okOf(
+      await call(ctx, "confirm_order", { customerConfirmed: true, confirmationQuote: "yes again" }),
+    );
+    expect(again.data).toMatchObject({
+      orderNumber: order.orderNumber,
+      status: "confirmed",
+      alreadyConfirmed: true,
+    });
+    expect(await ordersOf(customer.id)).toHaveLength(1);
+    const notes = (await docsOf("orderEvents"))
+      .map((d) => d.data())
+      .filter((e) => e.orderId === order.id && e.type === "note");
+    expect(notes).toHaveLength(1);
+  });
+
+  it("does not create a second order when the same create is repeated after a confirm (R16)", async () => {
+    const { phone, customer } = await seedContact();
+    const ctx = liveCtx(makeAgent(), phone);
+    const args = createArgs([{ productId: cap.id, quantity: 2 }]);
+    okOf(await call(ctx, "create_draft_order", args));
+    okOf(await call(ctx, "confirm_order", { customerConfirmed: true, confirmationQuote: "yes" }));
+    const reserved = await reservedOf(cap.id);
+    expect(await call(ctx, "create_draft_order", args)).toEqual({
+      ok: false,
+      code: "invalid",
+      message: "This order is already confirmed.",
+    });
+    expect(await ordersOf(customer.id)).toHaveLength(1);
+    expect(await reservedOf(cap.id)).toBe(reserved);
   });
 
   it("confirms an online draft to awaiting_payment and says no payment link exists yet", async () => {
@@ -554,7 +659,8 @@ describe("confirm_order", () => {
         confirmationQuote: "yes please",
       }),
     );
-    expect(r.dryRunAction).toMatchObject({ kind: "confirm_order" });
+    expect(r.dryRunAction).toEqual({ kind: "confirm_order", fields: { quoteLength: 10 } });
+    expect(JSON.stringify(r)).not.toContain("yes please");
     expect(r.data).toMatchObject({ orderNumber: "DRAFT-PREVIEW", status: "confirmed" });
   });
 });

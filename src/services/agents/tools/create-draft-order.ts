@@ -5,13 +5,16 @@
  * LIVE (whatsapp / voice). The customer is the contact (see order-access.ts), never an argument;
  * the recipient phone is the contact's. Every line is checked against the agent's catalogue
  * scope first. Then:
- *   - the session already has an open draft -> it is updated instead (`updateDraftOrder`), or
- *     returned as-is when it already holds exactly these lines, address and payment method;
+ *   - the session already has an open draft -> returned as-is when it already holds exactly
+ *     these lines, address and payment method (checked BEFORE the stock pass, so its own hold
+ *     never blocks a retry), else updated (`updateDraftOrder`; the lines only when they changed,
+ *     and the stock pre-check credits the draft's own held quantities);
  *   - otherwise `createDraftOrder` (source "ai", discount 0) with the idempotency key
  *     `toolIdempotencyKey(ctx, args)`, so identical concurrent calls make one order. When that
- *     key's order is no longer an open draft of this customer (confirmed, cancelled, expired),
- *     the key is derived again from the args plus that order's id: a deterministic chain, so the
- *     customer can order the same items again after a hold expired.
+ *     key's order was cancelled or is an expired draft, the key is derived again from the args
+ *     plus that order's id (a deterministic chain, at most 5 keys), so the same items can be
+ *     ordered again after a hold expired. A key whose order is confirmed or later is
+ *     "This order is already confirmed." and nothing is created (Ruling R16).
  *
  * TEST CHANNEL. A dry run: the same checks (scope, unit, stock read-only), priced through
  * `priceOrder` with the organization's delivery charges; order number "DRAFT-PREVIEW" and a
@@ -37,15 +40,18 @@ import {
   draftOutputSchema,
   draftSummary,
   guarded,
+  isConfirmedOrLater,
   linesInputSchema,
   openDraftFor,
   orderCtxOf,
   paymentMethodInputSchema,
   previewFields,
   previewSummary,
+  sameLines,
   shippingAddressOf,
   toolIdempotencyKey,
   type CheckedLine,
+  type LineInput,
   type DraftOutput,
 } from "./order-access";
 import { defineTool, isLiveChannel, toolFailure, type ToolContext, type ToolOutcome } from "./types";
@@ -78,27 +84,36 @@ const addressKey = (a: Partial<ShippingAddress>) =>
 /** True when the draft already holds exactly these lines, address and payment method. */
 function draftMatches(
   draft: Order,
-  lines: readonly CheckedLine[],
+  lines: readonly LineInput[],
   address: ShippingAddress,
   paymentMethod: PaymentMethod,
 ): boolean {
   return (
     draft.paymentMethod === paymentMethod &&
-    stableJson(serviceLines(draft.lines)) === stableJson(serviceLines(lines)) &&
+    sameLines(draft.lines, lines) &&
     addressKey(draft.shippingAddress) === addressKey(address)
   );
 }
 
-const usable = (order: Order, customerId: string) =>
-  order.status === "draft" && !isOrderExpired(order) && order.customerId === customerId;
+type Fresh =
+  | { kind: "created"; order: Order }
+  | { kind: "confirmed" }
+  | { kind: "exhausted" }
+  | { kind: "foreign" };
 
+/**
+ * `createDraftOrder` with the tool key. A replay that returns a cancelled order or an expired
+ * draft hops to the key derived from the args plus that order's id (deterministic, so concurrent
+ * identical calls still meet on one order). A replay of an order that is confirmed or later is
+ * never hopped over: the customer already placed exactly this order (Ruling R16).
+ */
 async function createFresh(
   ctx: ToolContext,
   customer: CustomerDoc,
   input: CreateInput,
   lines: readonly CheckedLine[],
   shippingAddress: ShippingAddress,
-): Promise<Order | null> {
+): Promise<Fresh> {
   let after: string | undefined;
   for (let hop = 0; hop < MAX_KEY_HOPS; hop += 1) {
     const order = await createDraftOrder(orderCtxOf(ctx), {
@@ -110,10 +125,13 @@ async function createFresh(
       idempotencyKey: toolIdempotencyKey(ctx, after === undefined ? input : { args: input, after }),
       source: "ai",
     });
-    if (usable(order, customer.id)) return order;
+    if (order.customerId !== customer.id) return { kind: "foreign" };
+    if (isConfirmedOrLater(order)) return { kind: "confirmed" };
+    const ended = order.status === "cancelled" || isOrderExpired(order);
+    if (!ended) return { kind: "created", order };
     after = order.id;
   }
-  return null;
+  return { kind: "exhausted" };
 }
 
 async function preview(ctx: ToolContext, input: CreateInput): Promise<ToolOutcome<DraftOutput>> {
@@ -135,27 +153,41 @@ async function run(ctx: ToolContext, input: CreateInput): Promise<ToolOutcome<Dr
 
   const customer = await contactCustomer(ctx);
   if (!customer) return toolFailure("denied", CONTACT_DENIED);
-  const checked = await checkLines(ctx, input.lines);
-  if (!checked.ok) return checked;
   const shippingAddress = shippingAddressOf(input.address, customer.phoneE164);
   if (!shippingAddress) return toolFailure("invalid", ORDER_MESSAGES.badAddress);
 
   return guarded("edit", async () => {
     const draft = await openDraftFor(ctx, customer.id);
+    // An identical retry returns the draft before any stock check: its own hold must not block it.
+    if (draft && draftMatches(draft, input.lines, shippingAddress, input.paymentMethod)) {
+      return { ok: true, data: draftSummary(draft) };
+    }
+    // The open draft's held stock is credited to its own edit.
+    const checked = await checkLines(ctx, input.lines, draft?.lines);
+    if (!checked.ok) return checked;
+
     if (draft) {
-      if (draftMatches(draft, checked.lines, shippingAddress, input.paymentMethod)) {
-        return { ok: true, data: draftSummary(draft) };
-      }
+      // Unchanged lines are not re-reserved (an address or payment change needs no extra stock).
+      const linesChanged = !sameLines(draft.lines, input.lines);
       const updated = await updateDraftOrder(orderCtxOf(ctx), draft.id, {
-        lines: serviceLines(checked.lines),
+        ...(linesChanged ? { lines: serviceLines(checked.lines) } : {}),
         shippingAddress,
         paymentMethod: input.paymentMethod,
       });
       return { ok: true, data: draftSummary(updated) };
     }
-    const order = await createFresh(ctx, customer, input, checked.lines, shippingAddress);
-    if (!order) return toolFailure("failed", ORDER_MESSAGES.busy);
-    return { ok: true, data: draftSummary(order) };
+
+    const fresh = await createFresh(ctx, customer, input, checked.lines, shippingAddress);
+    switch (fresh.kind) {
+      case "created":
+        return { ok: true, data: draftSummary(fresh.order) };
+      case "confirmed":
+        return toolFailure("invalid", ORDER_MESSAGES.alreadyConfirmed);
+      case "exhausted":
+        return toolFailure("failed", ORDER_MESSAGES.cannotRecreate);
+      case "foreign":
+        return toolFailure("failed");
+    }
   });
 }
 
