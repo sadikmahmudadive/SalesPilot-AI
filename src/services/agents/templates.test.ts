@@ -75,6 +75,36 @@ describe("AGENT_TEMPLATES", () => {
     expect(AGENT_TEMPLATES.customer_support.instructions.toLowerCase()).toContain("cannot change");
   });
 
+  it("gives order_management the order tools and the confirmation rules", () => {
+    const t = AGENT_TEMPLATES.order_management;
+    expect(t.tools).toEqual(
+      expect.arrayContaining([
+        "create_draft_order",
+        "update_draft_order",
+        "confirm_order",
+        "get_my_order_status",
+        "save_customer_info",
+      ]),
+    );
+    const text = t.instructions;
+    expect(text).not.toContain("delivery charges are not available yet");
+    expect(text).not.toContain("You cannot take payment or confirm delivery");
+    expect(text).toContain("confirm_order");
+    for (const word of ["delivery charge", "total", "payment method", "explicit yes", "discount"]) {
+      expect(text.toLowerCase()).toContain(word);
+    }
+    expect(text.toLowerCase()).toContain("never invent");
+  });
+
+  it("gives the order tools to order_management only", () => {
+    for (const role of AGENT_ROLES) {
+      if (role === "order_management") continue;
+      for (const tool of AGENT_TEMPLATES[role].tools) {
+        expect(["create_draft_order", "update_draft_order", "confirm_order"]).not.toContain(tool);
+      }
+    }
+  });
+
   it("is deeply frozen so shared template data cannot be mutated", () => {
     expect(Object.isFrozen(AGENT_TEMPLATES)).toBe(true);
     for (const role of AGENT_ROLES) {

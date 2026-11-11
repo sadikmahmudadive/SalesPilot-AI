@@ -52,11 +52,21 @@ describe("constants", () => {
       "lookup_customer",
       "save_customer_info",
       "escalate_to_human",
+      "create_draft_order",
+      "update_draft_order",
+      "confirm_order",
+      "get_my_order_status",
     ]);
   });
 
-  it("marks exactly the two tools that write data", () => {
-    expect([...WRITE_TOOLS].sort()).toEqual(["escalate_to_human", "save_customer_info"]);
+  it("marks exactly the five tools that write data", () => {
+    expect([...WRITE_TOOLS].sort()).toEqual([
+      "confirm_order",
+      "create_draft_order",
+      "escalate_to_human",
+      "save_customer_info",
+      "update_draft_order",
+    ]);
   });
 
   it("versions exactly the ten behaviour fields", () => {

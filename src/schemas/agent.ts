@@ -53,6 +53,10 @@ export const TOOL_NAMES = [
   "lookup_customer",
   "save_customer_info",
   "escalate_to_human",
+  "create_draft_order",
+  "update_draft_order",
+  "confirm_order",
+  "get_my_order_status",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -60,6 +64,9 @@ export type ToolName = (typeof TOOL_NAMES)[number];
 export const WRITE_TOOLS: ReadonlySet<ToolName> = new Set<ToolName>([
   "save_customer_info",
   "escalate_to_human",
+  "create_draft_order",
+  "update_draft_order",
+  "confirm_order",
 ]);
 
 /** Fields whose change bumps the agent `version`. Name, description and status do not. */

@@ -631,7 +631,9 @@ describe("calculate_order_total", () => {
     expect(t.subtotalMinor).toBe(860000);
     expect(t.subtotalText).toBe(formatMoneyMinor(860000));
     expect(t.excludedLines).toBe(0);
-    expect(t.deliveryNote).toBe("Delivery charges are not available yet.");
+    expect(t.deliveryNote).toBe(
+      "Delivery charge depends on the address; ask whether it is inside or outside Dhaka.",
+    );
   });
 
   it("uses wholesale prices, flagging the retail fallback per line", async () => {

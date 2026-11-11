@@ -12,8 +12,9 @@
  *   4. a thrown error becomes `failed`, logged with the tool name and an error code only.
  * Messages are static (see TOOL_MESSAGES): arguments are never echoed.
  *
- * WRITES. The write tools (save_customer_info, escalate_to_human) decide dry-run vs live from
- * `ctx.channel` alone: `test` never writes, `whatsapp` / `voice` do.
+ * WRITES. The write tools (save_customer_info, escalate_to_human, create_draft_order,
+ * update_draft_order, confirm_order) decide dry-run vs live from `ctx.channel` alone: `test`
+ * never writes, `whatsapp` / `voice` do.
  */
 import "server-only";
 
@@ -23,13 +24,17 @@ import { toStrictJsonSchema } from "@/lib/ai/strict-schema";
 import type { ToolSpec } from "@/lib/ai/provider";
 
 import { checkStockTool } from "./check-stock";
+import { confirmOrderTool } from "./confirm-order";
+import { createDraftOrderTool } from "./create-draft-order";
 import { escalateTool } from "./escalate";
 import { getPriceTool } from "./get-price";
 import { lookupCustomerTool } from "./lookup-customer";
+import { orderStatusTool } from "./order-status";
 import { orderTotalTool } from "./order-total";
 import { productDetailsTool } from "./product-details";
 import { saveCustomerInfoTool } from "./save-customer-info";
 import { searchProductsTool } from "./search-products";
+import { updateDraftOrderTool } from "./update-draft-order";
 import { toolFailure, type AgentTool, type ToolContext, type ToolOutcome } from "./types";
 
 export const TOOL_REGISTRY: Readonly<Record<ToolName, AgentTool<unknown, unknown>>> = Object.freeze(
@@ -42,6 +47,10 @@ export const TOOL_REGISTRY: Readonly<Record<ToolName, AgentTool<unknown, unknown
     lookup_customer: lookupCustomerTool,
     save_customer_info: saveCustomerInfoTool,
     escalate_to_human: escalateTool,
+    create_draft_order: createDraftOrderTool,
+    update_draft_order: updateDraftOrderTool,
+    confirm_order: confirmOrderTool,
+    get_my_order_status: orderStatusTool,
   },
 );
 

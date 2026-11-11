@@ -44,7 +44,13 @@ export const isLiveChannel = (channel: AgentChannel): boolean => LIVE_CHANNELS.h
 
 /** What a write tool WOULD have done (test channel): returned instead of writing. */
 export interface DryRunAction {
-  kind: "create_customer" | "update_customer" | "escalate";
+  kind:
+    | "create_customer"
+    | "update_customer"
+    | "escalate"
+    | "create_order"
+    | "update_order"
+    | "confirm_order";
   fields: Record<string, unknown>;
 }
 

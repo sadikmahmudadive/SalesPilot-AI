@@ -77,7 +77,7 @@ export function summarizeToolResult(name: string, outcome: ToolOutcome<unknown>)
       break;
     }
     case "calculate_order_total": {
-      text = `Subtotal: ${d.subtotalText}, Lines: ${(d.lines as unknown[])?.length ?? 0}, Excluded: ${d.excludedLines}`;
+      text = `Subtotal: ${d.subtotalText}, Lines: ${(d.lines as unknown[])?.length ?? 0}, Excluded: ${d.excludedLines}${d.totalText ? `, Delivery: ${d.deliveryChargeText}, Total: ${d.totalText}` : ""}`;
       break;
     }
     case "lookup_customer": {
@@ -90,6 +90,19 @@ export function summarizeToolResult(name: string, outcome: ToolOutcome<unknown>)
     }
     case "escalate_to_human": {
       text = `Escalated: ${d.escalated}`;
+      break;
+    }
+    case "create_draft_order":
+    case "update_draft_order": {
+      text = `Draft ${d.orderNumber}: total ${d.totalText}`;
+      break;
+    }
+    case "confirm_order": {
+      text = `Confirmed ${d.orderNumber}`;
+      break;
+    }
+    case "get_my_order_status": {
+      text = `${(d.orders as unknown[] | undefined)?.length ?? 0} orders`;
       break;
     }
     default: {

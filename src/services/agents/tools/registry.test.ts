@@ -4,7 +4,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { toStrictJsonSchema } from "@/lib/ai/strict-schema";
-import { TOOL_NAMES, agentInputSchema, type Agent, type ToolName } from "@/schemas/agent";
+import {
+  TOOL_NAMES,
+  WRITE_TOOLS,
+  agentInputSchema,
+  type Agent,
+  type ToolName,
+} from "@/schemas/agent";
 
 import { PRODUCT_LIST_INDEXES, toFirestoreIndex } from "@/services/products/product-indexes";
 
@@ -61,7 +67,7 @@ function assertStrictObjects(node: StrictNode): void {
 }
 
 describe("TOOL_REGISTRY", () => {
-  it("registers all eight tools under their own name, and each converts to a strict schema", () => {
+  it("registers every tool under its own name, and each converts to a strict schema", () => {
     expect(Object.keys(TOOL_REGISTRY).sort()).toEqual([...TOOL_NAMES].sort());
     for (const name of TOOL_NAMES) {
       const tool = TOOL_REGISTRY[name];
@@ -71,9 +77,43 @@ describe("TOOL_REGISTRY", () => {
       assertStrictObjects(schema as StrictNode);
     }
     expect(TOOL_NAMES.filter((n) => TOOL_REGISTRY[n].writes).sort()).toEqual([
+      "confirm_order",
+      "create_draft_order",
       "escalate_to_human",
       "save_customer_info",
+      "update_draft_order",
     ]);
+    // The registry and WRITE_TOOLS agree on which tools write.
+    expect(TOOL_NAMES.filter((n) => TOOL_REGISTRY[n].writes).sort()).toEqual(
+      [...WRITE_TOOLS].sort(),
+    );
+  });
+
+  it("registers the four order tools; only the status tool is read-only", () => {
+    for (const name of [
+      "create_draft_order",
+      "update_draft_order",
+      "confirm_order",
+      "get_my_order_status",
+    ] as const) {
+      expect(TOOL_NAMES).toContain(name);
+      expect(TOOL_REGISTRY[name].name).toBe(name);
+      expect(TOOL_REGISTRY[name].description.length).toBeGreaterThan(20);
+    }
+    expect(WRITE_TOOLS.has("get_my_order_status")).toBe(false);
+    expect(TOOL_REGISTRY.get_my_order_status.writes).toBe(false);
+  });
+
+  it("never takes a customer id or phone as an order tool argument", () => {
+    for (const name of [
+      "create_draft_order",
+      "update_draft_order",
+      "confirm_order",
+      "get_my_order_status",
+    ] as const) {
+      const text = JSON.stringify(toStrictJsonSchema(TOOL_REGISTRY[name].input));
+      expect(text).not.toMatch(/customerId|"phone"|phoneE164/);
+    }
   });
 
   it("registers the five catalog tools, read-only, keyed by their own name", () => {
@@ -168,6 +208,42 @@ describe("executeTool (paths that never reach the database)", () => {
       const r = await executeTool(ctx, name, "{}");
       expect(r).toMatchObject({ ok: false, code: "denied" });
     }
+  });
+
+  it("validates order tool input before touching the database", async () => {
+    const orders = makeCtx(
+      makeAgent({ tools: ["create_draft_order", "confirm_order", "update_draft_order"] }),
+    );
+    const line = { productId: "p1", quantity: 1 };
+    const address = { recipientName: "R", line1: "L", zone: "inside_dhaka" };
+    for (const args of [
+      {},
+      { lines: [], address, paymentMethod: "cod" },
+      { lines: Array.from({ length: 21 }, () => line), address, paymentMethod: "cod" },
+      { lines: [{ ...line, quantity: 0 }], address, paymentMethod: "cod" },
+      { lines: [line], address: { ...address, zone: "mars" }, paymentMethod: "cod" },
+      { lines: [line], address, paymentMethod: "bkash" },
+    ]) {
+      expect(await executeTool(orders, "create_draft_order", JSON.stringify(args))).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
+    }
+    for (const args of [
+      {},
+      { customerConfirmed: true },
+      { customerConfirmed: true, confirmationQuote: "" },
+      { customerConfirmed: true, confirmationQuote: "x".repeat(201) },
+      { customerConfirmed: "yes", confirmationQuote: "yes" },
+    ]) {
+      expect(await executeTool(orders, "confirm_order", JSON.stringify(args))).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
+    }
+    expect(
+      await executeTool(orders, "update_draft_order", JSON.stringify({ phone: "01711000000" })),
+    ).toMatchObject({ ok: false, code: "invalid" });
   });
 
   it("validates CRM tool input before touching the database", async () => {

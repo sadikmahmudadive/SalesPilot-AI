@@ -69,6 +69,22 @@ export const TOOL_LABELS: Readonly<Record<ToolName, { name: string; description:
     name: "Escalate to human",
     description: "Hands the conversation over to a team member.",
   },
+  create_draft_order: {
+    name: "Create draft order",
+    description: "Starts a draft order for the customer in the chat and holds the stock.",
+  },
+  update_draft_order: {
+    name: "Update draft order",
+    description: "Changes the items, address or payment method of the open draft order.",
+  },
+  confirm_order: {
+    name: "Confirm order",
+    description: "Confirms the open draft order once the customer explicitly agrees.",
+  },
+  get_my_order_status: {
+    name: "Order status",
+    description: "Shows the chatting customer's recent orders and their status.",
+  },
 };
 
 export const AGENT_CHANNEL_LABELS: Readonly<Record<AgentChannel, string>> = {
