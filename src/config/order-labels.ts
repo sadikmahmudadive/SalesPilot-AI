@@ -99,3 +99,13 @@ export function isHoldExpired(
   if (!holds || order.holdExpiresAt === null) return false;
   return Date.parse(order.holdExpiresAt) <= now;
 }
+
+/** Copy for the machine reasons the system records (the sweep and the stock step); staff reasons are shown as typed. */
+const SYSTEM_REASONS: Readonly<Record<string, string>> = {
+  expired: "The hold expired",
+  stock_unavailable: "Stock ran out before the order could be held",
+};
+
+export function reasonText(reason: string): string {
+  return SYSTEM_REASONS[reason] ?? reason;
+}

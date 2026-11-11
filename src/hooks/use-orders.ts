@@ -41,10 +41,20 @@ export type OrderSettingsPatchBody = Partial<z.input<typeof orderSettingsSchema>
 
 /** Actions with a route. `expire` is only ever run by the hold sweep. */
 export type OrderHttpAction = Exclude<OrderAction, "expire">;
-export interface OrderActionInput {
-  action: OrderHttpAction;
-  /** `process` takes `{}` or `{ allowUnpaidReason }`; `cancel` and `refund` take `{ reason }`. */
-  body?: { reason?: string; allowUnpaidReason?: string };
+/**
+ * What a lifecycle action needs, checked at compile time: `cancel` and `refund` always carry a
+ * reason; `process` may carry the override reason for an unpaid online order; the rest carry nothing.
+ */
+export type OrderActionInput =
+  | { action: "cancel" | "refund"; body: { reason: string } }
+  | { action: "process"; body?: { allowUnpaidReason?: string } }
+  | { action: "confirm" | "ship" | "deliver" | "return"; body?: undefined };
+
+/** The JSON body an action sends (`undefined` means no body). `process` always sends an object. */
+export function actionRequest(action: OrderHttpAction, body?: object): object | undefined {
+  if (action === "process") return body ?? {};
+  if (action === "cancel" || action === "refund") return body;
+  return undefined;
 }
 
 /** The backend accepts one equality filter at a time (with the date range); the first one set wins. */
@@ -129,8 +139,7 @@ export function useOrderAction(id: string) {
     mutationFn: ({ action, body }: OrderActionInput) =>
       apiFetch<Order>(`${orderPath(id)}/${action}`, {
         method: "POST",
-        // `process` always needs a JSON body; `cancel` and `refund` pass theirs; the rest send none.
-        body: action === "process" ? (body ?? {}) : body,
+        body: actionRequest(action, body),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: orderKeys.all }),
   });

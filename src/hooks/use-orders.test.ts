@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { orderListQueryString } from "@/hooks/use-orders";
+import { actionRequest, orderListQueryString } from "@/hooks/use-orders";
 
 const keys = (qs: string) => [...new URLSearchParams(qs).keys()];
 
@@ -68,5 +68,29 @@ describe("orderListQueryString", () => {
         }),
       ).sort(),
     ).toEqual(["cursor", "limit", "q"]);
+  });
+});
+
+describe("actionRequest", () => {
+  it("sends an empty object for process by default", () => {
+    expect(actionRequest("process")).toEqual({});
+    expect(actionRequest("process", undefined)).toEqual({});
+  });
+
+  it("passes the override reason through for process", () => {
+    expect(actionRequest("process", { allowUnpaidReason: "Paid by bKash" })).toEqual({
+      allowUnpaidReason: "Paid by bKash",
+    });
+  });
+
+  it("passes the reason for cancel and refund", () => {
+    expect(actionRequest("cancel", { reason: "Out of stock" })).toEqual({ reason: "Out of stock" });
+    expect(actionRequest("refund", { reason: "Damaged" })).toEqual({ reason: "Damaged" });
+  });
+
+  it("sends no body for confirm, ship, deliver and return", () => {
+    for (const action of ["confirm", "ship", "deliver", "return"] as const) {
+      expect(actionRequest(action)).toBeUndefined();
+    }
   });
 });
