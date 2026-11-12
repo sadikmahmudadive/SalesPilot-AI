@@ -64,12 +64,14 @@ import {
 import type { OrderCtx } from "./settings";
 import { OrderTransitionError } from "./state-machine";
 import { commitLines, releaseLines } from "./stock-holds";
+import { reconcilePaymentAttempts } from "@/services/payments/reconciler";
 
 export interface SweepResult {
   expired: number;
   released: number;
   committed: number;
   errors: number;
+  reconciled?: number;
 }
 
 /** Wall time after which the sweep starts no new order. */
@@ -288,5 +290,15 @@ export async function sweepOrders(
     "released",
     releaseParked(cutoffMs),
   );
+
+  // ---- pass 6: unverified payment attempts reconciler ------------------------------------------
+  const remainingBudget = run.deadline - Date.now();
+  if (remainingBudget > 2000) {
+    const paymentResult = await reconcilePaymentAttempts(run.batch, remainingBudget);
+    run.result.expired += paymentResult.expired;
+    run.result.errors += paymentResult.errors;
+    run.result.reconciled = paymentResult.reconciled;
+  }
+
   return run.result;
 }
