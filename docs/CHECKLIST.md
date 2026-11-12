@@ -16,7 +16,7 @@ No UI has been run in a browser and no real external service has been used (see 
 - [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
 - [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
 - [~] 4. WhatsApp and unified inbox: logic, webhook signature and routes tested (Phase 4); inbox screens not seen in a browser and no real WhatsApp message ever sent or received
-- [~] 5. Orders, payments, courier: 5a orders + COD built (tests pass; UI not seen in a browser); 5b payments and 5c couriers not started
+- [~] 5. Orders, payments, courier: 5a orders + COD and 5b payments built (all tests pass; UI not seen in a browser); 5c couriers not started
 - [ ] 6. Voice calls: not started
 - [ ] 7. Follow-ups and automations (n8n): not started
 - [ ] 8. Analytics and integrations settings: not started
@@ -89,6 +89,22 @@ Plan: `docs/superpowers/plans/2026-11-11-orders-core-cod.md`. Payments (5b) and 
 - [~] 51. Orders list page and hooks: `src/hooks/use-orders.test.ts`, `src/components/orders/order-list-params.test.ts`, `src/config/order-labels.test.ts`, `src/config/nav.test.ts`; screens not seen in a browser
 - [~] 52. New order form and order detail page: form model tested (`src/components/orders/order-form-model.test.ts`); screens not seen in a browser
 - [~] 53. Settings Orders tab, inbox orders block, overview order KPIs: `src/components/settings/order-settings-model.test.ts`, `src/app/api/customers/[id]/orders/route.int.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/overview.int.test.ts`, `src/services/dashboard/dhaka-time.test.ts`, `src/hooks/use-orders.test.ts`, `src/services/orders/order-indexes.test.ts`; the settings form, inbox block and KPI cards are not seen in a browser
+
+### Phase 5b: Payment Gateways and Public Checkout
+
+Plan: `docs/superpowers/plans/2026-11-13-payment-gateways-5b.md`. Couriers (5c) not started.
+
+- [x] 54. AES-256-GCM secret box for integration credentials: `src/lib/security/secret-box.test.ts`
+- [x] 55. Schemas and repositories for integration accounts and payment attempts: `src/schemas/integration.test.ts`, `src/schemas/payment.test.ts`, `src/services/payments/payment-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
+- [x] 56. Gateway interface, registry and mock adapter: `src/services/payments/gateways/mock.test.ts`, `src/services/payments/gateways/registry.test.ts`
+- [x] 57. Real gateway adapters (SSLCommerz, aamarPay, UddoktaPay) and outbound safe HTTP client: `src/services/payments/gateways/sslcommerz.test.ts`, `src/services/payments/gateways/aamarpay.test.ts`, `src/services/payments/gateways/uddoktapay.test.ts`, `src/services/payments/gateways/outbound-safe.test.ts`
+- [x] 58. Payment links, public checkout session API and attempt lifecycle: `src/services/payments/links.test.ts`, `src/app/api/orders/[id]/payment-link/payment-link.int.test.ts`, `src/app/api/pay/[token]/session/session.int.test.ts`
+- [x] 59. Payment callbacks and verification routes: `src/services/payments/callbacks.int.test.ts`, `src/app/api/payments/[gateway]/[action]/route.int.test.ts`
+- [x] 60. Payment reconciler wired to order hold-expiry sweep: `src/services/payments/reconciler.int.test.ts`
+- [x] 61. AI agent tool `send_payment_link`: `src/services/agents/tools/send-payment-link.int.test.ts`, `src/services/agents/tools/registry.test.ts`, `src/services/agents/templates.test.ts`, `src/schemas/agent.test.ts`
+- [~] 62. Public checkout pages and mock checkout simulator: `src/app/pay/[token]/page.tsx`, `src/app/pay/[token]/status/page.tsx`, `src/proxy.test.ts`; checkout UI not seen in a real browser
+- [~] 63. Staff integrations management UI and order payment controls: `src/app/api/integrations/gateways/gateways.int.test.ts`, `src/config/nav.test.ts`; integrations UI not seen in a real browser
+- [x] 64. Setup guides and Phase 5b gates: `docs/setup/sslcommerz.md`, `docs/setup/aamarpay.md`, `docs/setup/uddoktapay.md`
 
 ## Unverified
 
