@@ -17,7 +17,12 @@ import { adminDb } from "@/lib/firebase/admin";
 import { logger } from "@/lib/logger";
 import { idempotencyRef } from "@/repositories/orders";
 import { customerInputSchema } from "@/schemas/customer";
-import { shippingAddressSchema, type Order, type OrderLineInput } from "@/schemas/order";
+import {
+  ORDER_ATTEMPT_ENDED_MESSAGE,
+  shippingAddressSchema,
+  type Order,
+  type OrderLineInput,
+} from "@/schemas/order";
 import { productInputSchema, type Product } from "@/schemas/product";
 import { createCustomer } from "@/services/crm/customers";
 import { adjustStock } from "@/services/inventory/stock";
