@@ -34,7 +34,8 @@ export function resetMockStore(): void {
 export class MockPaymentGateway implements PaymentGateway {
   readonly id = "mock" as const;
 
-  async testConnection(): Promise<void> {
+  async testConnection(_account: GatewayAccount): Promise<void> {
+    void _account;
     return Promise.resolve();
   }
 
