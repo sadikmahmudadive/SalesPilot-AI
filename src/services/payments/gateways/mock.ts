@@ -34,7 +34,7 @@ export function resetMockStore(): void {
 export class MockPaymentGateway implements PaymentGateway {
   readonly id = "mock" as const;
 
-  async testConnection(_account: GatewayAccount): Promise<void> {
+  async testConnection(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -42,6 +42,7 @@ export class MockPaymentGateway implements PaymentGateway {
     _account: GatewayAccount,
     input: CreateSessionInput,
   ): Promise<CreateSessionOutput> {
+    void _account;
     mockStore.set(input.tranId, {
       amountMinor: input.amountMinor,
       currency: input.currency,
@@ -58,6 +59,7 @@ export class MockPaymentGateway implements PaymentGateway {
     _account: GatewayAccount,
     ref: VerifyPaymentInput,
   ): Promise<VerifyPaymentOutput> {
+    void _account;
     const record = mockStore.get(ref.tranId);
     if (!record) {
       return {
