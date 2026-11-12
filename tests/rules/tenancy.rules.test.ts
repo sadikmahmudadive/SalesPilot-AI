@@ -43,6 +43,12 @@ const LOCKED = [
   "orderNumbers",
   "orderIdempotency",
   "orderSettings",
+  "gatewayAccounts",
+  "courierAccounts",
+  "paymentAttempts",
+  "paymentLinks",
+  "webhookEvents",
+  "courierLocations",
 ] as const;
 const ROLES = ["owner", "admin", "agent", "viewer"] as const;
 

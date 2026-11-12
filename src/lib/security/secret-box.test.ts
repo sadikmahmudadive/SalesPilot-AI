@@ -46,7 +46,7 @@ describe("secret-box (AES-256-GCM)", () => {
   it("fails with ValidationError when ciphertext is tampered", () => {
     const sealed = sealSecret("original-data", TEST_KEY);
     const tamperedData = Buffer.from(sealed.data, "base64");
-    tamperedData[0] ^= 0xff; // flip bits
+    tamperedData[0] = (tamperedData[0] ?? 0) ^ 0xff;
     const tampered: SealedSecret = {
       ...sealed,
       data: tamperedData.toString("base64"),
@@ -58,7 +58,7 @@ describe("secret-box (AES-256-GCM)", () => {
   it("fails with ValidationError when tag is tampered", () => {
     const sealed = sealSecret("original-data", TEST_KEY);
     const tamperedTag = Buffer.from(sealed.tag, "base64");
-    tamperedTag[0] ^= 0xff;
+    tamperedTag[0] = (tamperedTag[0] ?? 0) ^ 0xff;
     const tampered: SealedSecret = {
       ...sealed,
       tag: tamperedTag.toString("base64"),
@@ -70,7 +70,7 @@ describe("secret-box (AES-256-GCM)", () => {
   it("fails with ValidationError when IV is tampered", () => {
     const sealed = sealSecret("original-data", TEST_KEY);
     const tamperedIv = Buffer.from(sealed.iv, "base64");
-    tamperedIv[0] ^= 0xff;
+    tamperedIv[0] = (tamperedIv[0] ?? 0) ^ 0xff;
     const tampered: SealedSecret = {
       ...sealed,
       iv: tamperedIv.toString("base64"),

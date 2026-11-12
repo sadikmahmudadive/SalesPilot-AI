@@ -111,6 +111,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Integrations, payments, webhooks and couriers: server only (Admin SDK).
+    match /gatewayAccounts/{id} { allow read, write: if false; }
+    match /courierAccounts/{id} { allow read, write: if false; }
+    match /paymentAttempts/{id} { allow read, write: if false; }
+    match /paymentLinks/{id} { allow read, write: if false; }
+    match /webhookEvents/{id} { allow read, write: if false; }
+    match /courierLocations/{id} { allow read, write: if false; }
+
     // rateLimits, auditLogs, customerPhones, productSkus, productSlugs,
     // categoryNames and any other collection fall through to default deny.
     match /{document=**} {

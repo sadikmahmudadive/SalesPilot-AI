@@ -116,9 +116,11 @@ describe("other collections in firestore.indexes.json", () => {
       "categories",
       "conversations",
       "customers",
+      "gatewayAccounts",
       "inventory",
       "orderEvents",
       "orders",
+      "paymentAttempts",
       "products",
     ]);
   });
