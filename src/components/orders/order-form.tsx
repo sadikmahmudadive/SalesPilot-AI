@@ -115,9 +115,10 @@ interface OrderFormProps {
 
 /**
  * Create / edit form for an order. New orders are created as a draft ("Save draft") or created and
- * confirmed in one step; editing sends a minimal PATCH. The idempotency key is made once per mount,
- * so a double click or a retry after a half-finished save (draft created, confirm refused) lands on
- * the same order instead of making a second one.
+ * confirmed in one step; editing sends a minimal PATCH. The idempotency key is bound to the form
+ * contents (`bindIdempotencyKey`): while the order body is unchanged, a double click or a retry after
+ * a half-finished save (draft created, confirm refused) reuses the key and lands on the same order;
+ * changing the order mints a new key, so an edited order is never mistaken for the first one.
  */
 export function OrderForm({ order, onCancel, onSaved }: OrderFormProps) {
   const router = useRouter();

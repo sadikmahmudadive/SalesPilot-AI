@@ -15,8 +15,8 @@ No UI has been run in a browser and no real external service has been used (see 
 - [~] 1. Foundation (auth, organizations, roles, security baseline, dashboard shell): logic tested, UI unverified
 - [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
 - [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
-- [x] 4. WhatsApp and unified inbox: logic, webhooks, and UI tested (Phase 4)
-- [ ] 5. Orders, payments, courier: not started (stock reserve/release/commit exist for it)
+- [~] 4. WhatsApp and unified inbox: logic, webhook signature and routes tested (Phase 4); inbox screens not seen in a browser and no real WhatsApp message ever sent or received
+- [~] 5. Orders, payments, courier: 5a orders + COD built (tests pass; UI not seen in a browser); 5b payments and 5c couriers not started
 - [ ] 6. Voice calls: not started
 - [ ] 7. Follow-ups and automations (n8n): not started
 - [ ] 8. Analytics and integrations settings: not started
@@ -67,21 +67,41 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 ### Phase 4: WhatsApp and Unified Inbox
 
 - [x] 36. Inbox domain (permissions, schemas): `src/lib/security/permissions.test.ts`, `src/schemas/inbox.test.ts`
-- [x] 37. WhatsApp client and webhook signature verification: `src/lib/whatsapp/client.test.ts`, `src/lib/whatsapp/signature.test.ts`
+- [x] 37. WhatsApp client and webhook signature verification: `src/lib/whatsapp/client.test.ts`, `src/lib/whatsapp/signature.test.ts` (the HTTP client is tested with `fetch` mocked and the signature code with fixed vectors; real WhatsApp delivery was never exercised, see "Unverified")
 - [x] 38. Inbox repositories, rules and indexes: `src/services/inbox/inbox-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
 - [x] 39. Inbox service and webhook processor: `src/services/inbox/inbox.int.test.ts`, `src/services/inbox/webhook-handler.int.test.ts`
 - [x] 40. Webhook and inbox API routes: `src/app/api/webhooks/whatsapp/route.test.ts`, `src/app/api/inbox/conversations/route.int.test.ts`
-- [x] 41. Unified Inbox UI and navigation: `src/config/nav.test.ts`, `src/components/inbox/*`
+- [~] 41. Unified Inbox UI and navigation: navigation data tested (`src/config/nav.test.ts`); the inbox screens (`src/components/inbox/*`) have no tests and were not seen in a browser
 - [x] 42. WhatsApp setup guide: `docs/setup/whatsapp.md`
+
+### Phase 5a: Orders and Cash on Delivery
+
+Plan: `docs/superpowers/plans/2026-11-11-orders-core-cod.md`. Payments (5b) and couriers (5c) are not started.
+
+- [x] 43. Session errors allowlist (an Auth outage no longer logs everyone out): `src/lib/auth/session.test.ts`, `src/lib/auth/session.int.test.ts`
+- [x] 44. Permissions, order schemas, state machine, pricing: `src/lib/security/permissions.test.ts`, `src/schemas/order.test.ts`, `src/schemas/customer.test.ts`, `src/services/orders/state-machine.test.ts`, `src/services/orders/pricing.test.ts`
+- [x] 45. Order repositories, numbering, settings, indexes, rules: `src/repositories/orders.test.ts`, `src/services/orders/settings.int.test.ts`, `src/services/orders/order-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
+- [x] 46. Draft orders with stock holds: `src/services/orders/drafts.int.test.ts`
+- [x] 47. Lifecycle transitions and queries: `src/services/orders/lifecycle.int.test.ts`, `src/services/orders/queries.int.test.ts`
+- [~] 48. Hold expiry sweep and cron route: `src/services/orders/sweep.int.test.ts`, `src/app/api/cron/orders/expire/route.int.test.ts`; Vercel Cron has never run on a real deployment
+- [x] 49. Order and settings API routes: `src/app/api/orders/route.int.test.ts`
+- [x] 50. AI order tools (draft, update, confirm, status), tested with the mock provider: `src/services/agents/tools/order-tools.int.test.ts`, `src/services/agents/tools/order-access.test.ts`, `src/services/agents/tools/registry.test.ts`, `src/services/agents/templates.test.ts`, `src/schemas/agent.test.ts`
+- [~] 51. Orders list page and hooks: `src/hooks/use-orders.test.ts`, `src/components/orders/order-list-params.test.ts`, `src/config/order-labels.test.ts`, `src/config/nav.test.ts`; screens not seen in a browser
+- [~] 52. New order form and order detail page: form model tested (`src/components/orders/order-form-model.test.ts`); screens not seen in a browser
+- [~] 53. Settings Orders tab, inbox orders block, overview order KPIs: `src/components/settings/order-settings-model.test.ts`, `src/app/api/customers/[id]/orders/route.int.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/overview.int.test.ts`, `src/services/dashboard/dhaka-time.test.ts`, `src/hooks/use-orders.test.ts`, `src/services/orders/order-indexes.test.ts`; the settings form, inbox block and KPI cards are not seen in a browser
 
 ## Unverified
 
 These have not been done or observed. Do not assume they work.
 
-- No UI has been run in a browser: auth pages, dashboard, customers, products, inventory, uploads, theme toggle, responsive navigation, accessibility behavior.
+- No UI has been run in a browser: auth pages, dashboard, customers, products, inventory, uploads, inbox, theme toggle, responsive navigation, accessibility behavior.
+- The Orders UI (list, new order form, order detail, Settings Orders tab, the inbox Orders block, the overview order cards) has not been seen in a browser.
+- Real WhatsApp delivery: no message has been sent or received through the WhatsApp Cloud API; only the client (with `fetch` mocked) and the signature code are tested. See [setup/whatsapp.md](setup/whatsapp.md).
+- The Vercel Cron job for the order hold sweep (`vercel.json`) has not run on a real deployment, and the Hobby-plan wording in [setup/vercel.md](setup/vercel.md) section 6 (once-a-day limit, only within the scheduled hour) is from memory and has not been checked against the current Vercel docs or a Hobby deployment.
+- The dashboard revenue figure uses a Firestore `sum()` aggregation, and the composite index it needs (`orders`: organizationId, paymentStatus, createdAt, totalMinor) is a best reading of the Firestore index rules; the emulator does not enforce indexes, so the real query has not been run against Firestore.
 - No real Cloudinary account: signature acceptance, `overwrite=0`, folder mode, replay behavior, Admin API quotas, deleting assets. See [setup/cloudinary.md](setup/cloudinary.md), section 5.
 - No real Firebase project: nothing has been deployed, Auth providers (Email/Password, Google) have not been enabled or used, the service-account path has not been exercised.
-- Composite indexes (`firestore.indexes.json`, 54 definitions) are not deployed and not confirmed `READY`. Tests compare queries with the index file; Firestore itself has not validated them.
+- Composite indexes (`firestore.indexes.json`, 73 definitions) are not deployed and not confirmed `READY`. Tests compare queries with the index file; Firestore itself has not validated them.
 - Firestore TTL policy for `rateLimits.expiresAt` is documented, not applied; the gcloud command needs a double-check against current docs.
 - No Vercel deployment: build settings, env handling (especially `FIREBASE_PRIVATE_KEY`) and preview behavior are untested.
 - No load or soak testing, no penetration test, no cross-browser testing.
@@ -91,17 +111,18 @@ These have not been done or observed. Do not assume they work.
 
 - **Firebase project (decided 2026-11-08):** reuse `salespilot-ai-9b1cd` (asia-southeast1). Development and tests still use the `demo-salespilot` emulator project. Nothing has been deployed to it yet.
 - **Cloudinary credentials:** to be provided directly in `.env.local` (and in Vercel) by the project owner.
+- **Payments (5b) and couriers (5c):** not started. No payment gateway or courier has been chosen, and no gateway or courier account exists.
 - **Authorized domains and `authDomain`:** staying on `*.firebaseapp.com` unless a custom auth domain is wanted (needs a CSP change).
 
-## Last verified run (2026-11-07, branch `feat/foundation-core-data`)
+## Last verified run (2026-11-12, branch `feat/orders-payments`)
 
 | Command                | Result                                                                                   |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | `npm run typecheck`    | passes (`next typegen` then `tsc --noEmit`, no errors)                                   |
 | `npm run lint`         | passes, no output                                                                        |
-| `npm run test:unit`    | 67 test files, 1267 tests pass                                                           |
-| `npm run test:int`     | 20 test files, 533 tests pass (Firestore and Auth emulators)                             |
+| `npm run test:unit`    | 104 test files, 3120 tests pass                                                          |
+| `npm run test:int`     | 39 test files, 859 tests pass (Firestore and Auth emulators, alternate ports)            |
 | `npm run build`        | passes                                                                                   |
-| `npm run check:bundle` | passes (53 files scanned in `.next/static`, no server-only names, values or PEM markers) |
+| `npm run check:bundle` | passes (90 files scanned in `.next/static`, no server-only names, values or PEM markers) |
 
 Re-run the gate in this order before a release.

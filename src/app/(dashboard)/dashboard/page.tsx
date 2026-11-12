@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { Banknote, MessageSquare, Phone, ShoppingCart } from "lucide-react";
+import { MessageSquare, Phone } from "lucide-react";
 
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { KPI_GRID_CLASS, KpiGrid, KpiGridSkeleton } from "@/components/dashboard/kpi-grid";
@@ -26,18 +26,6 @@ export default async function DashboardPage() {
         <KpiGrid organizationId={ctx.organizationId} />
       </Suspense>
       <div className={`${KPI_GRID_CLASS} mt-4`}>
-        <KpiCard
-          id="kpi-orders"
-          title="Orders"
-          icon={ShoppingCart}
-          state={{ kind: "later", phase: 5 }}
-        />
-        <KpiCard
-          id="kpi-revenue"
-          title="Revenue"
-          icon={Banknote}
-          state={{ kind: "later", phase: 5 }}
-        />
         <KpiCard
           id="kpi-conversations"
           title="Conversations"

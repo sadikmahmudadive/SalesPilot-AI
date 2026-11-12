@@ -19,6 +19,11 @@
  *   - orders where hasReleasingLines == true ORDER BY __name__ (parked lines): a single-field
  *     equality, served by the automatic single-field index, so no entry here.
  *
+ * Dashboard revenue (overview.ts): `organizationId == org AND paymentStatus == p AND createdAt >= t`
+ * with `sum(totalMinor)`. Firestore reads a summed field from the index, so this needs
+ * `(organizationId, paymentStatus, createdAt, totalMinor)`; the plain list index does not carry
+ * `totalMinor`. (The counts of the dashboard use the list indexes as they are.)
+ *
  * `orderEvents` timeline: `organizationId == org AND orderId == id ORDER BY createdAt ASC`.
  * Production verification requires `firebase deploy --only firestore:indexes`.
  */
@@ -35,6 +40,8 @@ export interface OrderIndexSpec {
   equalityFields: readonly string[];
   /** Field the query orders by. */
   orderField: string;
+  /** Aggregated (summed) fields, ASCENDING, placed after the order field and before `__name__`. */
+  aggregateFields?: readonly string[];
   /** Direction of the order field and of `__name__` in the index. */
   direction: IndexDirection;
   /** True for the sweep indexes that have no `organizationId` clause. */
@@ -81,6 +88,17 @@ const sweep: OrderIndexSpec[] = [
   },
 ];
 
+const aggregates: OrderIndexSpec[] = [
+  {
+    collectionGroup: "orders",
+    equalityFields: ["organizationId", "paymentStatus"],
+    orderField: "createdAt",
+    aggregateFields: ["totalMinor"],
+    direction: "ASCENDING",
+    note: "Dashboard revenue: sum of totalMinor per payment status since a date.",
+  },
+];
+
 const events: OrderIndexSpec[] = [
   {
     collectionGroup: "orderEvents",
@@ -91,7 +109,12 @@ const events: OrderIndexSpec[] = [
   },
 ];
 
-export const ORDER_INDEXES: readonly OrderIndexSpec[] = [...tenantList, ...sweep, ...events];
+export const ORDER_INDEXES: readonly OrderIndexSpec[] = [
+  ...tenantList,
+  ...sweep,
+  ...aggregates,
+  ...events,
+];
 
 /** The entry exactly as it must appear in firestore.indexes.json (key order included). */
 export function toFirestoreIndex(spec: OrderIndexSpec): FirestoreIndex {
@@ -104,6 +127,10 @@ export function toFirestoreIndex(spec: OrderIndexSpec): FirestoreIndex {
         order: "ASCENDING" as IndexDirection,
       })),
       { fieldPath: spec.orderField, order: spec.direction },
+      ...(spec.aggregateFields ?? []).map((fieldPath) => ({
+        fieldPath,
+        order: "ASCENDING" as IndexDirection,
+      })),
       { fieldPath: "__name__", order: spec.direction },
     ],
   };

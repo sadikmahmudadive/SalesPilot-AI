@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionRequest, orderListQueryString } from "@/hooks/use-orders";
+import { actionRequest, orderKeys, orderListQueryString } from "@/hooks/use-orders";
 
 const keys = (qs: string) => [...new URLSearchParams(qs).keys()];
 
@@ -92,5 +92,13 @@ describe("actionRequest", () => {
     for (const action of ["confirm", "ship", "deliver", "return"] as const) {
       expect(actionRequest(action)).toBeUndefined();
     }
+  });
+});
+
+describe("orderKeys.customer", () => {
+  it("sits under the shared orders prefix so every order mutation refreshes it", () => {
+    expect(orderKeys.customer("c1").slice(0, orderKeys.all.length)).toEqual([...orderKeys.all]);
+    expect(orderKeys.customer("c1")).not.toEqual(orderKeys.customer("c2"));
+    expect(orderKeys.customer("c1")).not.toEqual(orderKeys.detail("c1"));
   });
 });

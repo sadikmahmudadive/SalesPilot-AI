@@ -97,6 +97,7 @@ export const orderKeys = {
   list: (params: OrderListParams) => [...orderKeys.all, params] as const,
   detail: (id: string) => [...orderKeys.all, id] as const,
   events: (id: string) => [...orderKeys.all, id, "events"] as const,
+  customer: (customerId: string) => [...orderKeys.all, "customer", customerId] as const,
   settings: ["order-settings"] as const,
 };
 
@@ -119,6 +120,22 @@ export function useOrder(id: string) {
   return useQuery({
     queryKey: orderKeys.detail(id),
     queryFn: ({ signal }) => apiFetch<OrderDetail>(orderPath(id), { signal }),
+    retry: retryUnlessClientError,
+  });
+}
+
+/** A customer's 5 newest orders (the inbox sidebar). Refreshed with every other order query. */
+export function useCustomerOrders(customerId: string | null) {
+  return useQuery({
+    queryKey: orderKeys.customer(customerId ?? ""),
+    queryFn: ({ signal }) =>
+      apiFetch<{ items: Order[] }>(
+        `/api/customers/${encodeURIComponent(customerId ?? "")}/orders`,
+        {
+          signal,
+        },
+      ),
+    enabled: customerId !== null,
     retry: retryUnlessClientError,
   });
 }

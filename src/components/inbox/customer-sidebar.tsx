@@ -3,15 +3,60 @@
 import Link from "next/link";
 import { ExternalLink, Phone, User } from "lucide-react";
 
+import { OrderStatusBadge } from "@/components/orders/order-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCustomerOrders } from "@/hooks/use-orders";
+import { formatMoneyMinor } from "@/lib/format";
 import type { Conversation } from "@/schemas/inbox";
 
-export function CustomerSidebar({
-  conversation,
-}: {
-  conversation: Conversation | null;
-}) {
+/** The linked customer's latest orders. Not rendered for a conversation without a customer. */
+function CustomerOrders({ customerId }: { customerId: string }) {
+  const { data, isPending, isError } = useCustomerOrders(customerId);
+  const orders = data?.items ?? [];
+
+  return (
+    <div className="space-y-3 pt-2 border-t border-border/40 text-xs">
+      <h4 className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+        Orders
+      </h4>
+      {isPending ? (
+        <p role="status" className="text-muted-foreground">
+          Loading orders...
+        </p>
+      ) : isError ? (
+        <p role="alert" className="text-muted-foreground">
+          Couldn&apos;t load orders.
+        </p>
+      ) : orders.length === 0 ? (
+        <p className="text-muted-foreground">No orders yet</p>
+      ) : (
+        <ul className="space-y-2">
+          {orders.map((order) => (
+            <li key={order.id}>
+              <Link
+                href={`/orders/${encodeURIComponent(order.id)}`}
+                className="block rounded-lg border border-border/40 bg-background/50 p-2.5 space-y-1.5 hover:bg-accent/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-[11px] text-foreground">
+                    {order.orderNumber}
+                  </span>
+                  <OrderStatusBadge status={order.status} />
+                </div>
+                <div className="text-[11px] text-muted-foreground tabular-nums">
+                  {formatMoneyMinor(order.totalMinor)}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export function CustomerSidebar({ conversation }: { conversation: Conversation | null }) {
   if (!conversation) return null;
 
   return (
@@ -78,6 +123,9 @@ export function CustomerSidebar({
           </div>
         </div>
       </div>
+
+      {/* Orders of the linked customer (hidden when the conversation has none) */}
+      {conversation.customerId ? <CustomerOrders customerId={conversation.customerId} /> : null}
 
       {/* CRM Actions */}
       <div className="pt-2 border-t border-border/40">

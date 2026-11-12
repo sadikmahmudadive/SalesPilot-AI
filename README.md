@@ -4,7 +4,7 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 ## Current scope
 
-Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has been run in a browser. Nothing from sub-projects 3 to 8 exists yet; their dashboard pages show an explicit "coming later" state, not mock data.
+Sub-projects 1 to 4 and the orders and cash-on-delivery part of sub-project 5 (5a) are implemented; their logic is tested but no UI has been run in a browser. Payments (5b), couriers (5c) and sub-projects 6 to 8 do not exist yet; their dashboard pages show an explicit "coming later" state, not mock data.
 
 | #   | Sub-project                                                                | State                                |
 | --- | -------------------------------------------------------------------------- | ------------------------------------ |
@@ -12,10 +12,14 @@ Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has b
 | 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
 | 3   | AI agents: Phase 3a tool calling, bounded engine, test console              | implemented; UI not browser-verified |
 | 4   | WhatsApp and unified inbox                                                 | implemented; UI not browser-verified |
-| 5   | Orders, payments, courier                                                  | roadmap                              |
+| 5   | Orders, payments, courier                                                  | 5a orders + COD implemented; UI not browser-verified; 5b payments and 5c couriers roadmap |
 | 6   | Voice calls                                                                | roadmap                              |
 | 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
 | 8   | Analytics and integrations settings                                        | roadmap                              |
+
+### Orders (5a)
+
+Staff create orders from the Orders page (a draft first, then confirm), and AI agents can draft and confirm cash-on-delivery orders in WhatsApp conversations. A draft holds its stock; the hold expires and a scheduled sweep (`/api/cron/orders/expire`, see [docs/setup/vercel.md](docs/setup/vercel.md)) releases it. Delivery charges and hold times are set under Settings > Orders (owner and admin). The overview shows orders placed today and this month's paid or collected revenue (Asia/Dhaka time). Money is stored as integer paisa, currency BDT. Online payments and couriers are not built yet.
 
 The design is in [docs/superpowers/specs/2026-11-06-foundation-core-data-design.md](docs/superpowers/specs/2026-11-06-foundation-core-data-design.md). What has and has not been verified is in [docs/CHECKLIST.md](docs/CHECKLIST.md).
 

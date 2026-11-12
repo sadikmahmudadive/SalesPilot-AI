@@ -41,11 +41,16 @@ describe("ORDER_INDEXES table", () => {
     expect(json).toHaveLength(ORDER_INDEXES.length);
   });
 
-  it("__name__ always follows the order field in the same direction", () => {
+  it("__name__ is last, in the order field direction, after the order field (and any aggregate field)", () => {
     for (const spec of ORDER_INDEXES) {
       const { fields } = toFirestoreIndex(spec);
       expect(fields.at(-1)).toEqual({ fieldPath: "__name__", order: spec.direction });
-      expect(fields.at(-2)).toEqual({ fieldPath: spec.orderField, order: spec.direction });
+      const trailing = spec.aggregateFields ?? [];
+      expect(fields.at(-2 - trailing.length)).toEqual({
+        fieldPath: spec.orderField,
+        order: spec.direction,
+      });
+      expect(fields.slice(-1 - trailing.length, -1).map((f) => f.fieldPath)).toEqual([...trailing]);
       expect(spec.note.length).toBeGreaterThan(10);
     }
   });
@@ -107,6 +112,23 @@ describe("ORDER_INDEXES table", () => {
         f("__name__", "ASCENDING"),
       ),
     );
-    expect(ORDER_INDEXES).toHaveLength(2 * 5 + 2 + 1);
+    expect(ORDER_INDEXES).toHaveLength(2 * 5 + 2 + 1 + 1);
+  });
+
+  it("has the dashboard revenue sum index: org, paymentStatus, createdAt, then the summed totalMinor", () => {
+    const f = (fieldPath: string, order: string) => ({ fieldPath, order });
+    expect(ORDER_INDEXES.map((s) => canon(toFirestoreIndex(s)))).toContain(
+      canon({
+        collectionGroup: "orders",
+        queryScope: "COLLECTION",
+        fields: [
+          f("organizationId", "ASCENDING"),
+          f("paymentStatus", "ASCENDING"),
+          f("createdAt", "ASCENDING"),
+          f("totalMinor", "ASCENDING"),
+          f("__name__", "ASCENDING"),
+        ],
+      }),
+    );
   });
 });

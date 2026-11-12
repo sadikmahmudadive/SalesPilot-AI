@@ -1,8 +1,9 @@
-import { Boxes, TriangleAlert, UserPlus, Users } from "lucide-react";
+import { Banknote, Boxes, ShoppingCart, TriangleAlert, UserPlus, Users } from "lucide-react";
 
 import { KpiCard, KpiCardSkeleton, type KpiState } from "@/components/dashboard/kpi-card";
 import { SEGMENT_LABELS } from "@/config/customer-labels";
 import { LOW_STOCK_THRESHOLD } from "@/config/inventory";
+import { formatMoneyMinor } from "@/lib/format";
 import { getOverview, type Metric } from "@/services/dashboard/overview";
 import { LEAD_SEGMENTS } from "@/services/dashboard/lead-segments";
 
@@ -14,7 +15,7 @@ const stateOf = (metric: Metric): KpiState =>
 
 const LEAD_SUBTEXT = `Customers who are ${LEAD_SEGMENTS.map((s) => SEGMENT_LABELS[s].toLowerCase()).join(", ")}.`;
 
-/** The four live cards. Async server component: awaits the counts (each can fail on its own). */
+/** The six live cards. Async server component: awaits the counts (each can fail on its own). */
 export async function KpiGrid({ organizationId }: { organizationId: string }) {
   const overview = await getOverview(organizationId);
   return (
@@ -55,6 +56,25 @@ export async function KpiGrid({ organizationId }: { organizationId: string }) {
         href="/inventory?lowStock=true"
         linkLabel="View low stock"
       />
+      <KpiCard
+        id="kpi-orders-today"
+        title="Orders today"
+        icon={ShoppingCart}
+        state={stateOf(overview.ordersToday)}
+        subtext="Placed since midnight (Dhaka time), not counting drafts or cancelled orders."
+        href="/orders"
+        linkLabel="View orders"
+      />
+      <KpiCard
+        id="kpi-revenue-month"
+        title="Revenue this month (paid + COD collected)"
+        icon={Banknote}
+        state={stateOf(overview.revenueMonthMinor)}
+        subtext="Orders created this month (Dhaka time) whose payment has been received."
+        href="/orders"
+        linkLabel="View orders"
+        format={formatMoneyMinor}
+      />
     </div>
   );
 }
@@ -62,7 +82,7 @@ export async function KpiGrid({ organizationId }: { organizationId: string }) {
 export function KpiGridSkeleton() {
   return (
     <div className={KPI_GRID_CLASS} role="status" aria-label="Loading overview figures">
-      {Array.from({ length: 4 }, (_, i) => (
+      {Array.from({ length: 6 }, (_, i) => (
         <KpiCardSkeleton key={i} />
       ))}
     </div>
