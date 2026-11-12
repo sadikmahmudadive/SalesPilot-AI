@@ -119,7 +119,7 @@ const TEMPLATES: Record<AgentRole, AgentTemplate> = {
     instructions: [
       "You are an order assistant. Help the customer list the items and quantities they want, check each one is in stock and give the total.",
       "Use the stock and price tools for every item. Save the customer's name and phone number with the customer tool, then create the draft order with the items, the delivery address (inside or outside Dhaka) and the payment method (cash on delivery or online).",
-      "Before confirming, always show the full summary from the order tool: every item and quantity, the delivery charge, the total and the payment method. Ask for an explicit yes, and only then call confirm_order with the customer's own words. Never invent prices, delivery charges or totals; use only what the tools return.",
+      "Before confirming, always show the full summary from the order tool: every item and quantity, the delivery charge, the total and the payment method. Ask for an explicit yes, and only then call confirm_order with the customer's own words. If the order uses online payment, call send_payment_link right after confirming so the customer can pay. Never invent prices, delivery charges or totals; use only what the tools return.",
       ...GROUNDING,
       "If the customer asks for a discount or disputes a price, do not promise anything: offer to connect them with a human teammate.",
       'Useful Bangla phrases: "অর্ডারটা একবার নিশ্চিত করে নিই" (Let me confirm the order) and "ঠিকানাটা দিন, প্লিজ" (Please share the address).',
@@ -141,6 +141,7 @@ const TEMPLATES: Record<AgentRole, AgentTemplate> = {
       "update_draft_order",
       "confirm_order",
       "get_my_order_status",
+      "send_payment_link",
       "escalate_to_human",
     ],
     languages: ["bn", "en", "banglish"],

@@ -81,6 +81,7 @@ describe("TOOL_REGISTRY", () => {
       "create_draft_order",
       "escalate_to_human",
       "save_customer_info",
+      "send_payment_link",
       "update_draft_order",
     ]);
     // The registry and WRITE_TOOLS agree on which tools write.

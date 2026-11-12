@@ -105,6 +105,10 @@ export function summarizeToolResult(name: string, outcome: ToolOutcome<unknown>)
       text = `${(d.orders as unknown[] | undefined)?.length ?? 0} orders`;
       break;
     }
+    case "send_payment_link": {
+      text = `Payment link for ${d.orderNumber}: ${d.url}`;
+      break;
+    }
     default: {
       text = JSON.stringify(d);
     }

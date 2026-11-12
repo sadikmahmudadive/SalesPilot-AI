@@ -4,7 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { logger } from "@/lib/logger";
 import { getGatewayAccount } from "@/repositories/integrations";
 import { orderRepo } from "@/repositories/orders";
-import { getPaymentAttempt, updatePaymentAttempt } from "@/repositories/payments";
+import { getPaymentAttempt } from "@/repositories/payments";
 import type { Order } from "@/schemas/order";
 import type { PaymentAttempt } from "@/schemas/payment";
 

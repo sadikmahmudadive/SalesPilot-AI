@@ -34,6 +34,7 @@ import { orderTotalTool } from "./order-total";
 import { productDetailsTool } from "./product-details";
 import { saveCustomerInfoTool } from "./save-customer-info";
 import { searchProductsTool } from "./search-products";
+import { sendPaymentLinkTool } from "./send-payment-link";
 import { updateDraftOrderTool } from "./update-draft-order";
 import { toolFailure, type AgentTool, type ToolContext, type ToolOutcome } from "./types";
 
@@ -51,6 +52,7 @@ export const TOOL_REGISTRY: Readonly<Record<ToolName, AgentTool<unknown, unknown
     update_draft_order: updateDraftOrderTool,
     confirm_order: confirmOrderTool,
     get_my_order_status: orderStatusTool,
+    send_payment_link: sendPaymentLinkTool,
   },
 );
 

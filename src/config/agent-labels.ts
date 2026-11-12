@@ -85,6 +85,10 @@ export const TOOL_LABELS: Readonly<Record<ToolName, { name: string; description:
     name: "Order status",
     description: "Shows the chatting customer's recent orders and their status.",
   },
+  send_payment_link: {
+    name: "Send payment link",
+    description: "Generates and sends an online payment link for a confirmed order.",
+  },
 };
 
 export const AGENT_CHANNEL_LABELS: Readonly<Record<AgentChannel, string>> = {

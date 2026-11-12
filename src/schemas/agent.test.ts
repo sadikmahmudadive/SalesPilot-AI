@@ -56,15 +56,17 @@ describe("constants", () => {
       "update_draft_order",
       "confirm_order",
       "get_my_order_status",
+      "send_payment_link",
     ]);
   });
 
-  it("marks exactly the five tools that write data", () => {
+  it("marks exactly the six tools that write data", () => {
     expect([...WRITE_TOOLS].sort()).toEqual([
       "confirm_order",
       "create_draft_order",
       "escalate_to_human",
       "save_customer_info",
+      "send_payment_link",
       "update_draft_order",
     ]);
   });

@@ -1,12 +1,10 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { describe, expect, it } from "vitest";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { createGatewayAccount } from "@/repositories/integrations";
 import { orderRepo } from "@/repositories/orders";
 import { createPaymentAttempt, getPaymentAttempt } from "@/repositories/payments";
 import type { Order } from "@/schemas/order";
-import type { PaymentAttempt } from "@/schemas/payment";
 
 import { confirmPaymentAttempt } from "./callbacks";
 import { setMockOutcome } from "./gateways/mock";

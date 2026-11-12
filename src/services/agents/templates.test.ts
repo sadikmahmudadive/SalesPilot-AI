@@ -83,6 +83,7 @@ describe("AGENT_TEMPLATES", () => {
         "update_draft_order",
         "confirm_order",
         "get_my_order_status",
+        "send_payment_link",
         "save_customer_info",
       ]),
     );
@@ -90,6 +91,7 @@ describe("AGENT_TEMPLATES", () => {
     expect(text).not.toContain("delivery charges are not available yet");
     expect(text).not.toContain("You cannot take payment or confirm delivery");
     expect(text).toContain("confirm_order");
+    expect(text).toContain("send_payment_link");
     for (const word of ["delivery charge", "total", "payment method", "explicit yes", "discount"]) {
       expect(text.toLowerCase()).toContain(word);
     }
@@ -100,7 +102,12 @@ describe("AGENT_TEMPLATES", () => {
     for (const role of AGENT_ROLES) {
       if (role === "order_management") continue;
       for (const tool of AGENT_TEMPLATES[role].tools) {
-        expect(["create_draft_order", "update_draft_order", "confirm_order"]).not.toContain(tool);
+        expect([
+          "create_draft_order",
+          "update_draft_order",
+          "confirm_order",
+          "send_payment_link",
+        ]).not.toContain(tool);
       }
     }
   });

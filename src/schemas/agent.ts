@@ -57,6 +57,7 @@ export const TOOL_NAMES = [
   "update_draft_order",
   "confirm_order",
   "get_my_order_status",
+  "send_payment_link",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -67,6 +68,7 @@ export const WRITE_TOOLS: ReadonlySet<ToolName> = new Set<ToolName>([
   "create_draft_order",
   "update_draft_order",
   "confirm_order",
+  "send_payment_link",
 ]);
 
 /** Fields whose change bumps the agent `version`. Name, description and status do not. */

@@ -50,7 +50,8 @@ export interface DryRunAction {
     | "escalate"
     | "create_order"
     | "update_order"
-    | "confirm_order";
+    | "confirm_order"
+    | "send_payment_link";
   fields: Record<string, unknown>;
 }
 
