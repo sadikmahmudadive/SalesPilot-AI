@@ -964,6 +964,52 @@ describe("idempotent replay of a pending draft", () => {
   });
 });
 
+describe("spent idempotency keys (R20)", () => {
+  async function expectSpent(p: Promise<unknown>) {
+    const err = await rejection(p);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as ConflictError).message).toBe(ORDER_ATTEMPT_ENDED_MESSAGE);
+  }
+
+  it("a replay of a key whose draft was cancelled after a failed reserve is a 409 and creates nothing", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 2 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 1 }]);
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      await actualStock.reserveStock(ctx.organizationId, a.id, "default", 2, "other-order");
+    };
+    await expect(createDraftOrder(ctx, input)).rejects.toBeInstanceOf(OrderLineError);
+    await actualStock.releaseStock(ctx.organizationId, a.id, "default", "other-order");
+
+    await expectSpent(createDraftOrder(ctx, input));
+
+    const orders = (await docsOf("orders", ctx.organizationId)).map((d) => d.data());
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({ status: "cancelled", cancelReason: "stock_unavailable" });
+    expect(await counts(a.id)).toEqual({ onHand: 2, reserved: 0 });
+  });
+
+  it("a replay of an expired draft's key is a 409 and changes nothing", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 1 }]);
+    const draft = await createDraftOrder(ctx, input);
+    await db()
+      .collection("orders")
+      .doc(draft.id)
+      .update({ holdExpiresAt: Timestamp.fromMillis(Date.now() - 1000) });
+
+    await expectSpent(createDraftOrder(ctx, input));
+
+    expect(await docsOf("orders", ctx.organizationId)).toHaveLength(1);
+    expect(await rawOrder(draft.id)).toMatchObject({ status: "draft", stockState: "held" });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 1 });
+  });
+});
+
 describe("late reservations", () => {
   it("the sweep cancelling a draft during its reserves: the stock is given back (B finds it ended)", async () => {
     const ctx = newCtx();
