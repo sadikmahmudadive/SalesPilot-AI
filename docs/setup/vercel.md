@@ -86,10 +86,12 @@ Security headers (CSP, HSTS, frame, referrer) are built in `src/config/security-
 `vercel.json` registers one cron job:
 
 ```json
-{ "crons": [{ "path": "/api/cron/orders/expire", "schedule": "*/10 * * * *" }] }
+{ "crons": [{ "path": "/api/cron/orders/expire", "schedule": "0 3 * * *" }] }
 ```
 
-Every 10 minutes it calls `GET /api/cron/orders/expire`, which cancels expired draft and unpaid online orders, releases their stock, and finishes stock releases and commits that were interrupted (`src/services/orders/sweep.ts`). A run stops starting new orders after 45 seconds and returns `{ expired, released, committed, errors }`; the next run continues.
+It calls `GET /api/cron/orders/expire`, which cancels expired draft and unpaid online orders, releases their stock, and finishes stock releases and commits that were interrupted (`src/services/orders/sweep.ts`). A run stops starting new orders after 45 seconds and returns `{ expired, released, committed, errors }`; the next run continues.
+
+> **Hobby plan notice:** Hobby plans allow at most once-per-day cron jobs (scheduled here at `0 3 * * *`, daily at 03:00 UTC / 09:00 BST). Pro accounts can change this back to `*/10 * * * *` (every 10 minutes). Correctness does not depend on cron frequency: application queries already treat expired holds as expired, and an external scheduler (e.g. cron-job.org or GitHub Actions) can ping the endpoint more frequently with `Authorization: Bearer <CRON_SECRET>`.
 
 1. Generate a secret: `openssl rand -base64 32`.
 2. Add it as `CRON_SECRET` (Sensitive) in Project Settings > Environment Variables for Production. Vercel Cron then sends `Authorization: Bearer <CRON_SECRET>` with each call. Redeploy after adding it.
