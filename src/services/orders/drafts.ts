@@ -12,9 +12,15 @@
  *   4. Transaction B marks the lines `held` and `stockState: "held"`.
  * A crash after 2 leaves a draft whose hold expires: the sweep cancels it and releases every key
  * (a never-reserved key counts as free). An idempotent replay of a draft still `pending` resumes
- * steps 3-4 (the keys are idempotent). A reserve failure releases the lines reserved so far
- * and cancels the draft (`stock_unavailable`) in Transaction C; when that release itself fails,
- * Transaction C records `stockState: "releasing"` instead, so the sweep finishes the release.
+ * steps 3-4 (the keys are idempotent). A reserve failure first cancels the draft
+ * (`stock_unavailable`, `stockState: "releasing"`) in Transaction C, then releases its keys and
+ * finishes the release (`finishRelease`); when that release fails, `releasing` stays for the sweep.
+ *
+ * COMPENSATION (R20). Creator, replay, edit and confirm can interleave, so every compensation
+ * release goes through `releasableLines`, applied to the order re-read in a transaction: a key in
+ * the order's live `lines` is never released unless the order is `cancelled`. Transaction B
+ * returns an order that is already held (or confirmed, or edited since) untouched; Transaction C
+ * cancels only an order still `pending`, and only then are its keys released.
  *
  * UPDATE (`updateDraftOrder`). Transaction 1 writes the new revision's lines as `pendingLines`
  * (`pending`, new keys), bumps `revision` and extends the hold; they are reserved; Transaction 2
@@ -81,6 +87,7 @@ import { reserveStock, type StockOptions } from "@/services/inventory/stock";
 import { getProduct } from "@/services/products/products";
 
 import { priceOrder, type PricingResult } from "./pricing";
+import { finishRelease, linesToRelease } from "./lifecycle";
 import { getOrderSettings, type OrderCtx } from "./settings";
 import {
   OrderExpiredError,
@@ -354,6 +361,31 @@ const withHold = (lines: readonly OrderLine[], holdState: OrderLine["holdState"]
 
 const keySet = (lines: readonly OrderLine[]) => new Set(lines.map((l) => l.holdKey));
 
+/**
+ * THE COMPENSATION RULE (R20): which of `lines` may be released, given `order` as re-read inside
+ * a transaction. A key in the order's live `lines` is never released unless the order is
+ * `cancelled` (a concurrent replay, edit or confirm may own that hold); a missing order holds
+ * nothing. Every compensation release in this module goes through this.
+ */
+function releasableLines(order: Order | null, lines: readonly OrderLine[]): OrderLine[] {
+  if (!order || order.status === "cancelled") return [...lines];
+  const live = keySet(order.lines);
+  return lines.filter((l) => !live.has(l.holdKey));
+}
+
+/** `releasableLines` over the order read in its own transaction. */
+async function readReleasable(
+  orgId: string,
+  orderId: string,
+  lines: readonly OrderLine[],
+): Promise<OrderLine[]> {
+  if (lines.length === 0) return [];
+  const ref = orderRepo.docRef(orderId);
+  return adminDb().runTransaction(async (tx) =>
+    releasableLines(orderRepo.fromSnapshot(await tx.get(ref), orgId), lines),
+  );
+}
+
 /** `existing` plus every line of `added` whose key it does not hold yet. */
 function mergeLines(existing: readonly OrderLine[] | null, added: readonly OrderLine[]) {
   const base = existing ?? [];
@@ -363,7 +395,7 @@ function mergeLines(existing: readonly OrderLine[] | null, added: readonly Order
 
 /**
  * Records `lines` in the order's `releasingLines` (whatever its status), so the sweep can release
- * them. Throws (logged) when even that write fails.
+ * them; a live line (`releasableLines`) is never parked. Throws (logged) when even that write fails.
  */
 async function parkLines(orgId: string, orderId: string, lines: readonly OrderLine[]) {
   if (lines.length === 0) return;
@@ -372,8 +404,10 @@ async function parkLines(orgId: string, orderId: string, lines: readonly OrderLi
     await adminDb().runTransaction(async (tx) => {
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
       if (!order) throw new Error("Order is missing");
+      const parked = releasableLines(order, lines);
+      if (parked.length === 0) return;
       tx.update(ref, {
-        releasingLines: mergeLines(order.releasingLines, lines),
+        releasingLines: mergeLines(order.releasingLines, parked),
         hasReleasingLines: true,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -385,12 +419,15 @@ async function parkLines(orgId: string, orderId: string, lines: readonly OrderLi
 }
 
 /**
- * Releases `lines`, or parks them in `releasingLines` when that fails. When both fail the error
- * is rethrown: the lines are never silently dropped.
+ * Releases those of `lines` that may be released (`releasableLines`, read in a transaction), or
+ * parks them in `releasingLines` when that fails. When both fail the error is rethrown: the lines
+ * are never silently dropped. Exported for `confirmOrder` (stale pendingLines).
  */
-async function releaseOrPark(orgId: string, orderId: string, lines: readonly OrderLine[]) {
-  if (await tryRelease(orgId, orderId, lines)) return;
-  await parkLines(orgId, orderId, lines);
+export async function releaseOrPark(orgId: string, orderId: string, lines: readonly OrderLine[]) {
+  const releasable = await readReleasable(orgId, orderId, lines);
+  if (releasable.length === 0) return;
+  if (await tryRelease(orgId, orderId, releasable)) return;
+  await parkLines(orgId, orderId, releasable);
 }
 
 /**
@@ -560,68 +597,101 @@ async function holdDraft(
 ): Promise<Order> {
   const orgId = ctx.organizationId;
   const failure = await reserveInOrder(orgId, lines);
-  if (failure) {
-    // A concurrent creator or replay may already have held these very lines: then they are live
-    // holds of a good order, not leftovers to release, and the order must not be cancelled.
-    const live = await orderRepo.get(orgId, orderId);
-    if (live?.status === "draft" && live.revision === revision && live.stockState === "held") {
-      return live;
-    }
-    const released = await tryRelease(orgId, orderId, failure.toRelease);
-    await cancelUnheldDraft(ctx, orderId, revision, released);
-    throw publicError(failure);
-  }
+  if (failure) return compensateFailedHold(ctx, orderId, revision, failure);
 
   // Transaction B: every line held.
   const ref = orderRepo.docRef(orderId);
   const outcome = await adminDb().runTransaction(async (tx) => {
     const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-    if (!order || order.status !== "draft") return "ended" as const;
-    if (order.revision !== revision) return "replaced" as const;
-    if (order.stockState === "held") return "held" as const; // a concurrent replay got there first
-    if (order.stockState !== "pending") return "ended" as const;
-    tx.update(ref, {
-      lines: withHold(order.lines, "held"),
-      stockState: "held",
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return "held" as const;
+    // Held (or further) by a concurrent replay, and maybe edited or confirmed since: its lines
+    // are live holds, never leftovers (R20).
+    if (order && order.status !== "cancelled" && order.stockState !== "pending") {
+      return { kind: "live" as const };
+    }
+    if (order?.status === "draft" && order.revision === revision) {
+      tx.update(ref, {
+        lines: withHold(order.lines, "held"),
+        stockState: "held",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { kind: "live" as const };
+    }
+    // Gone or cancelled (the sweep, or a concurrent compensation): these lines may have been
+    // reserved after the order's own release.
+    return { kind: !order || order.status === "cancelled" ? ("ended" as const) : ("other" as const) };
   });
-  if (outcome === "held") return getStored(orgId, orderId);
+  if (outcome.kind === "live") return getStored(orgId, orderId);
 
-  // These lines no longer belong to a live draft (it ended, or an edit replaced them) and may
-  // have been reserved after they were released: give the stock back, or keep it reachable.
+  // Give the stock back (only what `releasableLines` allows), or keep it reachable.
   await releaseOrPark(orgId, orderId, lines);
-  if (outcome === "replaced") return getStored(orgId, orderId);
+  if (outcome.kind === "other") return getStored(orgId, orderId);
   throw new OrderExpiredError();
 }
 
 /**
- * Transaction C: cancels a draft whose lines could not all be reserved. `released` says whether
- * the compensation release succeeded; when it did not, `stockState: "releasing"` leaves the
- * release to the sweep. Only a draft still `pending` at this revision is cancelled: one already
- * held (by a concurrent replay) or whose lines an edit replaced is left alone. Failures are
- * logged (order id only), never thrown: the caller rethrows the original error, and an
- * uncancelled draft still expires.
+ * A reserve failed. Transaction C runs FIRST and decides (R20): when it cancelled the draft, every
+ * key of the order is released and the release finished (`finishRelease`, as the sweep would);
+ * a failed release leaves `stockState: "releasing"` for the sweep. When C did not cancel, the
+ * order is live (a concurrent replay held it, maybe confirmed or edited it since: it is returned)
+ * or ended elsewhere; then only keys `releasableLines` allows are released. When C itself failed
+ * nothing is released: the draft is still `pending` and its hold expires into the sweep.
+ */
+async function compensateFailedHold(
+  ctx: OrderCtx,
+  orderId: string,
+  revision: number,
+  failure: ReserveFailure,
+): Promise<Order> {
+  const orgId = ctx.organizationId;
+  const c = await cancelUnheldDraft(ctx, orderId, revision);
+  if (c.kind === "cancelled") {
+    const toRelease = linesToRelease(c.before);
+    if (await tryRelease(orgId, orderId, toRelease)) {
+      try {
+        await finishRelease(ctx, orderId, toRelease);
+      } catch (error) {
+        logger.warn("order stock release could not be recorded; the sweep will finish it", {
+          orderId,
+          errorName: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
+    throw publicError(failure);
+  }
+  if (c.kind === "live") return c.order;
+  if (c.kind === "unknown") throw publicError(failure);
+  await releaseOrPark(orgId, orderId, failure.toRelease);
+  throw publicError(failure);
+}
+
+type CancelOutcome =
+  | { kind: "cancelled"; before: Order }
+  | { kind: "live"; order: Order }
+  | { kind: "ended" }
+  | { kind: "unknown" };
+
+/**
+ * Transaction C: cancels a draft whose lines could not all be reserved, with
+ * `stockState: "releasing"` (the caller releases and finishes). Only a draft still `pending` at
+ * this revision is cancelled; an order already held (by a concurrent replay) is reported `live`,
+ * anything else `ended`. A failed transaction is logged (order id only) as `unknown`, never thrown:
+ * the caller rethrows the original error, and an uncancelled draft still expires.
  */
 async function cancelUnheldDraft(
   ctx: OrderCtx,
   orderId: string,
   revision: number,
-  released: boolean,
-) {
+): Promise<CancelOutcome> {
   const orgId = ctx.organizationId;
   const ref = orderRepo.docRef(orderId);
   try {
-    await adminDb().runTransaction(async (tx) => {
+    return await adminDb().runTransaction(async (tx): Promise<CancelOutcome> => {
       const order = orderRepo.fromSnapshot(await tx.get(ref), orgId);
-      if (
-        !order ||
-        order.status !== "draft" ||
-        order.revision !== revision ||
-        order.stockState !== "pending"
-      ) {
-        return;
+      if (order && order.status !== "cancelled" && order.stockState !== "pending") {
+        return { kind: "live", order };
+      }
+      if (!order || order.status !== "draft" || order.revision !== revision) {
+        return { kind: "ended" };
       }
       const next = transition(order, "cancel");
       tx.update(ref, {
@@ -629,8 +699,7 @@ async function cancelUnheldDraft(
         paymentStatus: next.paymentStatus,
         cancelReason: "stock_unavailable",
         cancelledAt: FieldValue.serverTimestamp(),
-        lines: released ? withHold(order.lines, "released") : order.lines,
-        stockState: released ? "released" : "releasing",
+        stockState: "releasing",
         holdExpiresAt: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -652,9 +721,11 @@ async function cancelUnheldDraft(
         before: { status: order.status },
         after: { status: next.status, cancelReason: "stock_unavailable" },
       });
+      return { kind: "cancelled", before: order };
     });
   } catch {
     logger.warn("order draft could not be cancelled after a failed hold", { orderId });
+    return { kind: "unknown" };
   }
 }
 
@@ -801,9 +872,12 @@ export async function updateDraftOrder(
 
   const failure = await reserveInOrder(orgId, newLines);
   if (failure) {
-    const released = await tryRelease(orgId, orderId, failure.toRelease);
-    // When the release failed, pendingLines stay: a later edit, a cancel or the sweep frees them.
+    // When the release failed (or could not be checked), pendingLines stay: a later edit, a
+    // cancel or the sweep frees them.
+    const releasable = await readReleasable(orgId, orderId, failure.toRelease).catch(() => null);
+    const released = releasable !== null && (await tryRelease(orgId, orderId, releasable));
     if (released) await clearPendingLines(orgId, orderId, revision);
+    else if (releasable === null) logger.warn("order stock release failed", { orderId });
     throw publicError(failure);
   }
 

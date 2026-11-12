@@ -24,6 +24,7 @@ import { adjustStock } from "@/services/inventory/stock";
 import { archiveProduct, createProduct } from "@/services/products/products";
 
 import { STALE_EDIT_MS, createDraftOrder, updateDraftOrder, type DraftInput } from "./drafts";
+import { confirmOrder } from "./lifecycle";
 import { OrderExpiredError, OrderTransitionError } from "./state-machine";
 import { OrderLineError, holdKey, releaseLines } from "./stock-holds";
 
@@ -526,8 +527,9 @@ describe("createDraftOrder", () => {
     expect(await reservation(a.id, "default", holdKey(order!.id, 1, 0))).toMatchObject({
       status: "released",
     });
+    // Transaction C cancels first; the release is then finished as the sweep would (R20).
     const types = (await docsOf("orderEvents", ctx.organizationId)).map((d) => d.data().type);
-    expect(types.sort()).toEqual(["created", "status_changed"]);
+    expect(types.sort()).toEqual(["created", "status_changed", "stock_released"]);
   });
 
   it("a release failure during compensation still cancels, leaves stockState releasing and rethrows the original error", async () => {
@@ -879,6 +881,85 @@ describe("idempotent replay of a pending draft", () => {
     expect(replayed!.id).toBe(order.id);
     expect(replayed!.stockState).toBe("held");
     expect(order).toMatchObject({ stockState: "held", status: "draft" });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+
+  it("when a concurrent replay holds and confirms the draft first, the slow original releases nothing (R20)", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 2 }]);
+    let confirmed: Order | null = null;
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      const replayed = await createDraftOrder(ctx, input);
+      confirmed = await confirmOrder(ctx, replayed.id);
+    };
+
+    const order = await createDraftOrder(ctx, input);
+
+    expect(confirmed!.status).toBe("confirmed");
+    expect(order).toMatchObject({ id: confirmed!.id, status: "confirmed", stockState: "held" });
+    expect(await rawOrder(order.id)).toMatchObject({ status: "confirmed", stockState: "held" });
+    expect(await reservation(a.id, "default", holdKey(order.id, 1, 0))).toMatchObject({
+      status: "reserved",
+    });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+
+  it("a slow original whose reserve fails after a replay confirmed the order neither cancels it nor releases its holds (R20)", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 2 }]);
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      const replayed = await createDraftOrder(ctx, input);
+      await confirmOrder(ctx, replayed.id);
+      throw new InventoryBusyError(); // the original's own reserve then loses to contention
+    };
+
+    const order = await createDraftOrder(ctx, input);
+
+    expect(order).toMatchObject({ status: "confirmed", stockState: "held" });
+    expect(await rawOrder(order.id)).toMatchObject({ status: "confirmed", stockState: "held" });
+    expect(await reservation(a.id, "default", holdKey(order.id, 1, 0))).toMatchObject({
+      status: "reserved",
+    });
+    expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
+  });
+
+  it("a failed edit (revision bumped) before the slow original's Transaction B leaves the live lines reserved (R20)", async () => {
+    const ctx = newCtx();
+    const customer = await seedCustomer(ctx);
+    const a = await seedProduct(ctx, { stock: 5 });
+    const b = await seedProduct(ctx, { stock: 1 });
+    const input = draftInput(customer.id, [{ productId: a.id, quantity: 2 }]);
+    seam.beforeReserve = async () => {
+      seam.beforeReserve = null;
+      const replayed = await createDraftOrder(ctx, input); // holds revision 1
+      // An edit whose reserve fails after its Transaction 1 bumped the revision to 2.
+      seam.beforeReserve = async () => {
+        seam.beforeReserve = null;
+        await actualStock.reserveStock(ctx.organizationId, b.id, "default", 1, "other-order");
+      };
+      await expect(
+        updateDraftOrder(ctx, replayed.id, { lines: [{ productId: b.id, quantity: 1 }] }),
+      ).rejects.toBeInstanceOf(OrderLineError);
+    };
+
+    const order = await createDraftOrder(ctx, input);
+
+    expect(order).toMatchObject({
+      status: "draft",
+      revision: 2,
+      stockState: "held",
+      pendingLines: null,
+    });
+    expect(order.lines.map((l) => l.holdKey)).toEqual([holdKey(order.id, 1, 0)]);
+    expect(await reservation(a.id, "default", holdKey(order.id, 1, 0))).toMatchObject({
+      status: "reserved",
+    });
     expect(await counts(a.id)).toEqual({ onHand: 5, reserved: 2 });
   });
 });
