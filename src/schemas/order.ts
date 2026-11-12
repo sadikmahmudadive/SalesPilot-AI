@@ -120,6 +120,12 @@ const discountField = z
   .max(MAX_MONEY_MINOR, { error: "Enter a whole number of paisa (0 or more)" });
 const notesField = z.string().trim().max(1000, "Use 1000 characters or fewer");
 
+/**
+ * The 409 message of a create whose idempotency key belongs to an order that was cancelled or is
+ * an expired draft (a spent key). The new-order form matches it to mint a fresh key (R20).
+ */
+export const ORDER_ATTEMPT_ENDED_MESSAGE = "That order attempt has ended, submit again";
+
 export const orderCreateSchema = z.object({
   customerId: id,
   lines: linesField,
