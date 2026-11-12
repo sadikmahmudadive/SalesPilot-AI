@@ -63,3 +63,30 @@ export type GatewayAccountInput = z.infer<typeof gatewayAccountInputSchema>;
 
 export const gatewayAccountPatchSchema = gatewayAccountInputSchema.partial();
 export type GatewayAccountPatch = z.infer<typeof gatewayAccountPatchSchema>;
+
+export function toGatewaySummary(account: GatewayAccount): GatewayAccountSummary {
+  const toIso = (ts: unknown): string | null => {
+    if (!ts) return null;
+    if (typeof ts === "string") return ts;
+    if (typeof (ts as { toDate?: () => Date }).toDate === "function") {
+      return (ts as { toDate: () => Date }).toDate().toISOString();
+    }
+    return new Date(ts as string | number).toISOString();
+  };
+
+  return {
+    id: account.id,
+    organizationId: account.organizationId,
+    provider: account.provider,
+    label: account.label,
+    mode: account.mode,
+    enabled: account.enabled,
+    isDefault: account.isDefault,
+    publicConfig: account.publicConfig ?? {},
+    hasCredentials: !!account.credentials,
+    lastTestedAt: toIso(account.lastTestedAt),
+    lastTestResult: account.lastTestResult ?? null,
+    createdAt: toIso(account.createdAt) ?? new Date().toISOString(),
+    updatedAt: toIso(account.updatedAt) ?? new Date().toISOString(),
+  };
+}

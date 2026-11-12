@@ -46,6 +46,7 @@ describe("NAV_ITEMS", () => {
       "Products",
       "Inventory",
       "Orders",
+      "Integrations",
       "Settings",
     ]);
   });
@@ -58,11 +59,10 @@ describe("NAV_ITEMS", () => {
       "/voice": 6,
       "/automations": 7,
       "/analytics": 8,
-      "/integrations": 8,
     });
   });
 
-  it("gates inbox, customers, products, inventory and agents on their read permissions", () => {
+  it("gates inbox, customers, products, inventory, agents and integrations on permissions", () => {
     const perms = Object.fromEntries(
       NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]),
     );
@@ -72,16 +72,18 @@ describe("NAV_ITEMS", () => {
       "/customers": "customers:read",
       "/products": "products:read",
       "/inventory": "inventory:read",
+      "/integrations": "integrations:manage",
     });
   });
 });
 
 describe("visibleNavItems", () => {
-  it("shows a viewer the built pages plus the phase placeholders", () => {
+  it("shows a viewer the built pages plus the phase placeholders (excluding admin/integrations)", () => {
     const labels = visibleNavItems("viewer").map((i) => i.label);
     for (const l of ["Overview", "Customers", "Products", "Inventory", "Settings"])
       expect(labels).toContain(l);
-    expect(labels).toHaveLength(12);
+    expect(labels).toHaveLength(11);
+    expect(labels).not.toContain("Integrations");
   });
 
   it.each(ROLES)("returns items in nav order for %s", (role: Role) => {

@@ -45,7 +45,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Voice Calls", href: "/voice", icon: Phone, phase: 6 },
   { label: "Automations", href: "/automations", icon: Workflow, phase: 7 },
   { label: "Analytics", href: "/analytics", icon: BarChart3, phase: 8 },
-  { label: "Integrations", href: "/integrations", icon: Plug, phase: 8 },
+  { label: "Integrations", href: "/integrations", icon: Plug, permission: "integrations:manage" },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
