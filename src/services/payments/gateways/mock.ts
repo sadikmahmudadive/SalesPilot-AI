@@ -50,8 +50,16 @@ export class MockPaymentGateway implements PaymentGateway {
       outcome: "pending",
     });
 
+    const qs = new URLSearchParams({
+      tranId: input.tranId,
+      successUrl: input.urls.success,
+      failUrl: input.urls.fail,
+      cancelUrl: input.urls.cancel,
+      amount: String(input.amountMinor),
+    });
+
     return {
-      redirectUrl: `/pay/mock-checkout?tranId=${encodeURIComponent(input.tranId)}`,
+      redirectUrl: `/pay/mock-checkout?${qs.toString()}`,
       gatewayRef: `mock_ref_${input.tranId}`,
     };
   }
