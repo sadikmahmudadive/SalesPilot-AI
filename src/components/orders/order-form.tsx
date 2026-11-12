@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Controller, useForm, useWatch, type FieldPath, type UseFormReturn } from "react-hook-form";
@@ -16,7 +17,10 @@ import {
   EMPTY_ORDER_VALUES,
   errorMessageAt,
   mapOrderApiError,
-  newIdempotencyKey,
+  bindIdempotencyKey,
+  DRAFT_MAY_EXIST_NOTE,
+  isCreateOutcomeUnknown,
+  type IdempotencyBinding,
   orderToFormValues,
   previewTotals,
   retailPriceMinor,
@@ -32,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
+  orderKeys,
   useCreateOrder,
   useOrderSettings,
   useUpdateDraft,
@@ -116,11 +121,13 @@ interface OrderFormProps {
  */
 export function OrderForm({ order, onCancel, onSaved }: OrderFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const create = useCreateOrder();
   const update = useUpdateDraft(order?.id ?? "");
   const settings = useOrderSettings();
   const lock = useRef(false);
-  const [idempotencyKey] = useState(newIdempotencyKey);
+  // Bound to the form contents (see `bindIdempotencyKey`): a retry reuses the key, an edit gets a new one.
+  const keyBinding = useRef<IdempotencyBinding | null>(null);
   const [pending, setPending] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
   const alertRef = useRevealAlert(banner?.reveal ? banner : null);
@@ -223,18 +230,32 @@ export function OrderForm({ order, onCancel, onSaved }: OrderFormProps) {
         finished = true;
         onSaved?.();
       } else {
-        const created = await create.mutateAsync(toCreateBody(values, idempotencyKey, confirm));
+        keyBinding.current = bindIdempotencyKey(keyBinding.current, values);
+        const created = await create.mutateAsync(
+          toCreateBody(values, keyBinding.current.key, confirm),
+        );
         reset(values);
         finished = true;
         toast.success(confirm ? "Order created and confirmed" : "Draft saved");
         router.push(`${LIST_PATH}/${encodeURIComponent(created.id)}`);
       }
     } catch (error) {
-      const mapped = mapOrderApiError(asApiError(error));
+      const apiError = asApiError(error);
+      const mapped = mapOrderApiError(apiError);
       const focused = showErrors(mapped.fields);
+      // A create that failed after the draft was made (confirm refused, connection lost) leaves a
+      // draft the form cannot see: refresh the orders cache and say so.
+      const draftMayExist = !order && isCreateOutcomeUnknown(apiError);
+      if (draftMayExist) void queryClient.invalidateQueries({ queryKey: orderKeys.all });
       setBanner(
         mapped.formError
-          ? { message: mapped.formError, requestId: mapped.requestId, reveal: !focused }
+          ? {
+              message: draftMayExist
+                ? `${mapped.formError} ${DRAFT_MAY_EXIST_NOTE}`
+                : mapped.formError,
+              requestId: mapped.requestId,
+              reveal: !focused,
+            }
           : mapped.fields.length > 0
             ? { message: INVALID_MESSAGE, reveal: !focused }
             : null,

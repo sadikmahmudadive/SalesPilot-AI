@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bindIdempotencyKey,
   buildDraftPatch,
   EMPTY_ORDER_VALUES,
+  isCreateOutcomeUnknown,
   mapOrderApiError,
   newIdempotencyKey,
   orderToFormValues,
@@ -316,5 +318,86 @@ describe("orderToFormValues and buildDraftPatch", () => {
     expect(patch.paymentMethod).toBe("cod");
     expect(patch.notes).toBe("");
     expect(patch).not.toHaveProperty("lines");
+  });
+});
+
+describe("quantity text", () => {
+  const body = (quantity: string) =>
+    toCreateBody({ ...valid, lines: [{ productId: "p1", variantId: "", quantity }] }, KEY, false);
+
+  it("accepts plain digits only", () => {
+    expect(body(" 12 ").lines[0]?.quantity).toBe(12);
+    for (const bad of ["1e2", "0x10", "+5", "1.0", "-1", "1 2", "٣"]) {
+      expect(body(bad).lines[0]?.quantity).toBeNaN();
+    }
+  });
+
+  it("is rejected by validation and gives no preview", () => {
+    const values = { ...valid, lines: [{ productId: "p1", variantId: "", quantity: "1e2" }] };
+    expect(validateOrderForm(values).ok).toBe(false);
+    expect(previewTotals(values, new Map([["p1", 100]]), DEFAULT_ORDER_SETTINGS)).toBeNull();
+  });
+});
+
+describe("bindIdempotencyKey", () => {
+  let n = 0;
+  const make = () => `key${++n}-0123456789`;
+
+  it("keeps the key while the form contents are the same", () => {
+    const first = bindIdempotencyKey(null, valid, make);
+    const again = bindIdempotencyKey(first, structuredClone(valid), make);
+    expect(again).toBe(first);
+  });
+
+  it("gives a new key when a line, the address or the discount changes", () => {
+    const first = bindIdempotencyKey(null, valid, make);
+    const changes: OrderFormValues[] = [
+      { ...valid, lines: [{ productId: "p1", variantId: "", quantity: "3" }] },
+      { ...valid, address: { ...valid.address, line1: "Elsewhere" } },
+      { ...valid, discount: "5" },
+      { ...valid, paymentMethod: "online" },
+      { ...valid, notes: "hello" },
+      { ...valid, customerId: "cust2" },
+    ];
+    for (const next of changes) {
+      const rebound = bindIdempotencyKey(first, next, make);
+      expect(rebound.key).not.toBe(first.key);
+    }
+  });
+
+  it("is not affected by whitespace that the body trims away", () => {
+    const first = bindIdempotencyKey(null, valid, make);
+    const same = bindIdempotencyKey(first, { ...valid, notes: "   " }, make);
+    expect(same).toBe(first);
+  });
+
+  it("returns to the earlier key only through the same state (a new body always gets a new key)", () => {
+    const a = bindIdempotencyKey(null, valid, make);
+    const b = bindIdempotencyKey(a, { ...valid, discount: "5" }, make);
+    const c = bindIdempotencyKey(b, valid, make);
+    expect(c.key).not.toBe(b.key);
+  });
+
+  it("the confirm flag alone does not change the fingerprint", () => {
+    const first = bindIdempotencyKey(null, valid, make);
+    expect(toCreateBody(valid, first.key, true).idempotencyKey).toBe(first.key);
+    expect(toCreateBody(valid, first.key, false).idempotencyKey).toBe(first.key);
+    expect(bindIdempotencyKey(first, valid, make)).toBe(first);
+  });
+});
+
+describe("isCreateOutcomeUnknown", () => {
+  const err = (status: number, code: string) => new ApiError({ status, code, message: "x" });
+
+  it("is false when the server refused the input or the caller", () => {
+    expect(isCreateOutcomeUnknown(err(400, "VALIDATION_ERROR"))).toBe(false);
+    expect(isCreateOutcomeUnknown(err(401, "UNAUTHENTICATED"))).toBe(false);
+    expect(isCreateOutcomeUnknown(err(403, "FORBIDDEN"))).toBe(false);
+  });
+
+  it("is true for conflicts, server and network failures", () => {
+    expect(isCreateOutcomeUnknown(err(409, "CONFLICT"))).toBe(true);
+    expect(isCreateOutcomeUnknown(err(500, "INTERNAL"))).toBe(true);
+    expect(isCreateOutcomeUnknown(err(0, "NETWORK"))).toBe(true);
   });
 });

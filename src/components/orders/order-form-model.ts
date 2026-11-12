@@ -133,10 +133,16 @@ function discountMinorOf(raw: string): number {
   return parsed.ok ? parsed.minor : Number.NaN;
 }
 
+/** Plain digits only ("12"); "1e2", "0x10", "+5" and "1.0" are NaN, never a quantity. */
+function parseQuantityText(raw: string): number {
+  const t = raw.trim();
+  return /^\d+$/.test(t) ? Number(t) : Number.NaN;
+}
+
 function prepareLines(lines: readonly OrderFormLine[]): CreateLine[] {
   return lines.map((l) => {
     const variantId = text(l.variantId);
-    const quantity = l.quantity.trim() === "" ? Number.NaN : Number(l.quantity.trim());
+    const quantity = parseQuantityText(l.quantity);
     return {
       productId: l.productId.trim(),
       ...(variantId ? { variantId } : {}),
@@ -180,6 +186,36 @@ export function toCreateBody(
   };
 }
 
+export interface IdempotencyBinding {
+  fingerprint: string;
+  key: string;
+}
+
+/**
+ * The idempotency key for submitting `values` as a new order. The key is bound to what is being
+ * created (the body without `confirm` and the key): the same contents reuse the key, so a retry or
+ * double click lands on the same order; any change gets a new key, so an edited resubmit can never
+ * be answered with an earlier draft. Returns `previous` itself when it still applies.
+ */
+export function bindIdempotencyKey(
+  previous: IdempotencyBinding | null,
+  values: OrderFormValues,
+  makeKey: () => string = newIdempotencyKey,
+): IdempotencyBinding {
+  const fingerprint = JSON.stringify(toCreateBody(values, "", false));
+  return previous?.fingerprint === fingerprint ? previous : { fingerprint, key: makeKey() };
+}
+
+/**
+ * After a failed create, can a draft nevertheless exist (confirm refused, network lost)? False only
+ * when the server refused the input or the caller outright.
+ */
+export function isCreateOutcomeUnknown(error: ApiError): boolean {
+  return !["VALIDATION_ERROR", "UNAUTHENTICATED", "FORBIDDEN"].includes(error.code);
+}
+
+export const DRAFT_MAY_EXIST_NOTE = "If a draft was saved, it appears in Orders.";
+
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -220,11 +256,10 @@ export function previewTotals(
   const lines: Array<{ unitPriceMinor: number; quantity: number }> = [];
   for (const line of values.lines) {
     const price = unitPrices.get(line.productId);
-    const quantity = Number(line.quantity.trim());
+    const quantity = parseQuantityText(line.quantity);
     if (
       line.productId === "" ||
       price === undefined ||
-      line.quantity.trim() === "" ||
       !Number.isInteger(quantity) ||
       quantity < 1 ||
       quantity > MAX_LINE_QUANTITY
