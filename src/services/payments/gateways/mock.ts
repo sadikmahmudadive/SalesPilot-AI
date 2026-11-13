@@ -1,3 +1,4 @@
+import { getPaymentAttempt } from "@/repositories/payments";
 import type { GatewayAccount } from "@/schemas/integration";
 
 import type {
@@ -18,12 +19,23 @@ interface MockRecord {
 
 const mockStore = new Map<string, MockRecord>();
 
-export function setMockOutcome(tranId: string, outcome: "paid" | "failed"): void {
+export function setMockOutcome(
+  tranId: string,
+  outcome: "paid" | "failed",
+  amountMinor?: number,
+): void {
   const existing = mockStore.get(tranId);
   if (existing) {
     existing.outcome = outcome;
+    if (amountMinor !== undefined) {
+      existing.amountMinor = amountMinor;
+    }
   } else {
-    mockStore.set(tranId, { amountMinor: 0, currency: "BDT", outcome });
+    mockStore.set(tranId, {
+      amountMinor: amountMinor ?? -1,
+      currency: "BDT",
+      outcome,
+    });
   }
 }
 
@@ -77,9 +89,19 @@ export class MockPaymentGateway implements PaymentGateway {
       };
     }
 
+    let amount = record.amountMinor;
+    if (amount === -1) {
+      try {
+        const attempt = await getPaymentAttempt(ref.tranId);
+        amount = attempt ? attempt.expectedAmountMinor : 0;
+      } catch {
+        amount = 0;
+      }
+    }
+
     return {
       outcome: record.outcome,
-      amountMinor: record.amountMinor,
+      amountMinor: amount,
       currency: record.currency,
       gatewayTxnId: `mock_txn_${ref.tranId}`,
       raw: { mock: true, state: record.outcome },

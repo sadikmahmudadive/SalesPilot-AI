@@ -4,7 +4,7 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 ## Current scope
 
-Sub-projects 1 to 4 and the orders and cash-on-delivery part of sub-project 5 (5a) are implemented; their logic is tested but no UI has been run in a browser. Payments (5b), couriers (5c) and sub-projects 6 to 8 do not exist yet; their dashboard pages show an explicit "coming later" state, not mock data.
+Sub-projects 1 to 5 (including 5a orders + cash-on-delivery, 5b payment gateways, and 5c couriers & logistics) are implemented; their logic is tested but no UI has been run in a browser. Sub-projects 6 to 8 do not exist yet; their dashboard pages show an explicit "coming later" state, not mock data.
 
 | #   | Sub-project                                                                | State                                |
 | --- | -------------------------------------------------------------------------- | ------------------------------------ |
@@ -12,7 +12,7 @@ Sub-projects 1 to 4 and the orders and cash-on-delivery part of sub-project 5 (5
 | 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
 | 3   | AI agents: Phase 3a tool calling, bounded engine, test console              | implemented; UI not browser-verified |
 | 4   | WhatsApp and unified inbox                                                 | implemented; UI not browser-verified |
-| 5   | Orders, payments, courier                                                  | 5a orders + COD implemented; UI not browser-verified; 5b payments and 5c couriers roadmap |
+| 5   | Orders, payments, courier                                                  | 5a orders, 5b payments, 5c couriers implemented; UI not browser-verified |
 | 6   | Voice calls                                                                | roadmap                              |
 | 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
 | 8   | Analytics and integrations settings                                        | roadmap                              |

@@ -257,7 +257,7 @@ export async function sweepOrders(
   const run: Run = {
     deadline: Date.now() + (opts.budgetMs ?? SWEEP_BUDGET_MS),
     batch,
-    result: { expired: 0, released: 0, committed: 0, errors: 0 },
+    result: { expired: 0, released: 0, committed: 0, errors: 0, reconciled: 0 },
   };
   const nowTs = Timestamp.fromDate(now);
   const cutoffMs = now.getTime() - STUCK_MS;

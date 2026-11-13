@@ -16,7 +16,7 @@ No UI has been run in a browser and no real external service has been used (see 
 - [~] 2. Core data (CRM, products, inventory, uploads, overview): logic tested, UI and real Cloudinary unverified
 - [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
 - [~] 4. WhatsApp and unified inbox: logic, webhook signature and routes tested (Phase 4); inbox screens not seen in a browser and no real WhatsApp message ever sent or received
-- [~] 5. Orders, payments, courier: 5a orders + COD and 5b payments built (all tests pass; UI not seen in a browser); 5c couriers not started
+- [x] 5. Orders, payments, courier: 5a orders + COD, 5b payments, and 5c couriers built (all tests pass; UI not seen in a browser)
 - [ ] 6. Voice calls: not started
 - [ ] 7. Follow-ups and automations (n8n): not started
 - [ ] 8. Analytics and integrations settings: not started
@@ -105,6 +105,21 @@ Plan: `docs/superpowers/plans/2026-11-13-payment-gateways-5b.md`. Couriers (5c) 
 - [~] 62. Public checkout pages and mock checkout simulator: `src/app/pay/[token]/page.tsx`, `src/app/pay/[token]/status/page.tsx`, `src/proxy.test.ts`; checkout UI not seen in a real browser
 - [~] 63. Staff integrations management UI and order payment controls: `src/app/api/integrations/gateways/gateways.int.test.ts`, `src/config/nav.test.ts`; integrations UI not seen in a real browser
 - [x] 64. Setup guides and Phase 5b gates: `docs/setup/sslcommerz.md`, `docs/setup/aamarpay.md`, `docs/setup/uddoktapay.md`
+
+### Phase 5c: Couriers and Logistics
+
+Plan: `docs/superpowers/plans/2026-11-13-couriers-5c.md`.
+
+- [x] 65. Courier schemas, status mapping, and repository with 7-day location cache: `src/schemas/courier.test.ts`, `src/services/couriers/status-map.test.ts`, `src/repositories/couriers.int.test.ts`
+- [x] 66. Courier adapter interface, registry, and mock adapter: `src/services/couriers/adapters/mock.test.ts`
+- [x] 67. Steadfast, Pathao, and RedX logistics adapters: `src/services/couriers/adapters/steadfast.test.ts`, `src/services/couriers/adapters/pathao.test.ts`, `src/services/couriers/adapters/redx.test.ts`
+- [x] 68. Location hierarchy caching service and API route: `src/services/couriers/locations.int.test.ts`, `src/app/api/couriers/[provider]/locations/route.int.test.ts`
+- [x] 69. Safe parcel booking service with double-booking prevention: `src/services/couriers/booking.int.test.ts`, `src/app/api/orders/[id]/shipment/book/route.int.test.ts`
+- [x] 70. Inbound courier webhook sync & manual refresh: `src/services/couriers/webhooks.int.test.ts`, `src/app/api/webhooks/couriers/[provider]/[accountId]/route.int.test.ts`, `src/app/api/orders/[id]/shipment/refresh/route.int.test.ts`
+- [~] 71. Staff courier booking dialog & shipment detail card: `src/components/orders/book-courier-model.test.ts`, `src/components/orders/shipment-card.tsx`, `src/components/orders/book-courier-dialog.tsx`; modal and card not seen in a real browser
+- [~] 72. Courier account management UI and test connection: `src/app/api/integrations/couriers/couriers.int.test.ts`, `src/components/integrations/courier-card.tsx`, `src/components/integrations/courier-form-dialog.tsx`; couriers tab not seen in a real browser
+- [x] 73. AI tool tracking enrichment: `src/services/agents/tools/order-status.ts`, `src/services/agents/tools/order-tools.int.test.ts`, `src/services/agents/templates.ts`
+- [x] 74. Courier setup guides and Phase 5c gates: `docs/setup/steadfast.md`, `docs/setup/pathao.md`, `docs/setup/redx.md`
 
 ## Unverified
 

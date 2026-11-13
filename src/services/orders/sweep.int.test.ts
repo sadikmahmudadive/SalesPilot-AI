@@ -201,7 +201,7 @@ async function clearOrders() {
   await Promise.all(snap.docs.map((d) => d.ref.delete()));
 }
 
-const none = { expired: 0, released: 0, committed: 0, errors: 0 };
+const none = { expired: 0, released: 0, committed: 0, errors: 0, reconciled: 0 };
 
 let warn: MockInstance<typeof logger.warn>;
 let error: MockInstance<typeof logger.error>;

@@ -71,6 +71,7 @@ import { inventoryRef } from "@/repositories/products";
 import {
   MAX_LINE_QUANTITY,
   MAX_ORDER_LINES,
+  ORDER_ATTEMPT_ENDED_MESSAGE,
   type Order,
   type OrderDraftPatch,
   type OrderEvent,
@@ -478,7 +479,7 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
   // 2. A replay returns the existing order (resuming its holds if its creator stopped early).
   const idemRef = idempotencyRef(orgId, input.idempotencyKey);
   const replayId = lockedOrderId(await idemRef.get(), orgId);
-  if (replayId) return resumeReplay(ctx, replayId);
+  if (replayId) return resumeReplay(ctx, replayId, input.source);
 
   // 3-4. Catalog, stock and pricing checks (reads only).
   const resolved = await resolveLines(ctx, input.lines);
@@ -576,9 +577,19 @@ export async function createDraftOrder(ctx: OrderCtx, input: DraftInput): Promis
  * Transaction A, or is still running) resumes reserving its stored lines; the keys are
  * idempotent, so lines the creator already reserved are not reserved twice.
  */
-async function resumeReplay(ctx: OrderCtx, orderId: string): Promise<Order> {
+async function resumeReplay(
+  ctx: OrderCtx,
+  orderId: string,
+  source?: "ai" | "staff",
+): Promise<Order> {
   const order = await getStored(ctx.organizationId, orderId);
-  if (order.status !== "draft" || order.stockState !== "pending" || isExpired(order)) {
+  if (
+    source !== "ai" &&
+    (order.status === "cancelled" || (order.status === "draft" && isExpired(order)))
+  ) {
+    throw new ConflictError(ORDER_ATTEMPT_ENDED_MESSAGE);
+  }
+  if (order.status !== "draft" || order.stockState !== "pending") {
     return order;
   }
   return holdDraft(ctx, orderId, order.lines, order.revision);
