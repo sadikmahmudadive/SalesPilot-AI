@@ -47,6 +47,7 @@ describe("NAV_ITEMS", () => {
       "Inventory",
       "Orders",
       "Voice Calls",
+      "Automations",
       "Integrations",
       "Settings",
     ]);
@@ -57,7 +58,6 @@ describe("NAV_ITEMS", () => {
       NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]),
     );
     expect(phases).toEqual({
-      "/automations": 7,
       "/analytics": 8,
     });
   });
@@ -73,6 +73,7 @@ describe("NAV_ITEMS", () => {
       "/products": "products:read",
       "/inventory": "inventory:read",
       "/voice": "voice:read",
+      "/automations": "automations:read",
       "/integrations": "integrations:manage",
     });
   });

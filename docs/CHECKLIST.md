@@ -133,6 +133,15 @@ Plan: `docs/superpowers/plans/2026-11-13-voice-calls.md`.
 - [~] 80. Voice Calls console, Integrations Voice tab, Customer/Order AI Call buttons, and Agent Voice channel: `src/components/voice/voice-console.tsx`, `src/components/voice/call-dialog.tsx`, `src/components/integrations/voice-card.tsx`, `src/components/integrations/voice-form-dialog.tsx`; UI not seen in a real browser
 - [x] 81. Voice setup guides: `docs/setup/vapi.md`, `docs/setup/twilio-voice.md`
 
+### Phase 7: Follow-ups & Automations
+
+- [x] 82. Automations permissions, navigation gating, Firestore rules, and schemas: `src/lib/security/permissions.test.ts`, `src/config/nav.test.ts`, `src/schemas/automation.test.ts`
+- [x] 83. Automations repository (`automationRules`, `automationRuns`) with tenant isolation and dedupe checks: `src/repositories/automations.int.test.ts`
+- [x] 84. Automation execution engine, template interpolation, HMAC signatures, scheduled sweep, and inbound n8n webhooks: `src/services/automations/engine.test.ts`, `src/services/automations/automations.int.test.ts`
+- [x] 85. Automations API routes (`/api/automations/*`, `/api/webhooks/automations/*`): `src/app/api/automations/automations-routes.int.test.ts`
+- [~] 86. Automations console UI (`/automations`) and rule builder dialog: `src/components/automations/automations-console.tsx`, `src/components/automations/automation-form-dialog.tsx`; UI not seen in a real browser
+- [x] 87. n8n & automation setup guide: `docs/setup/n8n-automations.md`
+
 ## Unverified
 
 These have not been done or observed. Do not assume they work.

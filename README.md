@@ -4,7 +4,7 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 ## Current scope
 
-Sub-projects 1 to 6 (including 5a orders + cash-on-delivery, 5b payment gateways, 5c couriers & logistics, and 6 voice calls) are implemented; their logic is tested but no UI has been run in a browser. Sub-projects 7 and 8 do not exist yet; their dashboard pages show an explicit "coming later" state, not mock data.
+Sub-projects 1 to 7 (including 5a orders + cash-on-delivery, 5b payment gateways, 5c couriers & logistics, 6 voice calls, and 7 follow-ups & automations) are implemented; their logic is tested but no UI has been run in a browser. Sub-project 8 does not exist yet; its dashboard page shows an explicit "coming later" state, not mock data.
 
 | #   | Sub-project                                                                | State                                |
 | --- | -------------------------------------------------------------------------- | ------------------------------------ |
@@ -14,7 +14,7 @@ Sub-projects 1 to 6 (including 5a orders + cash-on-delivery, 5b payment gateways
 | 4   | WhatsApp and unified inbox                                                 | implemented; UI not browser-verified |
 | 5   | Orders, payments, courier                                                  | 5a orders, 5b payments, 5c couriers implemented; UI not browser-verified |
 | 6   | Voice calls (Vapi, Twilio Voice, Mock)                                     | implemented; UI not browser-verified |
-| 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
+| 7   | Follow-ups and automations (n8n)                                           | implemented; UI not browser-verified |
 | 8   | Analytics and integrations settings                                        | roadmap                              |
 
 ### Orders (5a)
