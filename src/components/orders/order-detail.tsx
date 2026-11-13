@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Copy, ExternalLink, Link2, Loader2, ShoppingCart, TriangleAlert } from "lucide-react";
+import { Copy, ExternalLink, Link2, Loader2, PhoneCall, ShoppingCart, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -19,6 +19,8 @@ import { ShipmentCard } from "@/components/orders/shipment-card";
 import { BackLink } from "@/components/shared/back-link";
 import { QueryErrorState } from "@/components/shared/query-error-state";
 import { SectionCard } from "@/components/shared/section-card";
+import { Button } from "@/components/ui/button";
+import { CallDialog } from "@/components/voice/call-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -276,8 +278,10 @@ function PaymentCard({ order }: { order: OrderDetailData }) {
 /** The order page body: loads one order and shows its cards, actions (writers only) and timeline. */
 export function OrderDetailView({ id, role }: { id: string; role: Role }) {
   const canWrite = can(role, "orders:write");
+  const canVoiceWrite = can(role, "voice:write");
   const query = useOrder(id);
   const [editing, setEditing] = useState(false);
+  const [calling, setCalling] = useState(false);
   const order = query.data;
 
   if (query.isPending) {
@@ -348,7 +352,19 @@ export function OrderDetailView({ id, role }: { id: string; role: Role }) {
             </span>
           </span>
         }
-        actions={canWrite ? <ActionBar order={order} onEdit={() => setEditing(true)} /> : null}
+        actions={
+          canWrite || canVoiceWrite ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {canVoiceWrite && (
+                <Button variant="outline" size="sm" onClick={() => setCalling(true)}>
+                  <PhoneCall aria-hidden="true" />
+                  AI Call
+                </Button>
+              )}
+              {canWrite ? <ActionBar order={order} onEdit={() => setEditing(true)} /> : null}
+            </div>
+          ) : null
+        }
       />
 
       {order.expired ? (
@@ -380,6 +396,15 @@ export function OrderDetailView({ id, role }: { id: string; role: Role }) {
         />
         <OrderTimeline id={order.id} />
       </div>
+      <CallDialog
+        open={calling}
+        onOpenChange={setCalling}
+        customerId={order.customerId}
+        customerName={order.customerSnapshot.name}
+        phoneE164={order.shippingAddress.phoneE164 || order.customerSnapshot.phoneE164}
+        orderId={order.id}
+        orderNumber={order.orderNumber}
+      />
     </div>
   );
 }

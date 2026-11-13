@@ -299,15 +299,24 @@ export function AgentFormSections({
             </Badge>
           </label>
 
-          <label className="flex items-center gap-3 text-sm opacity-60">
+          <label className="flex items-center gap-3 text-sm cursor-pointer">
             <input
               type="checkbox"
-              disabled
-              className="h-4 w-4 rounded border-gray-300"
+              checked={values.channels.includes("voice")}
+              disabled={disabled}
+              onChange={(e) => {
+                const hasVoice = values.channels.includes("voice");
+                if (e.target.checked && !hasVoice) {
+                  onChange({ channels: [...values.channels, "voice"] });
+                } else if (!e.target.checked && hasVoice) {
+                  onChange({ channels: values.channels.filter((c) => c !== "voice") });
+                }
+              }}
+              className="h-4 w-4 rounded border-gray-300 text-primary"
             />
-            <span>Voice Calls</span>
-            <Badge variant="outline" className="text-xs">
-              Phase 6
+            <span className="font-medium">Voice Calls</span>
+            <Badge variant="secondary" className="text-xs">
+              Active
             </Badge>
           </label>
         </div>

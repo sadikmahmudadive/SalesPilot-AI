@@ -46,6 +46,7 @@ describe("NAV_ITEMS", () => {
       "Products",
       "Inventory",
       "Orders",
+      "Voice Calls",
       "Integrations",
       "Settings",
     ]);
@@ -56,13 +57,12 @@ describe("NAV_ITEMS", () => {
       NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]),
     );
     expect(phases).toEqual({
-      "/voice": 6,
       "/automations": 7,
       "/analytics": 8,
     });
   });
 
-  it("gates inbox, customers, products, inventory, agents and integrations on permissions", () => {
+  it("gates inbox, customers, products, inventory, agents, voice and integrations on permissions", () => {
     const perms = Object.fromEntries(
       NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]),
     );
@@ -72,6 +72,7 @@ describe("NAV_ITEMS", () => {
       "/customers": "customers:read",
       "/products": "products:read",
       "/inventory": "inventory:read",
+      "/voice": "voice:read",
       "/integrations": "integrations:manage",
     });
   });

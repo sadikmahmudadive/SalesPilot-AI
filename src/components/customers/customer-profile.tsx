@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, UserX } from "lucide-react";
+import { Pencil, PhoneCall, Trash2, UserX } from "lucide-react";
 
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
@@ -15,6 +15,7 @@ import {
   TagsCard,
 } from "@/components/customers/customer-profile-sections";
 import { DeleteCustomerDialog } from "@/components/customers/delete-customer-dialog";
+import { CallDialog } from "@/components/voice/call-dialog";
 import { BackLink } from "@/components/shared/back-link";
 import { QueryErrorState } from "@/components/shared/query-error-state";
 import { SegmentBadge } from "@/components/customers/segment-badge";
@@ -40,9 +41,11 @@ function ProfileSkeleton() {
 export function CustomerProfile({ id, role }: { id: string; role: Role }) {
   const router = useRouter();
   const canWrite = can(role, "customers:write");
+  const canVoiceWrite = can(role, "voice:write");
   const query = useCustomer(id);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [calling, setCalling] = useState(false);
   const customer = query.data;
 
   if (query.isPending) {
@@ -90,16 +93,26 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
           </span>
         }
         actions={
-          canWrite ? (
+          canWrite || canVoiceWrite ? (
             <>
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                <Pencil aria-hidden="true" />
-                Edit
-              </Button>
-              <Button variant="destructive" onClick={() => setDeleting(true)}>
-                <Trash2 aria-hidden="true" />
-                Delete
-              </Button>
+              {canVoiceWrite && (
+                <Button variant="outline" onClick={() => setCalling(true)}>
+                  <PhoneCall aria-hidden="true" />
+                  AI Call
+                </Button>
+              )}
+              {canWrite && (
+                <>
+                  <Button variant="outline" onClick={() => setEditing(true)}>
+                    <Pencil aria-hidden="true" />
+                    Edit
+                  </Button>
+                  <Button variant="destructive" onClick={() => setDeleting(true)}>
+                    <Trash2 aria-hidden="true" />
+                    Delete
+                  </Button>
+                </>
+              )}
             </>
           ) : null
         }
@@ -120,6 +133,14 @@ export function CustomerProfile({ id, role }: { id: string; role: Role }) {
         customer={deleting ? customer : null}
         onOpenChange={setDeleting}
         onDeleted={() => router.push("/customers")}
+      />
+      <CallDialog
+        open={calling}
+        onOpenChange={setCalling}
+        customerId={customer.id}
+        customerName={customer.fullName}
+        phoneE164={customer.phoneE164}
+        consentStatus={customer.consent?.status ?? null}
       />
     </div>
   );

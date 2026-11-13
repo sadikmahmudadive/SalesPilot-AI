@@ -111,9 +111,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Integrations, payments, webhooks and couriers: server only (Admin SDK).
+    // Integrations, payments, webhooks, couriers and voice: server only (Admin SDK).
     match /gatewayAccounts/{id} { allow read, write: if false; }
     match /courierAccounts/{id} { allow read, write: if false; }
+    match /voiceAccounts/{id} { allow read, write: if false; }
+    match /voiceCalls/{id} { allow read, write: if false; }
     match /paymentAttempts/{id} { allow read, write: if false; }
     match /paymentLinks/{id} { allow read, write: if false; }
     match /webhookEvents/{id} { allow read, write: if false; }
