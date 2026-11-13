@@ -121,6 +121,16 @@ export type CourierAccountInput = z.infer<typeof courierAccountInputSchema>;
 export const courierAccountPatchSchema = courierAccountInputSchema.partial();
 export type CourierAccountPatch = z.infer<typeof courierAccountPatchSchema>;
 
+export const bookShipmentInputSchema = z.object({
+  courierAccountId: z.string().trim().min(1, "Courier account is required"),
+  weightKg: z.number().positive("Weight must be positive").default(0.5),
+  codAmountMinor: z.number().int().min(0).optional(),
+  location: shipmentLocationSchema.nullable().optional(),
+  note: z.string().trim().max(500).optional(),
+  itemDescription: z.string().trim().max(500).optional(),
+});
+export type BookShipmentInput = z.infer<typeof bookShipmentInputSchema>;
+
 export function toCourierSummary(account: CourierAccount): CourierAccountSummary {
   const toIso = (ts: unknown): string | null => {
     if (!ts) return null;
