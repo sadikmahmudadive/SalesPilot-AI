@@ -22,6 +22,12 @@ const TYPE_LABELS: Record<OrderEvent["type"], string> = {
   stock_committed: "Stock taken out",
   refund_recorded: "Refund recorded",
   note: "Note",
+  payment_link_sent: "Payment link sent",
+  payment_attempt: "Payment attempt",
+  payment_confirmed: "Payment confirmed",
+  payment_failed: "Payment failed",
+  courier_booked: "Courier booked",
+  courier_status: "Courier update",
 };
 
 /** "Confirmed to Processing" for a status or payment change; unknown values are shown as they are. */

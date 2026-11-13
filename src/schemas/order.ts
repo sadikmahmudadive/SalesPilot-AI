@@ -13,6 +13,7 @@ import { isValidIdSegment } from "@/lib/ids";
 import { normalizePhone } from "@/lib/phone";
 
 import { phoneInputSchema } from "./customer";
+import type { OrderShipment } from "./courier";
 
 export const MAX_ORDER_LINES = 20;
 export const MAX_LINE_QUANTITY = 1000;
@@ -53,6 +54,12 @@ export const ORDER_EVENT_TYPES = [
   "stock_committed",
   "refund_recorded",
   "note",
+  "payment_link_sent",
+  "payment_attempt",
+  "payment_confirmed",
+  "payment_failed",
+  "courier_booked",
+  "courier_status",
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -261,6 +268,7 @@ export interface Order {
   cancelReason: string | null;
   refund: { reason: string; at: string; by: string } | null;
   allowUnpaidReason: string | null;
+  shipment?: OrderShipment | null;
 }
 
 export interface OrderEvent {
