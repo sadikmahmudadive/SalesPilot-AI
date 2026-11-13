@@ -15,6 +15,7 @@ import {
 } from "@/components/orders/order-badges";
 import { OrderForm } from "@/components/orders/order-form";
 import { OrderTimeline } from "@/components/orders/order-timeline";
+import { ShipmentCard } from "@/components/orders/shipment-card";
 import { BackLink } from "@/components/shared/back-link";
 import { QueryErrorState } from "@/components/shared/query-error-state";
 import { SectionCard } from "@/components/shared/section-card";
@@ -372,6 +373,11 @@ export function OrderDetailView({ id, role }: { id: string; role: Role }) {
           <CustomerCard order={order} />
           <PaymentCard order={order} />
         </div>
+        <ShipmentCard
+          order={order}
+          canWrite={canWrite}
+          onOrderUpdated={() => void query.refetch()}
+        />
         <OrderTimeline id={order.id} />
       </div>
     </div>

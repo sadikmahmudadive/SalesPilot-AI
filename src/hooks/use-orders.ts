@@ -7,6 +7,12 @@ import { usePagedList, type Page } from "@/hooks/use-paged-list";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { clean, setPaging } from "@/lib/api/query-string";
 import type {
+  BookShipmentInput,
+  CourierAccountSummary,
+  CourierLocation,
+  CourierProvider,
+} from "@/schemas/courier";
+import type {
   Order,
   OrderEvent,
   OrderSettings,
@@ -192,5 +198,56 @@ export function useUpdateOrderSettings() {
     mutationFn: (body: OrderSettingsPatchBody) =>
       apiFetch<OrderSettings>("/api/settings/orders", { method: "PATCH", body }),
     onSuccess: (settings) => queryClient.setQueryData(orderKeys.settings, settings),
+  });
+}
+
+export function useCourierAccounts() {
+  return useQuery({
+    queryKey: ["courierAccounts"],
+    queryFn: ({ signal }) =>
+      apiFetch<{ items: CourierAccountSummary[] }>("/api/integrations/couriers", { signal }),
+  });
+}
+
+export function useCourierLocations(
+  provider: CourierProvider | undefined,
+  level: "city" | "zone" | "area",
+  parentId?: string | null,
+) {
+  return useQuery({
+    queryKey: ["courierLocations", provider, level, parentId],
+    queryFn: ({ signal }) => {
+      if (!provider) return { items: [] };
+      const search = new URLSearchParams({ level });
+      if (parentId) search.set("parentId", parentId);
+      return apiFetch<{ items: CourierLocation[] }>(
+        `/api/couriers/${provider}/locations?${search.toString()}`,
+        { signal },
+      );
+    },
+    enabled: Boolean(provider && (level === "city" || parentId)),
+  });
+}
+
+export function useBookShipment(orderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BookShipmentInput) =>
+      apiFetch<Order>(`${orderPath(orderId)}/shipment/book`, {
+        method: "POST",
+        body,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: orderKeys.all }),
+  });
+}
+
+export function useRefreshShipment(orderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Order>(`${orderPath(orderId)}/shipment/refresh`, {
+        method: "POST",
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: orderKeys.all }),
   });
 }
