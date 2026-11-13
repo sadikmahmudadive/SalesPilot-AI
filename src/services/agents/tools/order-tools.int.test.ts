@@ -702,6 +702,48 @@ describe("get_my_order_status", () => {
       orders: [],
     });
   });
+
+  it("includes courier tracking details when shipment is booked", async () => {
+    const { phone, customer } = await seedContact();
+    const ctx = liveCtx(makeAgent(), phone);
+    const order = await createDraftOrder(seedCtx, {
+      customerId: customer.id,
+      lines: [{ productId: cap.id, quantity: 1 }],
+      shippingAddress: shippingAddressSchema.parse({ ...address, phone }),
+      paymentMethod: "cod",
+      discountMinor: 0,
+      idempotencyKey: `key-${randomUUID()}`,
+      source: "staff",
+    });
+
+    const ref = db().collection("orders").doc(order.id);
+    await ref.update({
+      status: "shipped",
+      shipment: {
+        courierAccountId: "acc_mock",
+        provider: "mock",
+        bookingState: "booked",
+        consignmentId: "mock_cid_123",
+        trackingCode: "MOCK_TRACK_123",
+        trackingUrl: "https://track.mockcourier.local/MOCK_TRACK_123",
+        status: "in_transit",
+        codAmountMinor: 26000,
+        weightKg: 0.5,
+      },
+    });
+
+    const r = okOf(await call(ctx, "get_my_order_status", {}));
+    const orders = r.data.orders as Array<Record<string, unknown>>;
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({
+      orderNumber: order.orderNumber,
+      status: "shipped",
+      courierName: "MOCK",
+      trackingCode: "MOCK_TRACK_123",
+      trackingUrl: "https://track.mockcourier.local/MOCK_TRACK_123",
+      courierStatus: "in_transit",
+    });
+  });
 });
 
 describe("calculate_order_total with a delivery zone", () => {

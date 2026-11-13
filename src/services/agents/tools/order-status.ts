@@ -33,6 +33,10 @@ const outputSchema = z.object({
       totalText: z.string(),
       createdAt: z.string(),
       expired: z.boolean().optional(),
+      courierName: z.string().optional(),
+      trackingCode: z.string().optional(),
+      trackingUrl: z.string().optional(),
+      courierStatus: z.string().optional(),
     }),
   ),
 });
@@ -53,6 +57,14 @@ async function run(ctx: ToolContext): Promise<ToolOutcome<StatusOutput>> {
         totalText: formatMoneyMinor(o.totalMinor),
         createdAt: o.createdAt,
         ...(isOrderExpired(o) ? { expired: true } : {}),
+        ...(o.shipment?.bookingState === "booked"
+          ? {
+              courierName: o.shipment.provider.toUpperCase(),
+              trackingCode: o.shipment.trackingCode ?? undefined,
+              trackingUrl: o.shipment.trackingUrl ?? undefined,
+              courierStatus: o.shipment.status,
+            }
+          : {}),
       })),
     },
   };
