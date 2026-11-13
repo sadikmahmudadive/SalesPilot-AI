@@ -33,6 +33,7 @@ function NavLink({
   const link = (
     <Link
       href={item.href}
+      prefetch={false}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(

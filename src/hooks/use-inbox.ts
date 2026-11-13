@@ -37,7 +37,8 @@ export function useConversations(params: ConversationListParams = {}) {
         `/api/inbox/conversations${buildInboxQuery(params)}`,
         { signal },
       ),
-    refetchInterval: 5000,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -47,7 +48,8 @@ export function useConversation(id: string | null) {
     queryFn: ({ signal }) =>
       apiFetch<Conversation>(`/api/inbox/conversations/${encodeURIComponent(id!)}`, { signal }),
     enabled: Boolean(id),
-    refetchInterval: 5000,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -60,7 +62,8 @@ export function useMessages(conversationId: string | null) {
         { signal },
       ),
     enabled: Boolean(conversationId),
-    refetchInterval: 3000,
+    refetchInterval: 6_000,
+    refetchOnWindowFocus: false,
   });
 }
 

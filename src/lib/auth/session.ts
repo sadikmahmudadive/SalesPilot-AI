@@ -10,6 +10,8 @@
  */
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { getServerEnv } from "@/config/env";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/redirect";
 import { UnauthenticatedError } from "@/lib/errors";
@@ -23,6 +25,14 @@ export { SESSION_COOKIE_NAME };
 export const MAX_AUTH_AGE_SEC = 5 * 60;
 /** Tolerated clock skew when comparing `auth_time` with the server clock. */
 const CLOCK_SKEW_SEC = 60;
+/** Short TTL cache avoids repeated Google Identity Toolkit RPCs across parallel RSC + API calls. */
+const SESSION_VERIFY_CACHE_TTL_MS = 20_000;
+const SESSION_VERIFY_CACHE_MAX = 500;
+const sessionVerifyCache = new Map<string, { session: SessionUser; expiresAt: number }>();
+
+function sessionCacheKey(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 export interface SessionUser {
   uid: string;
@@ -126,10 +136,33 @@ function isInvalidSessionError(err: unknown): boolean {
  */
 export async function verifySessionValue(value: string | undefined): Promise<SessionUser | null> {
   if (typeof value !== "string" || value.length === 0) return null;
+  const useCache = getServerEnv().NODE_ENV !== "test";
+  const cacheKey = useCache ? sessionCacheKey(value) : "";
+  if (useCache) {
+    const cached = sessionVerifyCache.get(cacheKey);
+    if (cached) {
+      if (cached.expiresAt > Date.now()) return cached.session;
+      sessionVerifyCache.delete(cacheKey);
+    }
+  }
   try {
     const decoded = await adminAuth().verifySessionCookie(value, true);
     if (!decoded || typeof decoded.uid !== "string" || decoded.uid.length === 0) return null;
-    return { uid: decoded.uid, email: typeof decoded.email === "string" ? decoded.email : null };
+    const session: SessionUser = {
+      uid: decoded.uid,
+      email: typeof decoded.email === "string" ? decoded.email : null,
+    };
+    if (useCache) {
+      if (sessionVerifyCache.size >= SESSION_VERIFY_CACHE_MAX) {
+        const oldestKey = sessionVerifyCache.keys().next().value;
+        if (oldestKey !== undefined) sessionVerifyCache.delete(oldestKey);
+      }
+      sessionVerifyCache.set(cacheKey, {
+        session,
+        expiresAt: Date.now() + SESSION_VERIFY_CACHE_TTL_MS,
+      });
+    }
+    return session;
   } catch (err) {
     if (isInvalidSessionError(err)) return null;
     logger.warn("session_verify_unavailable", { code: errorCode(err) ?? "unknown" });

@@ -95,7 +95,7 @@ export function KpiCard({
           {subtext ? <p className="text-xs text-muted-foreground">{subtext}</p> : null}
           {href && linkLabel ? (
             <Button variant="link" size="sm" className="mt-auto h-auto justify-start p-0" asChild>
-              <Link href={href}>{linkLabel}</Link>
+              <Link href={href} prefetch={false}>{linkLabel}</Link>
             </Button>
           ) : null}
         </CardContent>
