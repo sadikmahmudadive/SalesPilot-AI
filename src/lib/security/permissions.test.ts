@@ -22,6 +22,19 @@ const ALL: readonly Permission[] = [
   "uploads:products",
   "uploads:org",
   "audit:read",
+  "agents:read",
+  "agents:write",
+  "agents:test",
+  "inbox:read",
+  "inbox:write",
+  "orders:read",
+  "orders:write",
+  "voice:read",
+  "voice:write",
+  "automations:read",
+  "automations:write",
+  "analytics:read",
+  "integrations:manage",
 ];
 
 const AGENT: readonly Permission[] = [
@@ -30,9 +43,30 @@ const AGENT: readonly Permission[] = [
   "products:read",
   "inventory:read",
   "uploads:customers",
+  "agents:read",
+  "agents:test",
+  "inbox:read",
+  "inbox:write",
+  "orders:read",
+  "orders:write",
+  "voice:read",
+  "voice:write",
+  "automations:read",
+  "automations:write",
+  "analytics:read",
 ];
 
-const VIEWER: readonly Permission[] = ["customers:read", "products:read", "inventory:read"];
+const VIEWER: readonly Permission[] = [
+  "customers:read",
+  "products:read",
+  "inventory:read",
+  "agents:read",
+  "inbox:read",
+  "orders:read",
+  "voice:read",
+  "automations:read",
+  "analytics:read",
+];
 
 const EXPECTED: Record<Role, readonly Permission[]> = {
   owner: ALL,
@@ -84,6 +118,21 @@ describe("can()", () => {
       expect(can(role, "nope:everything" as Permission)).toBe(false);
       expect(can(role, "" as Permission)).toBe(false);
     }
+  });
+});
+
+describe("order permissions", () => {
+  it("lets agents write orders, viewers only read them", () => {
+    expect(can("agent", "orders:write")).toBe(true);
+    expect(can("viewer", "orders:read")).toBe(true);
+    expect(can("viewer", "orders:write")).toBe(false);
+  });
+
+  it("restricts integrations:manage to owner and admin", () => {
+    expect(can("owner", "integrations:manage")).toBe(true);
+    expect(can("admin", "integrations:manage")).toBe(true);
+    expect(can("agent", "integrations:manage")).toBe(false);
+    expect(can("viewer", "integrations:manage")).toBe(false);
   });
 });
 

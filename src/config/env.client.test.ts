@@ -36,7 +36,7 @@ function messageOf(fn: () => unknown): string {
 }
 
 beforeEach(() => {
-  for (const key of [...Object.keys(CLIENT_VALUES), "NEXT_PUBLIC_USE_EMULATORS"]) {
+  for (const key of [...Object.keys(CLIENT_VALUES), "NEXT_PUBLIC_USE_EMULATORS", "NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL"]) {
     vi.stubEnv(key, undefined);
   }
   __resetClientEnvCacheForTests();
@@ -60,6 +60,29 @@ describe("getClientEnv", () => {
     stubAll({ ...CLIENT_VALUES, NEXT_PUBLIC_USE_EMULATORS: "true" });
     expect(getClientEnv().NEXT_PUBLIC_USE_EMULATORS).toBe(true);
   });
+
+  it("defaults the browser Auth emulator URL to http://127.0.0.1:9199", () => {
+    stubAll(CLIENT_VALUES);
+    expect(getClientEnv().NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL).toBe("http://127.0.0.1:9199");
+    __resetClientEnvCacheForTests();
+    vi.stubEnv("NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL", "");
+    expect(getClientEnv().NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL).toBe("http://127.0.0.1:9199");
+  });
+
+  it("accepts NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL for an alternate emulator port", () => {
+    stubAll({ ...CLIENT_VALUES, NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL: "http://localhost:9299" });
+    expect(getClientEnv().NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL).toBe("http://localhost:9299");
+  });
+
+  it.each(["9299", "javascript:alert(1)", "ftp://127.0.0.1:9199"])(
+    "rejects an invalid NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL (%s), naming only the variable",
+    (bad) => {
+      stubAll({ ...CLIENT_VALUES, NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL: bad });
+      const message = messageOf(getClientEnv);
+      expect(message).toContain("NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL");
+      expect(message).not.toContain(bad);
+    },
+  );
 
   it("throws naming only the variable when a required public variable is missing", () => {
     stubAll(CLIENT_VALUES);

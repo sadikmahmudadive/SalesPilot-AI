@@ -4,14 +4,13 @@ Local development needs none of this: `npm run emu` and `npm run dev` use the em
 
 Nothing in this guide has been run against a real project yet. Treat the first run as a test and tick the smoke checklist at the end.
 
-## 1. Choose the project (open decision)
+## 1. The project (decided)
 
-The project is not decided. Two options:
+**Decided 2026-11-08:** reuse `salespilot-ai-9b1cd` (Firestore region `asia-southeast1`). It already exists, so you skip creation. Check its region and settings in the console before relying on it; the Firestore location cannot be changed later. Development and tests keep using the `demo-salespilot` emulator project and never touch it.
 
-- **Reuse `salespilot-ai-9b1cd`** (Firestore region `asia-southeast1`). It already exists, so you skip creation. Use it only if you are happy for it to hold production data and its settings are as you expect. Check its region in the console before relying on it; the Firestore location cannot be changed later.
-- **Create a new project.** Choose a clean project id, enable Firestore in Native mode, and pick the location closest to your users (for example `asia-southeast1`; the location is permanent). Use this if `salespilot-ai-9b1cd` was a throwaway or has unwanted history.
+`.firebaserc` sets `salespilot-ai-9b1cd` as the CLI default, so **a bare `firebase deploy` (or any Firebase CLI command without `--project`) targets the real project.** Always pass `--project` explicitly, as every command in this guide does, and use `--project demo-salespilot` for emulator work (the npm scripts already do).
 
-Either way, keep one project per environment you care about (for example staging and production). Do not share a project between a public production site and experiments.
+If you later need a separate staging or experimental environment, create a second project instead of sharing this one: do not share a project between a public production site and experiments.
 
 Install and sign in to the CLI (it is already a dev dependency):
 
@@ -20,7 +19,7 @@ npx firebase login
 npx firebase projects:list
 ```
 
-Replace `<project-id>` below with the chosen project id.
+Replace `<project-id>` below with `salespilot-ai-9b1cd`.
 
 ## 2. Enable Firestore and Authentication
 

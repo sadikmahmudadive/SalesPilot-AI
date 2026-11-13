@@ -60,6 +60,8 @@ export function UserMenu({ email, displayName, role }: UserMenuProps) {
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={pending}
+          // Sign-out revokes the user's refresh tokens, so it ends every device's session.
+          title="Signs you out on all devices"
           // Keep the menu mounted while the request runs so the spinner is visible.
           onSelect={(event) => {
             event.preventDefault();

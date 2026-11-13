@@ -22,6 +22,7 @@ const ALL_KEYS = [
   "OPENAI_API_KEY",
   "OPENAI_CHAT_MODEL",
   "OPENAI_REALTIME_MODEL",
+  "AI_DAILY_MESSAGE_LIMIT",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
@@ -175,6 +176,50 @@ describe("getServerEnv", () => {
     expect(env.FIREBASE_PRIVATE_KEY).not.toContain("\\n");
   });
 
+  describe("FIREBASE_PRIVATE_KEY parsing", () => {
+    // As written in a .env file: backslash-n pairs, not real newlines.
+    const PEM = "-----BEGIN KEY-----\\nabc\\n-----END KEY-----\\n";
+    const PEM_REAL = "-----BEGIN KEY-----\nabc\n-----END KEY-----\n";
+    const keyFor = (raw: string): string | undefined => {
+      __resetEnvCacheForTests();
+      stubAll({ ...SERVER_VALUES, FIREBASE_PRIVATE_KEY: raw });
+      return getServerEnv().FIREBASE_PRIVATE_KEY;
+    };
+
+    it("strips surrounding double quotes", () => {
+      expect(keyFor(`"${PEM}"`)).toBe(PEM_REAL);
+    });
+
+    it("strips surrounding single quotes", () => {
+      expect(keyFor(`'${PEM}'`)).toBe(PEM_REAL);
+    });
+
+    it("trims surrounding whitespace (and quotes inside it)", () => {
+      expect(keyFor(`  ${PEM}  `)).toBe(PEM_REAL);
+      expect(keyFor(`  "${PEM}"  `)).toBe(PEM_REAL);
+    });
+
+    it("converts escaped \\n sequences to real newlines", () => {
+      expect(keyFor(PEM)).toBe(PEM_REAL);
+    });
+
+    it.each(['""', "''", '"   "', "   "])(
+      "rejects %j, naming the variable and not the value",
+      (raw) => {
+        __resetEnvCacheForTests();
+        stubAll({ ...SERVER_VALUES, FIREBASE_PRIVATE_KEY: raw });
+        let message = "";
+        try {
+          getServerEnv();
+        } catch (error) {
+          message = (error as Error).message;
+        }
+        expect(message).toContain("FIREBASE_PRIVATE_KEY");
+        expect(message).not.toContain("BEGIN");
+      },
+    );
+  });
+
   it("defaults SESSION_COOKIE_MAX_DAYS to 5 and accepts 1-14", () => {
     stubAll(SERVER_VALUES);
     expect(getServerEnv().SESSION_COOKIE_MAX_DAYS).toBe(5);
@@ -186,6 +231,19 @@ describe("getServerEnv", () => {
   it.each(["0", "15", "2.5", "abc"])("rejects SESSION_COOKIE_MAX_DAYS=%s", (value) => {
     stubAll({ ...SERVER_VALUES, SESSION_COOKIE_MAX_DAYS: value });
     expect(() => getServerEnv()).toThrow(/SESSION_COOKIE_MAX_DAYS/);
+  });
+
+  it("defaults AI_DAILY_MESSAGE_LIMIT to 500 and accepts 1-100000", () => {
+    stubAll(SERVER_VALUES);
+    expect(getServerEnv().AI_DAILY_MESSAGE_LIMIT).toBe(500);
+    __resetEnvCacheForTests();
+    vi.stubEnv("AI_DAILY_MESSAGE_LIMIT", "1000");
+    expect(getServerEnv().AI_DAILY_MESSAGE_LIMIT).toBe(1000);
+  });
+
+  it.each(["0", "100001", "-5", "abc"])("rejects AI_DAILY_MESSAGE_LIMIT=%s", (value) => {
+    stubAll({ ...SERVER_VALUES, AI_DAILY_MESSAGE_LIMIT: value });
+    expect(() => getServerEnv()).toThrow(/AI_DAILY_MESSAGE_LIMIT/);
   });
 
   it("memoizes the parsed result", () => {

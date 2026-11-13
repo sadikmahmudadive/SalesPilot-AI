@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCount } from "@/lib/format";
 
 export type KpiState =
-  /** A real number. */
+  /** A real number. Shown as a count unless the card has a `format`. */
   | { kind: "value"; value: number }
   /** The metric could not be loaded; no number is shown. */
   | { kind: "error" }
@@ -27,13 +27,24 @@ interface KpiCardProps {
   /** List page this number comes from. Only used for real values and errors. */
   href?: string;
   linkLabel?: string;
+  /** How a real value is written. Defaults to a plain count (`formatCount`). */
+  format?: (value: number) => string;
 }
 
 /**
  * One overview tile: a labelled region with the title as its heading. Presentational: it never
  * fetches, and it never invents a number (an unavailable metric says so in words).
  */
-export function KpiCard({ id, title, icon: Icon, state, subtext, href, linkLabel }: KpiCardProps) {
+export function KpiCard({
+  id,
+  title,
+  icon: Icon,
+  state,
+  subtext,
+  href,
+  linkLabel,
+  format = formatCount,
+}: KpiCardProps) {
   const titleId = `${id}-title`;
   const detailId = `${id}-detail`;
 
@@ -78,13 +89,13 @@ export function KpiCard({ id, title, icon: Icon, state, subtext, href, linkLabel
             </div>
           ) : (
             <p className="text-3xl font-semibold tracking-tight tabular-nums">
-              {formatCount(state.value)}
+              {format(state.value)}
             </p>
           )}
           {subtext ? <p className="text-xs text-muted-foreground">{subtext}</p> : null}
           {href && linkLabel ? (
             <Button variant="link" size="sm" className="mt-auto h-auto justify-start p-0" asChild>
-              <Link href={href}>{linkLabel}</Link>
+              <Link href={href} prefetch={false}>{linkLabel}</Link>
             </Button>
           ) : null}
         </CardContent>

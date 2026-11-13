@@ -51,6 +51,7 @@ import {
 } from "@/repositories/customers";
 import type { Customer, CustomerInput, CustomerPatch } from "@/schemas/customer";
 
+import { normalizeConsentAt } from "./consent-time";
 import { buildListPlan, fullNameLowerKey, tagKeys, type CustomerListQuery } from "./customer-query";
 
 export type { CustomerListQuery } from "./customer-query";
@@ -118,7 +119,10 @@ function auditValues(fields: Fields): Fields {
   return out;
 }
 
-/** Consent timestamp is stored as an ISO-8601 string (same type the API accepts). */
+/**
+ * Consent timestamp is stored as a UTC ISO-8601 string (`toISOString`): an explicit `at` is
+ * normalized to UTC and may not be more than 5 minutes in the future.
+ */
 function normalizeConsent(raw: unknown, existing?: Customer["consent"]): Customer["consent"] {
   const c = (raw ?? { status: "unknown" }) as {
     status: Customer["consent"]["status"];
@@ -127,7 +131,7 @@ function normalizeConsent(raw: unknown, existing?: Customer["consent"]): Custome
   };
   const out: Customer["consent"] = { status: c.status };
   if (c.source !== undefined) out.source = c.source;
-  if (c.at !== undefined) out.at = c.at;
+  if (c.at !== undefined) out.at = normalizeConsentAt(c.at);
   else if (c.status !== "unknown") {
     // Granted / denied without a time: keep the original time when the status did not change.
     out.at = existing?.status === c.status && existing.at ? existing.at : new Date().toISOString();

@@ -2,7 +2,7 @@
  * Pure logic behind stock adjustments and the low-stock badge. No React, so it is unit tested
  * directly. The server enforces the same rules; this is the immediate, friendly version.
  */
-import { LOW_STOCK_THRESHOLD, MAX_ADJUST_DELTA, MAX_ON_HAND } from "@/config/inventory";
+import { MAX_ADJUST_DELTA, MAX_ON_HAND, stockLevelOf } from "@/config/inventory";
 import { toAsciiDigits } from "@/lib/digits";
 
 /**
@@ -19,8 +19,7 @@ export type StockStatus = "out" | "low" | "ok";
 
 /** Out of stock at 0 (or below), low at <= LOW_STOCK_THRESHOLD, otherwise fine. */
 export function stockStatus(available: number): StockStatus {
-  if (available <= 0) return "out";
-  return available <= LOW_STOCK_THRESHOLD ? "low" : "ok";
+  return stockLevelOf(available);
 }
 
 export type QuantityResult = { ok: true; value: number } | { ok: false; message: string };

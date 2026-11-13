@@ -79,11 +79,49 @@ service cloud.firestore {
       }
     }
 
+    // AI agent configuration: readable by members of the agent's organization, written by the
+    // server only.
+    match /agents/{id} {
+      allow read: if isMember(resource.data.organizationId);
+      allow write: if false;
+    }
+
+    // Test-chat sessions and their messages hold customer conversation text: server only
+    // (Admin SDK). Explicit so the intent survives a future change of the default.
+    match /agentSessions/{id} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Customer inbox conversations and messages: server only (Admin SDK).
+    match /conversations/{id} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
     // Confirmed Cloudinary uploads: written and read by the server only (Admin SDK). The products
     // service trusts these records, so no client may read or forge one.
     match /uploads/{id} {
       allow read, write: if false;
     }
+
+    // Integrations, payments, webhooks, couriers and voice: server only (Admin SDK).
+    match /gatewayAccounts/{id} { allow read, write: if false; }
+    match /courierAccounts/{id} { allow read, write: if false; }
+    match /voiceAccounts/{id} { allow read, write: if false; }
+    match /voiceCalls/{id} { allow read, write: if false; }
+    match /automationRules/{id} { allow read, write: if false; }
+    match /automationRuns/{id} { allow read, write: if false; }
+    match /paymentAttempts/{id} { allow read, write: if false; }
+    match /paymentLinks/{id} { allow read, write: if false; }
+    match /webhookEvents/{id} { allow read, write: if false; }
+    match /courierLocations/{id} { allow read, write: if false; }
 
     // rateLimits, auditLogs, customerPhones, productSkus, productSlugs,
     // categoryNames and any other collection fall through to default deny.

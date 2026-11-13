@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Phone } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { VoiceConsole } from "@/components/voice/voice-console";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { can } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Voice Calls" };
 
-export default function Page() {
-  return (
-    <ComingLater
-      phase={6}
-      title="Voice Calls"
-      icon={Phone}
-      description="Inbound and outbound AI voice calls, with transcripts, outcomes and recordings, will be managed from this section."
-    />
-  );
+export default async function VoicePage() {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  if (!can(ctx.role, "voice:read")) {
+    redirect("/");
+  }
+  return <VoiceConsole role={ctx.role} />;
 }

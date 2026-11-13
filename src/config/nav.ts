@@ -36,16 +36,16 @@ export interface NavItem {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Unified Inbox", href: "/inbox", icon: Inbox, phase: 4 },
-  { label: "AI Agents", href: "/agents", icon: Bot, phase: 3 },
+  { label: "Unified Inbox", href: "/inbox", icon: Inbox, permission: "inbox:read" },
+  { label: "AI Agents", href: "/agents", icon: Bot, permission: "agents:read" },
   { label: "Customers", href: "/customers", icon: Users, permission: "customers:read" },
   { label: "Products", href: "/products", icon: Boxes, permission: "products:read" },
   { label: "Inventory", href: "/inventory", icon: PackageSearch, permission: "inventory:read" },
-  { label: "Orders", href: "/orders", icon: ShoppingCart, phase: 5 },
-  { label: "Voice Calls", href: "/voice", icon: Phone, phase: 6 },
-  { label: "Automations", href: "/automations", icon: Workflow, phase: 7 },
-  { label: "Analytics", href: "/analytics", icon: BarChart3, phase: 8 },
-  { label: "Integrations", href: "/integrations", icon: Plug, phase: 8 },
+  { label: "Orders", href: "/orders", icon: ShoppingCart },
+  { label: "Voice Calls", href: "/voice", icon: Phone, permission: "voice:read" },
+  { label: "Automations", href: "/automations", icon: Workflow, permission: "automations:read" },
+  { label: "Analytics", href: "/analytics", icon: BarChart3, permission: "analytics:read" },
+  { label: "Integrations", href: "/integrations", icon: Plug, permission: "integrations:manage" },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

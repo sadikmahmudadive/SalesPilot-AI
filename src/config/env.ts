@@ -24,8 +24,11 @@ const serverShape = {
       key
         .trim()
         .replace(/^["']|["']$/g, "")
+        .trim()
         .replace(/\\n/g, "\n"),
     )
+    // A value that is only quotes / whitespace becomes empty: reject it (names the variable only).
+    .pipe(z.string().min(1))
     .optional(),
   FIRESTORE_EMULATOR_HOST: optional,
   FIREBASE_AUTH_EMULATOR_HOST: optional,
@@ -48,6 +51,10 @@ const serverShape = {
   OPENAI_API_KEY: optional,
   OPENAI_CHAT_MODEL: optional,
   OPENAI_REALTIME_MODEL: optional,
+  AI_DAILY_MESSAGE_LIMIT: z.preprocess(
+    (value) => (value === undefined ? 500 : Number(value)),
+    z.number().int().min(1).max(100_000),
+  ),
 
   TWILIO_ACCOUNT_SID: optional,
   TWILIO_AUTH_TOKEN: optional,

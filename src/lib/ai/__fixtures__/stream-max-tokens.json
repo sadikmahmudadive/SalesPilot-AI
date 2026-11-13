@@ -1,0 +1,41 @@
+[
+  {
+    "type": "response.created",
+    "sequence_number": 0,
+    "response": { "id": "resp_3", "status": "in_progress", "output": [] }
+  },
+  {
+    "type": "response.output_text.delta",
+    "sequence_number": 1,
+    "item_id": "msg_3",
+    "output_index": 0,
+    "content_index": 0,
+    "delta": "This reply is cut",
+    "logprobs": []
+  },
+  {
+    "type": "response.incomplete",
+    "sequence_number": 2,
+    "response": {
+      "id": "resp_3",
+      "status": "incomplete",
+      "incomplete_details": { "reason": "max_output_tokens" },
+      "output": [
+        {
+          "type": "message",
+          "id": "msg_3",
+          "role": "assistant",
+          "status": "incomplete",
+          "content": [{ "type": "output_text", "text": "This reply is cut", "annotations": [] }]
+        }
+      ],
+      "usage": {
+        "input_tokens": 50,
+        "input_tokens_details": { "cached_tokens": 0 },
+        "output_tokens": 5,
+        "output_tokens_details": { "reasoning_tokens": 0 },
+        "total_tokens": 55
+      }
+    }
+  }
+]

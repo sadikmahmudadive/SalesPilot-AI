@@ -10,10 +10,13 @@
  */
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { getServerEnv } from "@/config/env";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/redirect";
 import { UnauthenticatedError } from "@/lib/errors";
 import { adminAuth } from "@/lib/firebase/admin";
+import { logger } from "@/lib/logger";
 
 // Defined in the pure redirect module so the proxy can share it; re-exported for server code.
 export { SESSION_COOKIE_NAME };
@@ -22,6 +25,14 @@ export { SESSION_COOKIE_NAME };
 export const MAX_AUTH_AGE_SEC = 5 * 60;
 /** Tolerated clock skew when comparing `auth_time` with the server clock. */
 const CLOCK_SKEW_SEC = 60;
+/** Short TTL cache avoids repeated Google Identity Toolkit RPCs across parallel RSC + API calls. */
+const SESSION_VERIFY_CACHE_TTL_MS = 20_000;
+const SESSION_VERIFY_CACHE_MAX = 500;
+const sessionVerifyCache = new Map<string, { session: SessionUser; expiresAt: number }>();
+
+function sessionCacheKey(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 export interface SessionUser {
   uid: string;
@@ -75,18 +86,87 @@ export async function createSessionCookie(
   }
 }
 
+/** Firebase Auth error code of `err` when it has one (e.g. `auth/session-cookie-expired`). */
+function errorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/** Firebase Auth codes that definitively mean "this session / its user is no longer valid". */
+const SESSION_ENDING_CODES: ReadonlySet<string> = new Set([
+  "auth/session-cookie-expired",
+  "auth/session-cookie-revoked",
+  "auth/user-disabled",
+  "auth/user-not-found",
+]);
+
 /**
- * Verifies a session cookie value, including revocation. Returns null on ANY failure
- * (missing, malformed, tampered, expired, revoked, SDK/network error). Never throws.
+ * True only when `err` definitively means "this cookie / its user is not valid" (so the caller should
+ * treat the request as signed out). This is an ALLOWLIST on purpose: an Auth outage (quota, permission,
+ * network, 5xx, bad server credentials, `auth/internal-error`) must never log everyone out, so every
+ * other error is treated as "we could not find out" and rethrown by the caller.
+ *
+ * Allowed: `auth/session-cookie-expired`, `auth/session-cookie-revoked`, `auth/user-disabled`,
+ * `auth/user-not-found`, plus `auth/argument-error` whose message names the "session cookie" (malformed
+ * or tampered cookie). An `auth/argument-error` without such a message is not trusted: firebase-admin
+ * reports a failed download of Google's public certificates the same way.
+ */
+function isInvalidSessionError(err: unknown): boolean {
+  const code = errorCode(err);
+  if (code === undefined) return false;
+  if (SESSION_ENDING_CODES.has(code)) return true;
+  if (code === "auth/argument-error") {
+    const message = (err as { message?: unknown }).message;
+    return typeof message === "string" && /session cookie/i.test(message);
+  }
+  return false;
+}
+
+/**
+ * Verifies a session cookie value, including revocation.
+ *
+ * Returns null when there is no usable session: missing/empty input, or Firebase says the cookie or
+ * its user is invalid (malformed, tampered, expired, revoked, user disabled/deleted).
+ *
+ * Any other failure (network, quota, 5xx, `auth/internal-error`, missing server credentials) means we
+ * could not decide, so it is logged (error code only, never the cookie) and RETHROWN: callers answer
+ * 500 / render the error boundary and the browser keeps its cookie instead of being signed out by a
+ * transient outage.
  */
 export async function verifySessionValue(value: string | undefined): Promise<SessionUser | null> {
   if (typeof value !== "string" || value.length === 0) return null;
+  const useCache = getServerEnv().NODE_ENV !== "test";
+  const cacheKey = useCache ? sessionCacheKey(value) : "";
+  if (useCache) {
+    const cached = sessionVerifyCache.get(cacheKey);
+    if (cached) {
+      if (cached.expiresAt > Date.now()) return cached.session;
+      sessionVerifyCache.delete(cacheKey);
+    }
+  }
   try {
     const decoded = await adminAuth().verifySessionCookie(value, true);
     if (!decoded || typeof decoded.uid !== "string" || decoded.uid.length === 0) return null;
-    return { uid: decoded.uid, email: typeof decoded.email === "string" ? decoded.email : null };
-  } catch {
-    return null;
+    const session: SessionUser = {
+      uid: decoded.uid,
+      email: typeof decoded.email === "string" ? decoded.email : null,
+    };
+    if (useCache) {
+      if (sessionVerifyCache.size >= SESSION_VERIFY_CACHE_MAX) {
+        const oldestKey = sessionVerifyCache.keys().next().value;
+        if (oldestKey !== undefined) sessionVerifyCache.delete(oldestKey);
+      }
+      sessionVerifyCache.set(cacheKey, {
+        session,
+        expiresAt: Date.now() + SESSION_VERIFY_CACHE_TTL_MS,
+      });
+    }
+    return session;
+  } catch (err) {
+    if (isInvalidSessionError(err)) return null;
+    logger.warn("session_verify_unavailable", { code: errorCode(err) ?? "unknown" });
+    throw err;
   }
 }
 
@@ -139,7 +219,10 @@ export function clearSessionCookie(): string {
   return build("", 0, ["Expires=Thu, 01 Jan 1970 00:00:00 GMT"]);
 }
 
-/** Current user from the request's session cookie, or null. Call within a request scope. */
+/**
+ * Current user from the request's session cookie, or null. Call within a request scope.
+ * Rejects (does not return null) if verification could not be completed; see `verifySessionValue`.
+ */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   // Imported lazily so tests importing this module need no Next request scope. Errors from
   // cookies() are deliberately not caught: Next uses them to detect dynamic rendering.

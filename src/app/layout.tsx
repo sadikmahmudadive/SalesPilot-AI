@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Geist, Geist_Mono, Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+
+// Brand wordmark font; self-hosted by next/font so the CSP needs no external font origins.
+const manrope = Manrope({
+  weight: ["700", "800"],
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         geistMono.variable,
         "font-sans",
         inter.variable,
+        manrope.variable,
       )}
     >
       <body className="min-h-full flex flex-col">
