@@ -116,6 +116,8 @@ service cloud.firestore {
     match /courierAccounts/{id} { allow read, write: if false; }
     match /voiceAccounts/{id} { allow read, write: if false; }
     match /voiceCalls/{id} { allow read, write: if false; }
+    match /automationRules/{id} { allow read, write: if false; }
+    match /automationRuns/{id} { allow read, write: if false; }
     match /paymentAttempts/{id} { allow read, write: if false; }
     match /paymentLinks/{id} { allow read, write: if false; }
     match /webhookEvents/{id} { allow read, write: if false; }

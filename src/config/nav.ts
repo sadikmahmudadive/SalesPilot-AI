@@ -43,7 +43,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Inventory", href: "/inventory", icon: PackageSearch, permission: "inventory:read" },
   { label: "Orders", href: "/orders", icon: ShoppingCart },
   { label: "Voice Calls", href: "/voice", icon: Phone, permission: "voice:read" },
-  { label: "Automations", href: "/automations", icon: Workflow, phase: 7 },
+  { label: "Automations", href: "/automations", icon: Workflow, permission: "automations:read" },
   { label: "Analytics", href: "/analytics", icon: BarChart3, phase: 8 },
   { label: "Integrations", href: "/integrations", icon: Plug, permission: "integrations:manage" },
   { label: "Settings", href: "/settings", icon: Settings },

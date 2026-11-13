@@ -65,6 +65,7 @@ import type { OrderCtx } from "./settings";
 import { OrderTransitionError } from "./state-machine";
 import { commitLines, releaseLines } from "./stock-holds";
 import { reconcilePaymentAttempts } from "@/services/payments/reconciler";
+import { sweepAutomations } from "@/services/automations/sweep";
 
 export interface SweepResult {
   expired: number;
@@ -291,13 +292,23 @@ export async function sweepOrders(
     releaseParked(cutoffMs),
   );
 
-  // ---- pass 6: unverified payment attempts reconciler ------------------------------------------
+  // ---- pass 6: unverified payment attempts reconciler & scheduled automations ---------------
   const remainingBudget = run.deadline - Date.now();
   if (remainingBudget > 2000) {
     const paymentResult = await reconcilePaymentAttempts(run.batch, remainingBudget);
     run.result.expired += paymentResult.expired;
     run.result.errors += paymentResult.errors;
     run.result.reconciled = paymentResult.reconciled;
+  }
+
+  if (run.deadline - Date.now() > 2000) {
+    try {
+      await sweepAutomations(now, run.deadline);
+    } catch (err) {
+      logger.error("order_sweep_automations_failed", {
+        message: err instanceof Error ? err.message : "unknown",
+      });
+    }
   }
 
   return run.result;
