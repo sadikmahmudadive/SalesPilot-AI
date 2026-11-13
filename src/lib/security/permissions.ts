@@ -35,6 +35,8 @@ export const PERMISSIONS = [
   "inbox:write",
   "orders:read",
   "orders:write",
+  "voice:read",
+  "voice:write",
   "integrations:manage",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -56,6 +58,8 @@ export const PERMISSION_MATRIX: Readonly<Record<Role, ReadonlySet<Permission>>> 
     "inbox:write",
     "orders:read",
     "orders:write",
+    "voice:read",
+    "voice:write",
   ]),
   viewer: new Set<Permission>([
     "customers:read",
@@ -64,6 +68,7 @@ export const PERMISSION_MATRIX: Readonly<Record<Role, ReadonlySet<Permission>>> 
     "agents:read",
     "inbox:read",
     "orders:read",
+    "voice:read",
   ]),
 };
 

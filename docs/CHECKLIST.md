@@ -121,6 +121,18 @@ Plan: `docs/superpowers/plans/2026-11-13-couriers-5c.md`.
 - [x] 73. AI tool tracking enrichment: `src/services/agents/tools/order-status.ts`, `src/services/agents/tools/order-tools.int.test.ts`, `src/services/agents/templates.ts`
 - [x] 74. Courier setup guides and Phase 5c gates: `docs/setup/steadfast.md`, `docs/setup/pathao.md`, `docs/setup/redx.md`
 
+### Phase 6: Voice Calls
+
+Plan: `docs/superpowers/plans/2026-11-13-voice-calls.md`.
+
+- [x] 75. Voice permissions, navigation gating, Firestore rules, and schemas: `src/lib/security/permissions.test.ts`, `src/config/nav.test.ts`, `src/schemas/voice.test.ts`
+- [x] 76. Voice repository (`voiceAccounts`, `voiceCalls`) with tenant isolation: `src/repositories/voice.int.test.ts`
+- [x] 77. Voice provider adapters (Vapi, Twilio Voice, Mock) and registry: `src/services/voice/adapters/mock.test.ts`, `src/services/voice/adapters/vapi.test.ts`, `src/services/voice/adapters/twilio.test.ts`
+- [x] 78. Voice call initiation, opt-out enforcement, and live tool-calling webhooks: `src/services/voice/voice.int.test.ts`
+- [x] 79. Voice API routes (`/api/integrations/voice/*`, `/api/voice/calls/*`, `/api/webhooks/voice/*`): `src/app/api/voice/voice-routes.int.test.ts`
+- [~] 80. Voice Calls console, Integrations Voice tab, Customer/Order AI Call buttons, and Agent Voice channel: `src/components/voice/voice-console.tsx`, `src/components/voice/call-dialog.tsx`, `src/components/integrations/voice-card.tsx`, `src/components/integrations/voice-form-dialog.tsx`; UI not seen in a real browser
+- [x] 81. Voice setup guides: `docs/setup/vapi.md`, `docs/setup/twilio-voice.md`
+
 ## Unverified
 
 These have not been done or observed. Do not assume they work.
