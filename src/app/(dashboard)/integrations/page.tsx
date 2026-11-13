@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Loader2, Phone, Plus, RefreshCw, ShieldCheck, Truck } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  CreditCard,
+  Loader2,
+  Phone,
+  Plus,
+  RefreshCw,
+  Server,
+  ShieldCheck,
+  Truck,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import type { GatewayAccountSummary } from "@/schemas/integration";
@@ -14,14 +26,25 @@ import { CourierFormDialog } from "@/components/integrations/courier-form-dialog
 import { VoiceCard } from "@/components/integrations/voice-card";
 import { VoiceFormDialog } from "@/components/integrations/voice-form-dialog";
 
+interface PlatformStatus {
+  whatsapp: boolean;
+  openai: boolean;
+  cloudinary: boolean;
+  n8n: boolean;
+}
+
 export default function IntegrationsPage() {
-  const [activeTab, setActiveTab] = useState<"gateways" | "couriers" | "voice">("gateways");
+  const [activeTab, setActiveTab] = useState<"gateways" | "couriers" | "voice" | "platform">(
+    "gateways",
+  );
   const [gateways, setGateways] = useState<GatewayAccountSummary[]>([]);
   const [couriers, setCouriers] = useState<CourierAccountSummary[]>([]);
   const [voiceAccounts, setVoiceAccounts] = useState<VoiceAccountSummary[]>([]);
+  const [platformStatus, setPlatformStatus] = useState<PlatformStatus | null>(null);
   const [loadingGateways, setLoadingGateways] = useState(true);
   const [loadingCouriers, setLoadingCouriers] = useState(true);
   const [loadingVoice, setLoadingVoice] = useState(true);
+  const [loadingPlatform, setLoadingPlatform] = useState(true);
 
   // Gateway Dialog
   const [gatewayDialogOpen, setGatewayDialogOpen] = useState(false);
@@ -77,14 +100,29 @@ export default function IntegrationsPage() {
     }
   };
 
+  const refreshPlatform = async () => {
+    try {
+      setLoadingPlatform(true);
+      const res = await fetch("/api/integrations/status");
+      if (!res.ok) throw new Error("Failed to load platform status");
+      const json = (await res.json()) as { status?: PlatformStatus };
+      if (json.status) setPlatformStatus(json.status);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load platform status");
+    } finally {
+      setLoadingPlatform(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [gwRes, crRes, vcRes] = await Promise.all([
+        const [gwRes, crRes, vcRes, stRes] = await Promise.all([
           fetch("/api/integrations/gateways"),
           fetch("/api/integrations/couriers"),
           fetch("/api/integrations/voice"),
+          fetch("/api/integrations/status"),
         ]);
 
         if (gwRes.ok) {
@@ -99,6 +137,10 @@ export default function IntegrationsPage() {
           const vcJson = await vcRes.json();
           if (!cancelled) setVoiceAccounts(vcJson.items ?? []);
         }
+        if (stRes.ok) {
+          const stJson = (await stRes.json()) as { status?: PlatformStatus };
+          if (!cancelled && stJson.status) setPlatformStatus(stJson.status);
+        }
       } catch (err) {
         if (!cancelled) {
           toast.error(err instanceof Error ? err.message : "Failed to load integrations");
@@ -108,6 +150,7 @@ export default function IntegrationsPage() {
           setLoadingGateways(false);
           setLoadingCouriers(false);
           setLoadingVoice(false);
+          setLoadingPlatform(false);
         }
       }
     }
@@ -156,22 +199,24 @@ export default function IntegrationsPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAdd}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow hover:bg-primary/90 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          {activeTab === "gateways"
-            ? "Add Payment Gateway"
-            : activeTab === "couriers"
-              ? "Add Courier Partner"
-              : "Connect Voice Provider"}
-        </button>
+        {activeTab !== "platform" ? (
+          <button
+            type="button"
+            onClick={handleOpenAdd}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow hover:bg-primary/90 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            {activeTab === "gateways"
+              ? "Add Payment Gateway"
+              : activeTab === "couriers"
+                ? "Add Courier Partner"
+                : "Connect Voice Provider"}
+          </button>
+        ) : null}
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-border/60 pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-1">
         <button
           type="button"
           onClick={() => setActiveTab("gateways")}
@@ -209,6 +254,19 @@ export default function IntegrationsPage() {
         >
           <Phone className="w-4 h-4" />
           Voice & Telephony ({voiceAccounts.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("platform")}
+          className={`px-4 py-2 text-sm font-semibold rounded-t-xl transition-all flex items-center gap-2 cursor-pointer border-b-2 -mb-1 ${
+            activeTab === "platform"
+              ? "border-primary text-primary bg-primary/5"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Server className="w-4 h-4" />
+          Platform & Webhooks
         </button>
       </div>
 
@@ -323,7 +381,7 @@ export default function IntegrationsPage() {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === "voice" ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>AI voice & telephony providers for outbound and inbound customer calls.</span>
@@ -377,6 +435,124 @@ export default function IntegrationsPage() {
               ))}
             </div>
           )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Server-side platform channel configuration and webhook endpoints for this deployment.
+            </span>
+            <button
+              type="button"
+              onClick={refreshPlatform}
+              disabled={loadingPlatform}
+              className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingPlatform ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          {loadingPlatform && !platformStatus ? (
+            <div className="p-12 text-center rounded-2xl border border-dashed border-border/60 bg-muted/20">
+              <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mt-2">Checking platform channels...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                {
+                  name: "WhatsApp Cloud API",
+                  ready: platformStatus?.whatsapp ?? false,
+                  description:
+                    "Enables live customer WhatsApp messaging, AI inbox auto-replies, and automation outreach.",
+                  guide: "See docs/setup/whatsapp.md to set environment credentials.",
+                },
+                {
+                  name: "OpenAI AI Engine",
+                  ready: platformStatus?.openai ?? false,
+                  description:
+                    "Powers autonomous sales agents, catalog lookup, and WhatsApp order drafting.",
+                  guide: "See docs/setup/openai.md to configure your model key.",
+                },
+                {
+                  name: "Cloudinary Media Storage",
+                  ready: platformStatus?.cloudinary ?? false,
+                  description:
+                    "Stores signed product images, customer media, and organization assets.",
+                  guide: "See docs/setup/cloudinary.md to configure upload signing.",
+                },
+                {
+                  name: "n8n Webhook Bridge",
+                  ready: platformStatus?.n8n ?? false,
+                  description:
+                    "Global default webhook configuration for external workflow orchestration.",
+                  guide: "See docs/setup/n8n-automations.md (per-rule URLs work independently).",
+                },
+              ].map((channel) => (
+                <div
+                  key={channel.name}
+                  className="rounded-2xl border border-border/60 bg-card p-5 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-foreground">{channel.name}</h3>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        channel.ready
+                          ? "bg-emerald-500/10 text-emerald-600"
+                          : "bg-amber-500/10 text-amber-600"
+                      }`}
+                    >
+                      {channel.ready ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Configured
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3.5 h-3.5" /> Not configured
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{channel.description}</p>
+                  <p className="text-[11px] text-muted-foreground/80">{channel.guide}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Core Platform Endpoints</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              {[
+                { label: "WhatsApp Cloud Webhook", path: "/api/webhooks/whatsapp" },
+                { label: "Scheduled Sweep (Orders & Automations)", path: "/api/cron/orders/expire" },
+              ].map((ep) => (
+                <div
+                  key={ep.path}
+                  className="flex items-center justify-between gap-2 rounded-xl border bg-muted/20 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">{ep.label}</p>
+                    <p className="font-mono text-[11px] text-muted-foreground truncate">{ep.path}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fullUrl =
+                        typeof window !== "undefined" ? `${window.location.origin}${ep.path}` : ep.path;
+                      void navigator.clipboard.writeText(fullUrl);
+                      toast.success("Endpoint URL copied");
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium hover:bg-muted cursor-pointer shrink-0"
+                  >
+                    <Copy className="w-3 h-3" />
+                    Copy
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

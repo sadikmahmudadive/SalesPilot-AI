@@ -9,7 +9,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { logger } from "@/lib/logger";
 import { CUSTOMER_SEGMENTS, type CustomerSegment } from "@/schemas/customer";
 
-import { getOverview } from "./overview";
+import { getActivityOverview, getOverview } from "./overview";
 
 const db = () => adminDb();
 const orgs: string[] = [];
@@ -45,7 +45,14 @@ afterEach(() => vi.restoreAllMocks());
 
 afterAll(async () => {
   for (const org of orgs) {
-    for (const col of ["customers", "products", "inventory", "orders"]) {
+    for (const col of [
+      "customers",
+      "products",
+      "inventory",
+      "orders",
+      "conversations",
+      "voiceCalls",
+    ]) {
       const snap = await db().collection(col).where("organizationId", "==", org).get();
       await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
@@ -251,5 +258,34 @@ describe("getOverview", () => {
     await expect(getOverview(undefined as unknown as string)).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+
+  describe("getActivityOverview", () => {
+    it("counts conversations and voiceCalls per organization with isolated failures", async () => {
+      const org = newOrg();
+      const other = newOrg();
+      await db().collection("conversations").doc(randomUUID()).set({ organizationId: org });
+      await db().collection("conversations").doc(randomUUID()).set({ organizationId: org });
+      await db().collection("voiceCalls").doc(randomUUID()).set({ organizationId: org });
+      await db().collection("conversations").doc(randomUUID()).set({ organizationId: other });
+
+      expect(await getActivityOverview(org)).toEqual({
+        conversations: { ok: true, value: 2 },
+        voiceCalls: { ok: true, value: 1 },
+      });
+
+      const error = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+      const partial = await getActivityOverview(org, {
+        runCount: async (metric, query) => {
+          if (metric === "voiceCalls") throw new Error("voice down");
+          return (await query.count().get()).data().count;
+        },
+      });
+      expect(partial).toEqual({
+        conversations: { ok: true, value: 2 },
+        voiceCalls: { ok: false },
+      });
+      expect(error).toHaveBeenCalledTimes(1);
+    });
   });
 });

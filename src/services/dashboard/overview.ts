@@ -41,9 +41,11 @@ import { isValidIdSegment } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { invalid } from "@/lib/validation-error";
 import { CUSTOMERS } from "@/repositories/customers";
+import { CONVERSATIONS } from "@/repositories/conversations";
 import { INVENTORY, PRODUCTS } from "@/repositories/products";
 import type { WhereClause } from "@/repositories/base";
 import { ORDERS } from "@/repositories/orders";
+import { VOICE_CALLS } from "@/repositories/voice";
 import { ORDER_STATUSES, type OrderStatus, type PaymentStatus } from "@/schemas/order";
 
 import { dhakaDayStart, dhakaMonthStart } from "./dhaka-time";
@@ -184,6 +186,57 @@ export async function getOverview(orgId: string, options: OverviewOptions = {}):
     }
     // Name and code only: an error message could echo query details.
     logger.error("dashboard overview metric failed", {
+      metric,
+      organizationId: orgId,
+      errorName:
+        outcome.status === "rejected"
+          ? (outcome.reason as Error | undefined)?.name
+          : "InvalidCount",
+      errorCode: outcome.status === "rejected" ? errorCode(outcome.reason) : undefined,
+    });
+    result[metric] = { ok: false };
+  });
+  return result;
+}
+
+export const ACTIVITY_METRICS = ["conversations", "voiceCalls"] as const;
+export type ActivityMetricName = (typeof ACTIVITY_METRICS)[number];
+export type ActivityOverview = Record<ActivityMetricName, Metric>;
+
+export function activityMetricQueries(orgId: string): Record<ActivityMetricName, MetricQuery> {
+  const scope: WhereClause = ["organizationId", "==", orgId];
+  return {
+    conversations: { collection: CONVERSATIONS, where: [scope] },
+    voiceCalls: { collection: VOICE_CALLS, where: [scope] },
+  };
+}
+
+export async function getActivityOverview(
+  orgId: string,
+  options: { runCount?: (metric: ActivityMetricName, query: Query) => Promise<number> } = {},
+): Promise<ActivityOverview> {
+  if (!isValidIdSegment(orgId)) throw invalid("organizationId", "Invalid organization");
+  const runCount =
+    options.runCount ?? (async (_metric, query) => (await query.count().get()).data().count);
+  const db = adminDb();
+  const queries = activityMetricQueries(orgId);
+
+  const settled = await Promise.allSettled(
+    ACTIVITY_METRICS.map((metric) => runCount(metric, toQuery(db, queries[metric]))),
+  );
+
+  const result = {} as ActivityOverview;
+  ACTIVITY_METRICS.forEach((metric, i) => {
+    const outcome = settled[i]!;
+    if (
+      outcome.status === "fulfilled" &&
+      Number.isSafeInteger(outcome.value) &&
+      outcome.value >= 0
+    ) {
+      result[metric] = { ok: true, value: outcome.value };
+      return;
+    }
+    logger.error("dashboard activity metric failed", {
       metric,
       organizationId: orgId,
       errorName:
