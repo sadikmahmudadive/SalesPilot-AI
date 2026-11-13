@@ -17,9 +17,9 @@ No UI has been run in a browser and no real external service has been used (see 
 - [~] 3. AI agents (Phase 3a: tool calling, bounded engine, test console): logic tested, UI and real OpenAI unverified (Phase 3b: RAG roadmap)
 - [~] 4. WhatsApp and unified inbox: logic, webhook signature and routes tested (Phase 4); inbox screens not seen in a browser and no real WhatsApp message ever sent or received
 - [x] 5. Orders, payments, courier: 5a orders + COD, 5b payments, and 5c couriers built (all tests pass; UI not seen in a browser)
-- [ ] 6. Voice calls: not started
-- [ ] 7. Follow-ups and automations (n8n): not started
-- [ ] 8. Analytics and integrations settings: not started
+- [~] 6. Voice calls: logic and routes tested (Phase 6); UI not seen in a browser
+- [~] 7. Follow-ups and automations (n8n): logic and routes tested (Phase 7); UI not seen in a browser
+- [~] 8. Analytics and integrations settings: logic and routes tested (Phase 8); UI not seen in a browser
 
 ## This plan, by task
 
@@ -141,6 +141,12 @@ Plan: `docs/superpowers/plans/2026-11-13-voice-calls.md`.
 - [x] 85. Automations API routes (`/api/automations/*`, `/api/webhooks/automations/*`): `src/app/api/automations/automations-routes.int.test.ts`
 - [~] 86. Automations console UI (`/automations`) and rule builder dialog: `src/components/automations/automations-console.tsx`, `src/components/automations/automation-form-dialog.tsx`; UI not seen in a real browser
 - [x] 87. n8n & automation setup guide: `docs/setup/n8n-automations.md`
+
+### Phase 8: Analytics & Integrations Settings
+
+- [x] 88. Analytics permission, navigation gating, schemas, and live dashboard activity KPIs: `src/lib/security/permissions.test.ts`, `src/config/nav.test.ts`, `src/schemas/analytics.test.ts`, `src/services/dashboard/overview.test.ts`, `src/services/dashboard/overview.int.test.ts`
+- [x] 89. Analytics aggregation service (`getAnalyticsReport`) and API routes (`/api/analytics`, `/api/integrations/status`, `/api/audit-logs`): `src/services/analytics/analytics.test.ts`, `src/services/analytics/analytics.int.test.ts`, `src/app/api/analytics/analytics-routes.int.test.ts`
+- [~] 90. Analytics console (`/analytics`), Platform & Webhooks tab (`/integrations`), and Settings Audit Log tab (`/settings`): `src/components/analytics/analytics-console.tsx`, `src/components/settings/audit-log-viewer.tsx`; UI not seen in a real browser
 
 ## Unverified
 

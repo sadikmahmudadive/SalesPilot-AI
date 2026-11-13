@@ -33,6 +33,7 @@ const ALL: readonly Permission[] = [
   "voice:write",
   "automations:read",
   "automations:write",
+  "analytics:read",
   "integrations:manage",
 ];
 
@@ -52,6 +53,7 @@ const AGENT: readonly Permission[] = [
   "voice:write",
   "automations:read",
   "automations:write",
+  "analytics:read",
 ];
 
 const VIEWER: readonly Permission[] = [
@@ -63,6 +65,7 @@ const VIEWER: readonly Permission[] = [
   "orders:read",
   "voice:read",
   "automations:read",
+  "analytics:read",
 ];
 
 const EXPECTED: Record<Role, readonly Permission[]> = {

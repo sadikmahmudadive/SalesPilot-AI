@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { MessageSquare, Phone } from "lucide-react";
 
-import { KpiCard } from "@/components/dashboard/kpi-card";
-import { KPI_GRID_CLASS, KpiGrid, KpiGridSkeleton } from "@/components/dashboard/kpi-grid";
+import {
+  ActivityKpiGrid,
+  ActivityKpiGridSkeleton,
+  KpiGrid,
+  KpiGridSkeleton,
+} from "@/components/dashboard/kpi-grid";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { requireDashboardContext } from "@/lib/auth/dashboard-context";
 
@@ -25,20 +28,9 @@ export default async function DashboardPage() {
       <Suspense fallback={<KpiGridSkeleton />}>
         <KpiGrid organizationId={ctx.organizationId} />
       </Suspense>
-      <div className={`${KPI_GRID_CLASS} mt-4`}>
-        <KpiCard
-          id="kpi-conversations"
-          title="Conversations"
-          icon={MessageSquare}
-          state={{ kind: "later", phase: 4 }}
-        />
-        <KpiCard
-          id="kpi-voice"
-          title="Voice calls"
-          icon={Phone}
-          state={{ kind: "later", phase: 6 }}
-        />
-      </div>
+      <Suspense fallback={<ActivityKpiGridSkeleton />}>
+        <ActivityKpiGrid organizationId={ctx.organizationId} />
+      </Suspense>
     </div>
   );
 }

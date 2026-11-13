@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AuditLogViewer } from "@/components/settings/audit-log-viewer";
 import { OrderSettingsForm } from "@/components/settings/order-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +28,7 @@ export default async function SettingsPage() {
         <TabsList aria-label="Settings sections">
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
         <TabsContent value="account">
           <Card>
@@ -53,6 +55,9 @@ export default async function SettingsPage() {
         </TabsContent>
         <TabsContent value="orders">
           <OrderSettingsForm canManage={can(ctx.role, "org:manage")} />
+        </TabsContent>
+        <TabsContent value="audit">
+          <AuditLogViewer canReadAudit={can(ctx.role, "audit:read")} />
         </TabsContent>
       </Tabs>
     </div>

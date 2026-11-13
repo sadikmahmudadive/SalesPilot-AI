@@ -16,9 +16,11 @@ import { LEAD_SEGMENTS } from "./lead-segments";
 import { ORDER_INDEXES, toFirestoreIndex as toOrderIndex } from "@/services/orders/order-indexes";
 
 import {
+  ACTIVITY_METRICS,
   COUNTED_ORDER_STATUSES,
   METRICS,
   REVENUE_PAYMENT_STATUSES,
+  activityMetricQueries,
   metricQueries,
   orderMetricQueries,
 } from "./overview";
@@ -168,5 +170,21 @@ describe("order metrics", () => {
         .join(),
     );
     expect(sums).toEqual(["organizationId,paymentStatus,createdAt,totalMinor,__name__"]);
+  });
+});
+
+describe("activityMetricQueries", () => {
+  it("lists conversations and voiceCalls scoped to the organization", () => {
+    expect([...ACTIVITY_METRICS]).toEqual(["conversations", "voiceCalls"]);
+    expect(activityMetricQueries(ORG)).toEqual({
+      conversations: {
+        collection: "conversations",
+        where: [["organizationId", "==", ORG]],
+      },
+      voiceCalls: {
+        collection: "voiceCalls",
+        where: [["organizationId", "==", ORG]],
+      },
+    });
   });
 });
