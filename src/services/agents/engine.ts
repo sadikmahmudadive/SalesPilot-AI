@@ -43,6 +43,8 @@ export interface RunAgentTurnInput {
   signal?: AbortSignal;
   emit: (e: AgentEvent) => void;
   contactPhoneE164?: string;
+  /** Live channels: the inbox conversation this turn belongs to (see ToolContext.conversationId). */
+  conversationId?: string;
 }
 
 /**
@@ -223,6 +225,8 @@ export async function runAgentTurn(
     channel: session.channel,
     actorUid: input.ctx.uid,
     contactPhoneE164: input.contactPhoneE164,
+    ...(input.conversationId !== undefined ? { conversationId: input.conversationId } : {}),
+    turnId: `${input.sessionId}:${session.turnCount}`,
     escalateSession: async (_sId, reason) => {
       await markEscalated(input.ctx, input.sessionId, reason);
     },

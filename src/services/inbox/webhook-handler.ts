@@ -7,7 +7,13 @@
  */
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { FieldValue } from "firebase-admin/firestore";
+
+import { getServerEnv } from "@/config/env";
+import { isValidIdSegment } from "@/lib/ids";
+import { logger } from "@/lib/logger";
 
 import { normalizePhone } from "@/lib/phone";
 import { adminDb } from "@/lib/firebase/admin";
@@ -27,36 +33,68 @@ import {
 import { createCustomer } from "@/services/crm/customers";
 import { customerInputSchema } from "@/schemas/customer";
 import { listAgents } from "@/services/agents/agents";
-import { createSession } from "@/services/agents/sessions";
+import { createSession, findReusableSession } from "@/services/agents/sessions";
+import { ORGANIZATIONS } from "@/repositories/organizations";
 import { runAgentTurn, type EngineDeps } from "@/services/agents/engine";
 
 export interface WebhookHandlerDeps {
   whatsappClient?: ReturnType<typeof createWhatsAppClient>;
   engineDeps?: EngineDeps;
-  resolveOrgId?: (phoneNumberId: string) => Promise<string | null>;
+  resolveOrgId?: (phoneNumberId: string | undefined) => Promise<string | null>;
 }
 
 /**
- * Finds the organization associated with a WhatsApp phone_number_id.
- * Falls back to the first available organization in Firestore if unmapped.
+ * The organization that owns a WhatsApp `phone_number_id`, or null.
+ *
+ * WhatsApp credentials are deployment-level (one access token and one phone number in the server
+ * environment), so the owning workspace is configured the same way: `WHATSAPP_ORGANIZATION_ID`.
+ * A message is accepted only when it was sent to the configured `WHATSAPP_PHONE_NUMBER_ID` and
+ * that organization exists. Anything else is dropped (logged without content): there is
+ * deliberately NO fallback to "some organization", which could deliver a customer's messages to
+ * another tenant.
  */
-export async function defaultResolveOrgId(phoneNumberId: string): Promise<string | null> {
-  const db = adminDb();
-
-  // Try finding an organization with matching WhatsApp configuration
-  const orgsSnap = await db.collection("organizations").limit(10).get();
-  if (orgsSnap.empty) return null;
-
-  for (const doc of orgsSnap.docs) {
-    const data = doc.data();
-    if (data.integrations?.whatsapp?.phoneNumberId === phoneNumberId) {
-      return doc.id;
-    }
+export async function defaultResolveOrgId(
+  phoneNumberId: string | undefined,
+): Promise<string | null> {
+  const env = getServerEnv();
+  const configuredNumber = env.WHATSAPP_PHONE_NUMBER_ID;
+  const orgId = env.WHATSAPP_ORGANIZATION_ID;
+  if (!phoneNumberId || !configuredNumber || phoneNumberId !== configuredNumber) {
+    logger.warn("whatsapp.webhook.unknown_number", { configured: Boolean(configuredNumber) });
+    return null;
   }
+  if (!orgId || !isValidIdSegment(orgId)) {
+    logger.warn("whatsapp.webhook.no_organization", {});
+    return null;
+  }
+  const snap = await adminDb().collection(ORGANIZATIONS).doc(orgId).get();
+  if (!snap.exists) {
+    logger.warn("whatsapp.webhook.organization_missing", {});
+    return null;
+  }
+  return orgId;
+}
 
-  // Fallback to primary/first organization
-  const firstOrg = orgsSnap.docs[0];
-  return firstOrg ? firstOrg.id : null;
+/** `whatsappInbound/{sha256(wamid)}`: one marker per delivered message (Meta may redeliver). */
+export const WHATSAPP_INBOUND = "whatsappInbound";
+
+/**
+ * Claims an inbound message id. True the first time, false for a redelivery (Meta retries a
+ * webhook it did not see answered in time, and this handler runs the AI synchronously). The
+ * marker is written BEFORE processing: a redelivery must never produce a second AI reply.
+ */
+async function claimInbound(orgId: string, messageId: string): Promise<boolean> {
+  const id = createHash("sha256").update(messageId).digest("hex");
+  try {
+    await adminDb()
+      .collection(WHATSAPP_INBOUND)
+      .doc(id)
+      .create({ organizationId: orgId, createdAt: FieldValue.serverTimestamp() });
+    return true;
+  } catch (err) {
+    if ((err as { code?: unknown }).code === 6) return false; // ALREADY_EXISTS
+    throw err;
+  }
 }
 
 export async function processWhatsAppWebhook(
@@ -98,6 +136,7 @@ export async function processWhatsAppWebhook(
 
         for (const msg of value.messages) {
           if (msg.type !== "text" || !msg.text?.body) continue;
+          if (!(await claimInbound(orgId, msg.id))) continue;
 
           const rawPhone = msg.from;
           const senderPhone = normalizePhone(rawPhone) ?? `+${rawPhone}`;
@@ -166,6 +205,7 @@ export async function processWhatsAppWebhook(
               contactName,
               customerId,
               assignedAgentId: defaultAgentId,
+              agentSessionId: null,
               assignedUserId: null,
               status: defaultAgentId ? "ai_handling" : "needs_reply",
               unreadCount: 1,
@@ -204,11 +244,17 @@ export async function processWhatsAppWebhook(
           if (conv.status === "ai_handling" && conv.assignedAgentId) {
             try {
               const agentId = conv.assignedAgentId;
-              const session = await createSession(
-                { organizationId: orgId, uid: "system:whatsapp" },
-                agentId,
-                "whatsapp",
-              );
+              const agentCtx = { organizationId: orgId, uid: "system:whatsapp" };
+              // One agent session per conversation, so the AI keeps the conversation's history;
+              // a new one only when the agent changed, the session escalated or hit its turn limit.
+              let session = await findReusableSession(agentCtx, conv.agentSessionId, agentId);
+              if (!session) {
+                session = await createSession(agentCtx, agentId, "whatsapp");
+                await adminDb()
+                  .collection(CONVERSATIONS)
+                  .doc(conv.id)
+                  .update({ agentSessionId: session.id, updatedAt: FieldValue.serverTimestamp() });
+              }
 
               let replyText = "";
               const engineDeps: EngineDeps = deps.engineDeps ?? {
@@ -220,6 +266,7 @@ export async function processWhatsAppWebhook(
                 sessionId: session.id,
                 userText: msg.text.body,
                 contactPhoneE164: senderPhone,
+                conversationId: conv.id,
                 emit: (event) => {
                   if (event.type === "text_delta") {
                     replyText += event.text;

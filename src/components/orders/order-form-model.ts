@@ -15,6 +15,7 @@ import { formatMinorToTakaInput, parseTakaToMinor } from "@/lib/money";
 import {
   DEFAULT_ORDER_SETTINGS,
   MAX_LINE_QUANTITY,
+  ORDER_ATTEMPT_ENDED_MESSAGE,
   orderCreateSchema,
   type DeliveryZone,
   type Order,
@@ -215,6 +216,15 @@ export function isCreateOutcomeUnknown(error: ApiError): boolean {
 }
 
 export const DRAFT_MAY_EXIST_NOTE = "If a draft was saved, it appears in Orders.";
+
+/**
+ * True when the server refused a create because this key's earlier attempt ended (its draft was
+ * cancelled or expired). The key is spent: the next submit must use a new one, even with the same
+ * contents (Ruling R20).
+ */
+export function isSpentKeyError(error: ApiError): boolean {
+  return error.status === 409 && error.message === ORDER_ATTEMPT_ENDED_MESSAGE;
+}
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 

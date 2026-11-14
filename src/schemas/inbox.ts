@@ -46,6 +46,8 @@ export const conversationSchema = z.object({
   contactName: z.string().max(120),
   customerId: z.string().nullable(),
   assignedAgentId: z.string().nullable(),
+  /** The agent session the AI continues for this conversation (null/absent: start a new one). */
+  agentSessionId: z.string().nullable().optional(),
   assignedUserId: z.string().nullable(),
   status: z.enum(CONVERSATION_STATUSES),
   unreadCount: z.number().int().min(0),

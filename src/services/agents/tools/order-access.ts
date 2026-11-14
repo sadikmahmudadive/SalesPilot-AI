@@ -7,10 +7,12 @@
  * record, is `denied` (`CONTACT_DENIED`). On the test channel there is no contact: the tools run
  * as a dry run and write nothing.
  *
- * SESSION DRAFT (Ruling R3). A session has at most one OPEN draft: the newest of the customer's
- * latest 10 orders that is a `draft` created by the AI in this session (`createdBy.sessionId`)
- * and whose hold has not expired. It is found in memory over the existing customerId + createdAt
- * index; no new index.
+ * OPEN DRAFT (Ruling R3, R19). A conversation has at most one OPEN draft: the newest of the
+ * customer's latest 10 orders that is a `draft` created by the AI in this conversation
+ * (`conversationId`, live channels) or in this session (`createdBy.sessionId`, test channel or no
+ * conversation), and whose hold has not expired. It is found in memory over the existing
+ * customerId + createdAt index; no new index. Idempotency keys are per TURN (`ctx.turnId`), so a
+ * retry inside a turn replays and a later customer message is a new request.
  *
  * SCOPE. `createDraftOrder` knows nothing about the agent's `productAccess`, so every line is
  * checked here first (`checkLines`): a missing, inactive or out-of-scope product is "One item
@@ -151,11 +153,19 @@ export async function contactCustomer(ctx: ToolContext): Promise<CustomerDoc | n
   return findCustomerByPhone(ctx.organizationId, phone);
 }
 
-/** The customer's orders created by the AI in this session (any status), newest first. */
+/**
+ * The customer's orders created by the AI in this conversation (live channel with a
+ * `conversationId`) or in this session (otherwise), any status, newest first.
+ */
 export async function sessionOrders(ctx: ToolContext, customerId: string): Promise<Order[]> {
   const orders = await listCustomerOrders(orderCtxOf(ctx), customerId, SESSION_DRAFT_WINDOW);
+  const byConversation = isLiveChannel(ctx.channel) && ctx.conversationId !== undefined;
   return orders.filter(
-    (o) => o.createdBy.kind === "ai" && o.createdBy.sessionId === ctx.sessionId,
+    (o) =>
+      o.createdBy.kind === "ai" &&
+      (byConversation
+        ? o.conversationId === ctx.conversationId
+        : o.createdBy.sessionId === ctx.sessionId),
   );
 }
 
@@ -174,10 +184,10 @@ export async function openDraftFor(ctx: ToolContext, customerId: string): Promis
   return drafts.find((o) => !isOrderExpired(o)) ?? null;
 }
 
-/** `ai_${sha256(sessionId + stableJson(args)) hex[0..40]}`. */
+/** `ai_${sha256((turnId ?? sessionId) + stableJson(args)) hex[0..40]}`: one key per turn. */
 export function toolIdempotencyKey(ctx: ToolContext, args: unknown): string {
   const hash = createHash("sha256")
-    .update(ctx.sessionId + stableJson(args))
+    .update((ctx.turnId ?? ctx.sessionId) + stableJson(args))
     .digest("hex")
     .slice(0, 40);
   return `ai_${hash}`;

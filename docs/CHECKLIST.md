@@ -73,10 +73,11 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 - [x] 40. Webhook and inbox API routes: `src/app/api/webhooks/whatsapp/route.test.ts`, `src/app/api/inbox/conversations/route.int.test.ts`
 - [~] 41. Unified Inbox UI and navigation: navigation data tested (`src/config/nav.test.ts`); the inbox screens (`src/components/inbox/*`) have no tests and were not seen in a browser
 - [x] 42. WhatsApp setup guide: `docs/setup/whatsapp.md`
+- [x] 42a. WhatsApp conversations (fix after Phase 5a review): one agent session per conversation, redelivered messages answered once, the workspace set by `WHATSAPP_ORGANIZATION_ID` with no fallback to another workspace, and an AI order drafted in one message confirmed in the next: `src/services/inbox/webhook-ai.int.test.ts`, `src/services/agents/tools/order-tools.int.test.ts`
 
 ### Phase 5a: Orders and Cash on Delivery
 
-Plan: `docs/superpowers/plans/2026-11-11-orders-core-cod.md`. Payments (5b) and couriers (5c) are not started.
+Plan: `docs/superpowers/plans/2026-11-11-orders-core-cod.md`.
 
 - [x] 43. Session errors allowlist (an Auth outage no longer logs everyone out): `src/lib/auth/session.test.ts`, `src/lib/auth/session.int.test.ts`
 - [x] 44. Permissions, order schemas, state machine, pricing: `src/lib/security/permissions.test.ts`, `src/schemas/order.test.ts`, `src/schemas/customer.test.ts`, `src/services/orders/state-machine.test.ts`, `src/services/orders/pricing.test.ts`
@@ -92,7 +93,7 @@ Plan: `docs/superpowers/plans/2026-11-11-orders-core-cod.md`. Payments (5b) and 
 
 ### Phase 5b: Payment Gateways and Public Checkout
 
-Plan: `docs/superpowers/plans/2026-11-13-payment-gateways-5b.md`. Couriers (5c) not started.
+Plan: `docs/superpowers/plans/2026-11-13-payment-gateways-5b.md`.
 
 - [x] 54. AES-256-GCM secret box for integration credentials: `src/lib/security/secret-box.test.ts`
 - [x] 55. Schemas and repositories for integration accounts and payment attempts: `src/schemas/integration.test.ts`, `src/schemas/payment.test.ts`, `src/services/payments/payment-indexes.test.ts`, `tests/rules/tenancy.rules.test.ts`
@@ -169,7 +170,7 @@ These have not been done or observed. Do not assume they work.
 
 - **Firebase project (decided 2026-11-08):** reuse `salespilot-ai-9b1cd` (asia-southeast1). Development and tests still use the `demo-salespilot` emulator project. Nothing has been deployed to it yet.
 - **Cloudinary credentials:** to be provided directly in `.env.local` (and in Vercel) by the project owner.
-- **Payments (5b) and couriers (5c):** not started. No payment gateway or courier has been chosen, and no gateway or courier account exists.
+- **Payments (5b) and couriers (5c):** built against documented APIs and mocks; no real gateway or courier account has been connected or tested yet.
 - **Authorized domains and `authDomain`:** staying on `*.firebaseapp.com` unless a custom auth domain is wanted (needs a CSP change).
 
 ## Last verified run (2026-11-12, branch `feat/orders-payments`)

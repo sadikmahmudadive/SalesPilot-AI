@@ -24,6 +24,19 @@ export interface ToolContext {
    */
   contactPhoneE164?: string;
   /**
+   * LIVE channels only: the inbox conversation this turn belongs to (set by the channel layer,
+   * never from model output). The order tools find "the open draft" by conversation, so a draft
+   * made in one customer message can be confirmed in the next even if the agent session rolled
+   * over. Absent on the test channel (drafts there are matched by `sessionId`).
+   */
+  conversationId?: string;
+  /**
+   * Identifies the current turn (`{sessionId}:{turnIndex}`), set by the engine. Tool idempotency
+   * keys are per turn: a retry inside one turn replays, a later message is a new request.
+   * Absent in direct tool calls (tests): the key then falls back to `sessionId`.
+   */
+  turnId?: string;
+  /**
    * Marks the session as escalated to a human (status + reason). Provided by the session layer
    * (the engine wires it); `escalate_to_human` calls it on live channels only, and fails closed
    * (`failed`) when it is absent. Never called on the test channel.

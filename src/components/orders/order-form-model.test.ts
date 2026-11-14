@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isSpentKeyError,
   bindIdempotencyKey,
   buildDraftPatch,
   EMPTY_ORDER_VALUES,
@@ -14,7 +15,7 @@ import {
   type OrderFormValues,
 } from "@/components/orders/order-form-model";
 import { ApiError } from "@/lib/api/client";
-import { DEFAULT_ORDER_SETTINGS, type Order } from "@/schemas/order";
+import { DEFAULT_ORDER_SETTINGS, ORDER_ATTEMPT_ENDED_MESSAGE, type Order } from "@/schemas/order";
 import { priceOrder } from "@/services/orders/pricing";
 
 const KEY = "0123456789abcdef";
@@ -399,5 +400,18 @@ describe("isCreateOutcomeUnknown", () => {
     expect(isCreateOutcomeUnknown(err(409, "CONFLICT"))).toBe(true);
     expect(isCreateOutcomeUnknown(err(500, "INTERNAL"))).toBe(true);
     expect(isCreateOutcomeUnknown(err(0, "NETWORK"))).toBe(true);
+  });
+});
+
+describe("isSpentKeyError", () => {
+  it("is true only for the 409 'attempt has ended' refusal", () => {
+    const spent = new ApiError({ status: 409, code: "CONFLICT", message: ORDER_ATTEMPT_ENDED_MESSAGE });
+    expect(isSpentKeyError(spent)).toBe(true);
+    expect(
+      isSpentKeyError(new ApiError({ status: 409, code: "CONFLICT", message: "Inventory is busy, please try again" })),
+    ).toBe(false);
+    expect(
+      isSpentKeyError(new ApiError({ status: 400, code: "VALIDATION_ERROR", message: ORDER_ATTEMPT_ENDED_MESSAGE })),
+    ).toBe(false);
   });
 });

@@ -28,6 +28,8 @@ import { VoiceFormDialog } from "@/components/integrations/voice-form-dialog";
 
 interface PlatformStatus {
   whatsapp: boolean;
+  /** True when WHATSAPP_ORGANIZATION_ID is this workspace (messages are delivered here). */
+  whatsappLinkedHere?: boolean;
   openai: boolean;
   cloudinary: boolean;
   n8n: boolean;
@@ -41,6 +43,7 @@ export default function IntegrationsPage() {
   const [couriers, setCouriers] = useState<CourierAccountSummary[]>([]);
   const [voiceAccounts, setVoiceAccounts] = useState<VoiceAccountSummary[]>([]);
   const [platformStatus, setPlatformStatus] = useState<PlatformStatus | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loadingGateways, setLoadingGateways] = useState(true);
   const [loadingCouriers, setLoadingCouriers] = useState(true);
   const [loadingVoice, setLoadingVoice] = useState(true);
@@ -105,8 +108,9 @@ export default function IntegrationsPage() {
       setLoadingPlatform(true);
       const res = await fetch("/api/integrations/status");
       if (!res.ok) throw new Error("Failed to load platform status");
-      const json = (await res.json()) as { status?: PlatformStatus };
+      const json = (await res.json()) as { status?: PlatformStatus; workspaceId?: string };
       if (json.status) setPlatformStatus(json.status);
+      if (json.workspaceId) setWorkspaceId(json.workspaceId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load platform status");
     } finally {
@@ -138,8 +142,9 @@ export default function IntegrationsPage() {
           if (!cancelled) setVoiceAccounts(vcJson.items ?? []);
         }
         if (stRes.ok) {
-          const stJson = (await stRes.json()) as { status?: PlatformStatus };
+          const stJson = (await stRes.json()) as { status?: PlatformStatus; workspaceId?: string };
           if (!cancelled && stJson.status) setPlatformStatus(stJson.status);
+          if (!cancelled && stJson.workspaceId) setWorkspaceId(stJson.workspaceId);
         }
       } catch (err) {
         if (!cancelled) {
@@ -516,6 +521,12 @@ export default function IntegrationsPage() {
                   </div>
                   <p className="text-xs text-muted-foreground">{channel.description}</p>
                   <p className="text-[11px] text-muted-foreground/80">{channel.guide}</p>
+                  {channel.name === "WhatsApp Cloud API" && workspaceId ? (
+                    <WhatsAppWorkspaceLink
+                      workspaceId={workspaceId}
+                      linked={platformStatus?.whatsappLinkedHere ?? false}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -590,6 +601,36 @@ export default function IntegrationsPage() {
         editing={editingVoice}
         onSuccess={refreshVoice}
       />
+    </div>
+  );
+}
+
+/**
+ * Which workspace receives WhatsApp messages. The owner is set in the server environment
+ * (`WHATSAPP_ORGANIZATION_ID`), so this shows this workspace's id to copy into it.
+ */
+function WhatsAppWorkspaceLink({ workspaceId, linked }: { workspaceId: string; linked: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-[11px]">
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">
+          {linked ? "Messages are delivered to this workspace" : "Not linked to this workspace"}
+        </p>
+        <p className="font-mono text-muted-foreground truncate">
+          WHATSAPP_ORGANIZATION_ID={workspaceId}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard.writeText(workspaceId);
+          toast.success("Workspace ID copied");
+        }}
+        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 font-medium hover:bg-muted cursor-pointer shrink-0"
+      >
+        <Copy className="w-3 h-3" />
+        Copy ID
+      </button>
     </div>
   );
 }

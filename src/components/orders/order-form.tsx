@@ -20,6 +20,7 @@ import {
   bindIdempotencyKey,
   DRAFT_MAY_EXIST_NOTE,
   isCreateOutcomeUnknown,
+  isSpentKeyError,
   type IdempotencyBinding,
   orderToFormValues,
   previewTotals,
@@ -242,6 +243,9 @@ export function OrderForm({ order, onCancel, onSaved }: OrderFormProps) {
       }
     } catch (error) {
       const apiError = asApiError(error);
+      // A spent key (its attempt was cancelled or expired) must not be reused: the next submit,
+      // even with unchanged contents, starts a fresh order.
+      if (isSpentKeyError(apiError)) keyBinding.current = null;
       const mapped = mapOrderApiError(apiError);
       const focused = showErrors(mapped.fields);
       // A create that failed after the draft was made (confirm refused, connection lost) leaves a

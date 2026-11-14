@@ -124,6 +124,7 @@ async function createFresh(
       discountMinor: 0,
       idempotencyKey: toolIdempotencyKey(ctx, after === undefined ? input : { args: input, after }),
       source: "ai",
+      ...(ctx.conversationId !== undefined ? { conversationId: ctx.conversationId } : {}),
     });
     if (order.customerId !== customer.id) return { kind: "foreign" };
     if (isConfirmedOrLater(order)) return { kind: "confirmed" };

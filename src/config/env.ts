@@ -46,6 +46,7 @@ const serverShape = {
   WHATSAPP_ACCESS_TOKEN: optional,
   WHATSAPP_VERIFY_TOKEN: optional,
   WHATSAPP_APP_SECRET: optional,
+  WHATSAPP_ORGANIZATION_ID: optional,
   META_GRAPH_API_VERSION: optional,
 
   OPENAI_API_KEY: optional,
@@ -115,6 +116,7 @@ const INTEGRATION_KEYS: Record<Integration, readonly (keyof ServerEnv)[]> = {
     "WHATSAPP_ACCESS_TOKEN",
     "WHATSAPP_VERIFY_TOKEN",
     "WHATSAPP_APP_SECRET",
+    "WHATSAPP_ORGANIZATION_ID",
   ],
   openai: ["OPENAI_API_KEY"],
   twilio: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],

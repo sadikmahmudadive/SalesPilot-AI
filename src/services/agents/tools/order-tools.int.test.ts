@@ -350,13 +350,50 @@ describe("create_draft_order on a live channel", () => {
     expect(await ordersOf(customer.id)).toHaveLength(5);
   });
 
-  it("a different session of the same contact starts its own draft", async () => {
+  it("without a conversation, a different session of the same contact starts its own draft", async () => {
     const { phone, customer } = await seedContact();
     const agent = makeAgent();
     const args = createArgs([{ productId: cap.id, quantity: 1 }]);
     okOf(await call(liveCtx(agent, phone), "create_draft_order", args));
     okOf(await call(liveCtx(agent, phone), "create_draft_order", args));
     expect(await ordersOf(customer.id)).toHaveLength(2);
+  });
+
+  it("finds the open draft by conversation across sessions and turns (R19)", async () => {
+    const { phone, customer } = await seedContact();
+    const agent = makeAgent();
+    const conversationId = `conv-${randomUUID()}`;
+    const inConversation = (sessionId: string, turn: number) => ({
+      ...liveCtx(agent, phone, sessionId),
+      conversationId,
+      turnId: `${sessionId}:${turn}`,
+    });
+    const created = okOf(
+      await call(inConversation("s-a", 0), "create_draft_order", createArgs([{ productId: cap.id, quantity: 1 }])),
+    );
+    // A later message, in a NEW session of the same conversation, confirms that draft.
+    const confirmed = okOf(
+      await call(inConversation("s-b", 3), "confirm_order", {
+        customerConfirmed: true,
+        confirmationQuote: "yes",
+      }),
+    );
+    expect(confirmed.data.orderNumber).toBe(created.data.orderNumber);
+    const orders = await ordersOf(customer.id);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]!.status).toBe("confirmed");
+    expect(orders[0]!.conversationId).toBe(conversationId);
+
+    // Another conversation of the same contact has its own drafts.
+    const other = {
+      ...liveCtx(agent, phone, "s-a"),
+      conversationId: `conv-${randomUUID()}`,
+      turnId: "s-a:0",
+    };
+    expect(await call(other, "confirm_order", { customerConfirmed: true, confirmationQuote: "yes" })).toMatchObject({
+      ok: false,
+      code: "not_found",
+    });
   });
 
   it("denies a live call without a contact phone, or for a contact with no customer record", async () => {

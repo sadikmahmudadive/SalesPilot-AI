@@ -106,3 +106,22 @@ export async function markEscalated(
     escalationReason: reason,
   });
 }
+
+/**
+ * The session to continue for a live conversation, or null when a new one must be started: the
+ * session must exist in the organization, belong to `agentId` (a reassigned conversation starts
+ * fresh), still be `open` (not escalated), and be below the agent's turn limit (the engine refuses
+ * a turn at the limit, so the conversation rolls over to a new session instead of failing).
+ */
+export async function findReusableSession(
+  ctx: AgentCtx,
+  sessionId: string | null | undefined,
+  agentId: string,
+): Promise<AgentSession | null> {
+  if (!sessionId) return null;
+  const session = await sessionRepo.get(ctx.organizationId, sessionId);
+  if (!session || session.agentId !== agentId || session.status !== "open") return null;
+  const agent = await getAgent(ctx, agentId);
+  const maxTurns = agent.limits?.maxTurnsPerSession ?? 30;
+  return session.turnCount < maxTurns ? session : null;
+}
