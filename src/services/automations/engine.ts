@@ -2,17 +2,13 @@ import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
-import { isConfigured } from "@/config/env";
 import { fetchOutbound } from "@/lib/api/outbound-http";
 import { adminDb } from "@/lib/firebase/admin";
 import { normalizePhone } from "@/lib/phone";
 import { writeAudit } from "@/lib/security/audit";
 import { unsealSecret } from "@/lib/security/secret-box";
-import { createWhatsAppClient } from "@/lib/whatsapp/client";
-import {
-  hasExistingRunForDedupeKey,
-  recordAutomationRun,
-} from "@/repositories/automations";
+import { whatsappClientFor } from "@/services/whatsapp/connections";
+import { hasExistingRunForDedupeKey, recordAutomationRun } from "@/repositories/automations";
 import {
   CONVERSATIONS,
   conversationRepo,
@@ -22,11 +18,7 @@ import { customerRepo, CUSTOMERS, type CustomerDoc } from "@/repositories/custom
 import { addConversationMessage } from "@/repositories/inbox-messages";
 import { orderRepo } from "@/repositories/orders";
 import { productRepo } from "@/repositories/products";
-import type {
-  AutomationRule,
-  AutomationRun,
-  AutomationTargetType,
-} from "@/schemas/automation";
+import type { AutomationRule, AutomationRun, AutomationTargetType } from "@/schemas/automation";
 import type { Order } from "@/schemas/order";
 import type { Product } from "@/schemas/product";
 import { initiateOutboundCall } from "@/services/voice/calls";
@@ -148,39 +140,28 @@ export async function executeAutomationRule(
           templateVars,
         ).trim();
 
-        let externalId: string | null = `wamid_auto_${Date.now()}`;
-        if (isConfigured("whatsapp")) {
-          const wa = createWhatsAppClient();
-          const sent = await wa.sendTextMessage(phoneE164, messageText);
-          externalId = sent.messageId;
-        }
-
-        const nowIso = new Date().toISOString();
-        let conv = await findConversationByContact(orgId, phoneE164, "whatsapp");
-        if (!conv) {
-          conv = await conversationRepo.create(orgId, {
-            channel: "whatsapp",
-            contactPhoneE164: phoneE164,
-            contactName: customerName,
-            customerId: customer?.id ?? null,
-            assignedAgentId: rule.actionConfig.agentId ?? null,
-            assignedUserId: null,
-            status: "human_handling",
-            unreadCount: 0,
-            lastMessage: {
-              text: messageText,
-              sender: "system",
-              senderName: rule.name,
-              at: nowIso,
-            },
-            lastActivityAt: nowIso,
-            searchLower: `${customerName} ${phoneE164}`.toLowerCase(),
-          });
+        // Send from this workspace's own number only; with none connected the run is skipped
+        // (never recorded as sent, never sent from another workspace's number).
+        const wa = await whatsappClientFor(orgId);
+        if (!wa) {
+          status = "skipped";
+          summary = "WhatsApp is not connected for this workspace";
         } else {
-          await adminDb()
-            .collection(CONVERSATIONS)
-            .doc(conv.id)
-            .update({
+          const sent = await wa.sendTextMessage(phoneE164, messageText);
+          const externalId: string | null = sent.messageId;
+
+          const nowIso = new Date().toISOString();
+          let conv = await findConversationByContact(orgId, phoneE164, "whatsapp");
+          if (!conv) {
+            conv = await conversationRepo.create(orgId, {
+              channel: "whatsapp",
+              contactPhoneE164: phoneE164,
+              contactName: customerName,
+              customerId: customer?.id ?? null,
+              assignedAgentId: rule.actionConfig.agentId ?? null,
+              assignedUserId: null,
+              status: "human_handling",
+              unreadCount: 0,
               lastMessage: {
                 text: messageText,
                 sender: "system",
@@ -188,31 +169,43 @@ export async function executeAutomationRule(
                 at: nowIso,
               },
               lastActivityAt: nowIso,
-              updatedAt: FieldValue.serverTimestamp(),
+              searchLower: `${customerName} ${phoneE164}`.toLowerCase(),
             });
-        }
+          } else {
+            await adminDb()
+              .collection(CONVERSATIONS)
+              .doc(conv.id)
+              .update({
+                lastMessage: {
+                  text: messageText,
+                  sender: "system",
+                  senderName: rule.name,
+                  at: nowIso,
+                },
+                lastActivityAt: nowIso,
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+          }
 
-        await addConversationMessage(orgId, conv.id, {
-          direction: "outbound",
-          sender: "system",
-          senderName: `Automation: ${rule.name}`,
-          type: "text",
-          text: messageText,
-          status: "sent",
-          externalId,
-        });
+          await addConversationMessage(orgId, conv.id, {
+            direction: "outbound",
+            sender: "system",
+            senderName: `Automation: ${rule.name}`,
+            type: "text",
+            text: messageText,
+            status: "sent",
+            externalId,
+          });
 
-        if (customer) {
-          await adminDb()
-            .collection(CUSTOMERS)
-            .doc(customer.id)
-            .update({
+          if (customer) {
+            await adminDb().collection(CUSTOMERS).doc(customer.id).update({
               lastInteractionAt: Timestamp.now(),
               updatedAt: Timestamp.now(),
             });
-        }
+          }
 
-        summary = `Sent WhatsApp follow-up to ${phoneE164}`;
+          summary = `Sent WhatsApp follow-up to ${phoneE164}`;
+        }
       }
     } else if (rule.action === "place_voice_call") {
       if (!phoneE164 && !customer?.id && !order?.id) {

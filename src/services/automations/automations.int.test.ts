@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ForbiddenError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
@@ -10,6 +10,7 @@ import { customerRepo } from "@/repositories/customers";
 import { listConversationMessages } from "@/repositories/inbox-messages";
 import { findConversationByContact } from "@/repositories/conversations";
 import { ORDERS } from "@/repositories/orders";
+import { saveWhatsAppConnection } from "@/services/whatsapp/connections";
 
 import {
   evaluateOrganizationAutomations,
@@ -17,6 +18,29 @@ import {
 } from "./sweep";
 
 process.env.ENCRYPTION_KEY ??= "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** Connects a WhatsApp number for `orgId` and answers Graph sends; returns the captured sends. */
+async function connectWhatsApp(orgId: string) {
+  await saveWhatsAppConnection(
+    { organizationId: orgId, uid: "u_owner" },
+    {
+      phoneNumberId: `6${String(Date.now()).slice(-9)}${Math.floor(Math.random() * 10)}`,
+      businessAccountId: "1022901",
+      accessToken: "EAAG-automation-token-000001",
+      enabled: true,
+    },
+  );
+  const sends: string[] = [];
+  vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+    sends.push(String(init?.body ?? ""));
+    return Response.json({ messages: [{ id: `wamid.auto.${sends.length}` }] });
+  });
+  return sends;
+}
 
 describe("automations engine & sweep (integration)", () => {
   it("runs stale draft WhatsApp follow-up, skips opted-out customers, deduplicates, and verifies n8n webhooks", async () => {
@@ -112,8 +136,11 @@ describe("automations engine & sweep (integration)", () => {
       createdBy: "u_owner",
     });
 
+    const sends = await connectWhatsApp(orgId);
+
     // First sweep: processes 2 orders (1 succeeded, 1 skipped due to opt-out)
     const first = await evaluateOrganizationAutomations(orgId, new Date(), "u_owner");
+    expect(sends).toHaveLength(1);
     expect(first.evaluated).toBe(2);
     expect(first.succeeded).toBe(1);
     expect(first.skipped).toBe(1);
@@ -162,5 +189,58 @@ describe("automations engine & sweep (integration)", () => {
 
     const runs = await listAutomationRuns(orgId);
     expect(runs).toHaveLength(3);
+  });
+
+  it("skips a WhatsApp follow-up when the workspace has no connected number", async () => {
+    const orgId = `org_auto_nowa_${randomUUID().slice(0, 8)}`;
+    const customer = await customerRepo.create(orgId, {
+      fullName: "Nadia Rahman",
+      fullNameLower: "nadia rahman",
+      phone: "+8801711223366",
+      phoneE164: "+8801711223366",
+      customerType: "retail",
+      segment: "interested",
+      tags: [],
+      tagsLower: [],
+      lastInteractionAt: null,
+      totalSpendMinor: 0,
+      consent: { status: "granted" },
+    });
+    const staleCreatedAt = Timestamp.fromMillis(Date.now() - 60 * 60_000);
+    await adminDb()
+      .collection(ORDERS)
+      .doc(`ord_stale_nowa_${orgId}`)
+      .set({
+        organizationId: orgId,
+        orderNumber: "SP-3001",
+        status: "draft",
+        paymentStatus: "unpaid",
+        customerId: customer.id,
+        customerSnapshot: { name: customer.fullName, phoneE164: customer.phoneE164 },
+        shippingAddress: { name: customer.fullName, phoneE164: customer.phoneE164, street: "Road 1" },
+        lines: [],
+        subtotalMinor: 120000,
+        totalMinor: 120000,
+        createdAt: staleCreatedAt,
+        updatedAt: staleCreatedAt,
+      });
+    await createAutomationRule({
+      organizationId: orgId,
+      name: "Stale Draft Follow-up",
+      enabled: true,
+      trigger: "draft_order_stale",
+      triggerConfig: { delayMinutes: 30 },
+      action: "send_whatsapp",
+      actionConfig: { messageTemplate: "Hi {{customerName}}" },
+      createdBy: "u_owner",
+    });
+
+    const result = await evaluateOrganizationAutomations(orgId, new Date(), "u_owner");
+    expect(result.evaluated).toBe(1);
+    expect(result.succeeded).toBe(0);
+    expect(result.skipped).toBe(1);
+    const runs = await listAutomationRuns(orgId, {});
+    expect(runs[0]?.summary).toBe("WhatsApp is not connected for this workspace");
+    expect(await findConversationByContact(orgId, customer.phoneE164, "whatsapp")).toBeNull();
   });
 });

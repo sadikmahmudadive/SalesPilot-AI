@@ -1,7 +1,8 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import { adminDb } from "@/lib/firebase/admin";
 import { conversationRepo } from "@/repositories/conversations";
+import { disconnectWhatsApp, saveWhatsAppConnection } from "@/services/whatsapp/connections";
 
 import {
   getConversation,
@@ -157,6 +158,49 @@ describe("Inbox Service", () => {
     const messages = await listMessages({ organizationId: ORG, uid: UID }, conv.id);
     expect(messages.items.length).toBe(1);
     expect(messages.items[0]?.id).toBe(msg.id);
+  });
+
+  it("sendHumanMessage sends from the workspace's connected number", async () => {
+    vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 3).toString("base64"));
+    const token = "EAAG-inbox-workspace-token-0001";
+    const number = `7${String(Date.now()).slice(-9)}`;
+    await saveWhatsAppConnection(
+      { organizationId: ORG, uid: UID },
+      { phoneNumberId: number, businessAccountId: "1022901", accessToken: token, enabled: true },
+    );
+    const conv = await conversationRepo.create(ORG, {
+      channel: "whatsapp",
+      contactPhoneE164: "+8801711000009",
+      contactName: "Rina",
+      customerId: null,
+      assignedAgentId: null,
+      assignedUserId: null,
+      status: "needs_reply",
+      unreadCount: 1,
+      lastMessage: null,
+      lastActivityAt: "2026-11-10T01:00:00.000Z",
+      searchLower: "rina +8801711000009",
+    });
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, auth: new Headers(init?.headers).get("authorization") });
+      return Response.json({ messages: [{ id: "wamid.staff.1" }] });
+    }) as unknown as typeof fetch;
+    try {
+      const msg = await sendHumanMessage(
+        { organizationId: ORG, uid: UID, name: "Manager Alice" },
+        conv.id,
+        { text: "Hello Rina" },
+        { fetchFn },
+      );
+      expect(msg.externalId).toBe("wamid.staff.1");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.url).toContain(`/${number}/messages`);
+      expect(calls[0]!.auth).toBe(`Bearer ${token}`);
+    } finally {
+      await disconnectWhatsApp({ organizationId: ORG, uid: UID });
+      vi.unstubAllEnvs();
+    }
   });
 
   it("updateConversation transitions status, assigns user/agent, and records audit", async () => {

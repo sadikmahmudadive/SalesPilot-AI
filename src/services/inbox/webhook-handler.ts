@@ -11,14 +11,10 @@ import { createHash } from "node:crypto";
 
 import { FieldValue } from "firebase-admin/firestore";
 
-import { getServerEnv } from "@/config/env";
-import { isValidIdSegment } from "@/lib/ids";
-import { logger } from "@/lib/logger";
-
 import { normalizePhone } from "@/lib/phone";
 import { adminDb } from "@/lib/firebase/admin";
 import { getChatProvider } from "@/lib/ai/openai-provider";
-import { createWhatsAppClient } from "@/lib/whatsapp/client";
+import type { WhatsAppClient } from "@/lib/whatsapp/client";
 import type { WhatsAppWebhookPayload } from "@/lib/whatsapp/types";
 import {
   conversationRepo,
@@ -34,46 +30,24 @@ import { createCustomer } from "@/services/crm/customers";
 import { customerInputSchema } from "@/schemas/customer";
 import { listAgents } from "@/services/agents/agents";
 import { createSession, findReusableSession } from "@/services/agents/sessions";
-import { ORGANIZATIONS } from "@/repositories/organizations";
+import { resolveWhatsAppOrg, whatsappClientFor } from "@/services/whatsapp/connections";
 import { runAgentTurn, type EngineDeps } from "@/services/agents/engine";
 
 export interface WebhookHandlerDeps {
-  whatsappClient?: ReturnType<typeof createWhatsAppClient>;
+  /** Test seam: one client for every workspace (skips per-workspace resolution). */
+  whatsappClient?: WhatsAppClient;
+  /** Test seam: the fetch used by per-workspace clients. */
+  fetchFn?: typeof fetch;
   engineDeps?: EngineDeps;
   resolveOrgId?: (phoneNumberId: string | undefined) => Promise<string | null>;
 }
 
 /**
- * The organization that owns a WhatsApp `phone_number_id`, or null.
- *
- * WhatsApp credentials are deployment-level (one access token and one phone number in the server
- * environment), so the owning workspace is configured the same way: `WHATSAPP_ORGANIZATION_ID`.
- * A message is accepted only when it was sent to the configured `WHATSAPP_PHONE_NUMBER_ID` and
- * that organization exists. Anything else is dropped (logged without content): there is
- * deliberately NO fallback to "some organization", which could deliver a customer's messages to
- * another tenant.
+ * The organization that owns a WhatsApp `phone_number_id`, or null. See `resolveWhatsAppOrg`:
+ * the workspace that connected the number in Integrations, else the env single-number setup.
+ * There is deliberately no fallback to "some organization".
  */
-export async function defaultResolveOrgId(
-  phoneNumberId: string | undefined,
-): Promise<string | null> {
-  const env = getServerEnv();
-  const configuredNumber = env.WHATSAPP_PHONE_NUMBER_ID;
-  const orgId = env.WHATSAPP_ORGANIZATION_ID;
-  if (!phoneNumberId || !configuredNumber || phoneNumberId !== configuredNumber) {
-    logger.warn("whatsapp.webhook.unknown_number", { configured: Boolean(configuredNumber) });
-    return null;
-  }
-  if (!orgId || !isValidIdSegment(orgId)) {
-    logger.warn("whatsapp.webhook.no_organization", {});
-    return null;
-  }
-  const snap = await adminDb().collection(ORGANIZATIONS).doc(orgId).get();
-  if (!snap.exists) {
-    logger.warn("whatsapp.webhook.organization_missing", {});
-    return null;
-  }
-  return orgId;
-}
+export const defaultResolveOrgId = resolveWhatsAppOrg;
 
 /** `whatsappInbound/{sha256(wamid)}`: one marker per delivered message (Meta may redeliver). */
 export const WHATSAPP_INBOUND = "whatsappInbound";
@@ -108,7 +82,6 @@ export async function processWhatsAppWebhook(
     return { processedMessages, processedStatuses };
   }
 
-  const client = deps.whatsappClient ?? createWhatsAppClient();
   const resolveOrg = deps.resolveOrgId ?? defaultResolveOrgId;
 
   for (const entry of payload.entry) {
@@ -133,6 +106,10 @@ export async function processWhatsAppWebhook(
       if (Array.isArray(value.messages)) {
         const orgId = await resolveOrg(phoneNumberId);
         if (!orgId) continue;
+        // Replies go out from the number of the workspace the message belongs to.
+        const client: WhatsAppClient | null =
+          deps.whatsappClient ??
+          (await whatsappClientFor(orgId, deps.fetchFn ? { fetchFn: deps.fetchFn } : {}));
 
         for (const msg of value.messages) {
           if (msg.type !== "text" || !msg.text?.body) continue;
@@ -235,13 +212,14 @@ export async function processWhatsAppWebhook(
 
           // Mark message as read on WhatsApp
           try {
-            await client.markMessageAsRead(msg.id);
+            await client?.markMessageAsRead(msg.id);
           } catch {
             // Non-critical if mark-as-read fails
           }
 
           // Handle AI vs Human processing
-          if (conv.status === "ai_handling" && conv.assignedAgentId) {
+          // No sending number for this workspace (disabled or not connected): a person handles it.
+          if (client && conv.status === "ai_handling" && conv.assignedAgentId) {
             try {
               const agentId = conv.assignedAgentId;
               const agentCtx = { organizationId: orgId, uid: "system:whatsapp" };
@@ -307,13 +285,10 @@ export async function processWhatsAppWebhook(
               }
             } catch {
               // On AI failure, mark conversation for human attention
-              await adminDb()
-                .collection(CONVERSATIONS)
-                .doc(conv.id)
-                .update({
-                  status: "needs_reply",
-                  updatedAt: FieldValue.serverTimestamp(),
-                });
+              await adminDb().collection(CONVERSATIONS).doc(conv.id).update({
+                status: "needs_reply",
+                updatedAt: FieldValue.serverTimestamp(),
+              });
             }
           } else {
             // Human handling: increment unreadCount and update conversation status

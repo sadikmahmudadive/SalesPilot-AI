@@ -8,20 +8,17 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
-import { isConfigured } from "@/config/env";
 import { NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAudit } from "@/lib/security/audit";
-import { createWhatsAppClient } from "@/lib/whatsapp/client";
+import type { WhatsAppClient } from "@/lib/whatsapp/client";
+import { whatsappClientFor } from "@/services/whatsapp/connections";
 import {
   conversationRepo,
   CONVERSATIONS,
   type ConversationDoc,
 } from "@/repositories/conversations";
-import {
-  addConversationMessage,
-  listConversationMessages,
-} from "@/repositories/inbox-messages";
+import { addConversationMessage, listConversationMessages } from "@/repositories/inbox-messages";
 import type {
   Conversation,
   ConversationListQuery,
@@ -43,9 +40,7 @@ export async function listConversations(
   const db = adminDb();
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
 
-  let q = db
-    .collection(CONVERSATIONS)
-    .where("organizationId", "==", ctx.organizationId);
+  let q = db.collection(CONVERSATIONS).where("organizationId", "==", ctx.organizationId);
 
   if (query.status) {
     q = q.where("status", "==", query.status);
@@ -72,19 +67,14 @@ export async function listConversations(
   if (query.search) {
     const term = query.search.toLowerCase();
     items = items.filter(
-      (c) =>
-        c.contactName.toLowerCase().includes(term) ||
-        c.contactPhoneE164.includes(term),
+      (c) => c.contactName.toLowerCase().includes(term) || c.contactPhoneE164.includes(term),
     );
   }
 
   return { items, nextCursor };
 }
 
-export async function getConversation(
-  ctx: InboxCtx,
-  id: string,
-): Promise<Conversation> {
+export async function getConversation(ctx: InboxCtx, id: string): Promise<Conversation> {
   const db = adminDb();
   const doc = await db.collection(CONVERSATIONS).doc(id).get();
   const conv = conversationRepo.fromSnapshot(doc, ctx.organizationId);
@@ -106,15 +96,18 @@ export async function sendHumanMessage(
   ctx: InboxCtx,
   conversationId: string,
   input: SendMessageInput,
-  deps?: { whatsappClient?: ReturnType<typeof createWhatsAppClient> },
+  deps?: { whatsappClient?: WhatsAppClient; fetchFn?: typeof fetch },
 ): Promise<InboxMessage> {
   const conv = await getConversation(ctx, conversationId);
 
-  const client = deps?.whatsappClient ?? createWhatsAppClient();
   let externalId: string | null = null;
 
   if (conv.channel === "whatsapp") {
-    if (deps?.whatsappClient || isConfigured("whatsapp")) {
+    // The workspace's own number; with none connected the message is kept with a simulated id.
+    const client =
+      deps?.whatsappClient ??
+      (await whatsappClientFor(ctx.organizationId, deps?.fetchFn ? { fetchFn: deps.fetchFn } : {}));
+    if (client) {
       const sendRes = await client.sendTextMessage(conv.contactPhoneE164, input.text);
       externalId = sendRes.messageId;
     } else {
@@ -220,8 +213,10 @@ export async function updateConversation(
     },
     after: {
       status: updates.status ?? conv.status,
-      assignedUserId: updates.assignedUserId !== undefined ? updates.assignedUserId : conv.assignedUserId,
-      assignedAgentId: updates.assignedAgentId !== undefined ? updates.assignedAgentId : conv.assignedAgentId,
+      assignedUserId:
+        updates.assignedUserId !== undefined ? updates.assignedUserId : conv.assignedUserId,
+      assignedAgentId:
+        updates.assignedAgentId !== undefined ? updates.assignedAgentId : conv.assignedAgentId,
     },
   });
 

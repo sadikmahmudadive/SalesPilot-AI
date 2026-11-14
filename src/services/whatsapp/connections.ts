@@ -22,10 +22,13 @@ import {
   ValidationError,
 } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
+import { isValidIdSegment } from "@/lib/ids";
 import { logger } from "@/lib/logger";
 import { assertOrgCtx, type OrgCtx } from "@/lib/org-context";
 import { writeAuditInTransaction } from "@/lib/security/audit";
 import { isEncryptionConfigured, sealSecret, unsealSecret } from "@/lib/security/secret-box";
+import { createWhatsAppClient, type WhatsAppClient } from "@/lib/whatsapp/client";
+import { ORGANIZATIONS } from "@/repositories/organizations";
 import { connectionRef, phoneLockRef } from "@/repositories/whatsapp-connections";
 import {
   toConnectionSummary,
@@ -58,7 +61,8 @@ export async function readConnection(orgId: string): Promise<WhatsAppConnectionD
 /** The connection's access token. Server-only; never return or log it. */
 export function accessTokenOf(doc: WhatsAppConnectionDoc): string {
   const parsed = JSON.parse(unsealSecret(doc.credentials)) as { accessToken?: unknown };
-  if (typeof parsed.accessToken !== "string") throw new Error("WhatsApp credentials are unreadable");
+  if (typeof parsed.accessToken !== "string")
+    throw new Error("WhatsApp credentials are unreadable");
   return parsed.accessToken;
 }
 
@@ -159,9 +163,16 @@ export async function testWhatsAppConnection(
     if (!res.ok) {
       result = { ok: false };
     } else {
-      const body = (await res.json()) as { display_phone_number?: unknown; verified_name?: unknown };
+      const body = (await res.json()) as {
+        display_phone_number?: unknown;
+        verified_name?: unknown;
+      };
       const text = (v: unknown) => (typeof v === "string" ? v.slice(0, 120) : null);
-      result = { ok: true, display: text(body.display_phone_number), name: text(body.verified_name) };
+      result = {
+        ok: true,
+        display: text(body.display_phone_number),
+        name: text(body.verified_name),
+      };
     }
   } catch {
     result = { ok: false };
@@ -203,4 +214,78 @@ export async function disconnectWhatsApp(ctx: OrgCtx): Promise<void> {
       resourceId: ctx.organizationId,
     });
   });
+}
+
+// ---- routing and sending --------------------------------------------------------------------
+
+/**
+ * The workspace a message sent to `phoneNumberId` belongs to, or null (dropped):
+ *   1. the workspace whose ENABLED connection holds the number's lock;
+ *   2. otherwise the env single-number setup (`WHATSAPP_PHONE_NUMBER_ID` owned by
+ *      `WHATSAPP_ORGANIZATION_ID`, an existing organization), only when no lock claims the number.
+ * A locked number whose connection is disabled is dropped, never handed to the env owner.
+ */
+export async function resolveWhatsAppOrg(
+  phoneNumberId: string | undefined,
+): Promise<string | null> {
+  if (!phoneNumberId || !isValidIdSegment(phoneNumberId)) return null;
+  const lock = await phoneLockRef(phoneNumberId).get();
+  if (lock.exists) {
+    const orgId: unknown = lock.get("organizationId");
+    if (typeof orgId !== "string" || !isValidIdSegment(orgId)) return null;
+    const doc = await readConnection(orgId);
+    if (doc && doc.enabled && doc.phoneNumberId === phoneNumberId) return orgId;
+    logger.warn("whatsapp.webhook.number_disabled", {});
+    return null;
+  }
+  const env = getServerEnv();
+  if (env.WHATSAPP_PHONE_NUMBER_ID !== phoneNumberId) {
+    logger.warn("whatsapp.webhook.unknown_number", {});
+    return null;
+  }
+  const orgId = env.WHATSAPP_ORGANIZATION_ID;
+  if (!orgId || !isValidIdSegment(orgId)) {
+    logger.warn("whatsapp.webhook.no_organization", {});
+    return null;
+  }
+  const org = await adminDb().collection(ORGANIZATIONS).doc(orgId).get();
+  if (!org.exists) {
+    logger.warn("whatsapp.webhook.organization_missing", {});
+    return null;
+  }
+  return orgId;
+}
+
+/**
+ * The client that sends WhatsApp messages for `orgId`: its enabled connection's number and token,
+ * else the env number when the env names this workspace as its owner, else null (not connected).
+ */
+export async function whatsappClientFor(
+  orgId: string,
+  deps: { fetchFn?: typeof fetch } = {},
+): Promise<WhatsAppClient | null> {
+  const doc = await readConnection(orgId);
+  if (doc) {
+    if (!doc.enabled) return null;
+    return createWhatsAppClient({
+      accessToken: accessTokenOf(doc),
+      phoneNumberId: doc.phoneNumberId,
+      apiVersion: graphApiVersion(),
+      ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
+    });
+  }
+  const env = getServerEnv();
+  if (
+    env.WHATSAPP_ORGANIZATION_ID === orgId &&
+    env.WHATSAPP_PHONE_NUMBER_ID &&
+    env.WHATSAPP_ACCESS_TOKEN
+  ) {
+    return createWhatsAppClient({
+      accessToken: env.WHATSAPP_ACCESS_TOKEN,
+      phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+      apiVersion: graphApiVersion(),
+      ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
+    });
+  }
+  return null;
 }

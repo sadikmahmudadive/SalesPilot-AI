@@ -16,6 +16,7 @@ import { productInputSchema } from "@/schemas/product";
 import { createAgent } from "@/services/agents/agents";
 import { adjustStock } from "@/services/inventory/stock";
 import { createProduct } from "@/services/products/products";
+import { saveWhatsAppConnection } from "@/services/whatsapp/connections";
 
 import { defaultResolveOrgId, processWhatsAppWebhook } from "./webhook-handler";
 
@@ -224,6 +225,87 @@ describe("WhatsApp AI conversations", () => {
     expect(order.get("conversationId")).toBe(conv.id);
     const inventory = (await db().collection("inventory").doc(`${productId}__default`).get()).data();
     expect(inventory?.reserved).toBe(2);
+  });
+});
+
+describe("two workspaces on one shared webhook", () => {
+  const TEST_KEY = Buffer.alloc(32, 9).toString("base64");
+  const orgB = `org-${randomUUID()}`;
+  const NUM_A = `4${String(Date.now()).slice(-9)}`;
+  const NUM_B = `5${String(Date.now()).slice(-9)}`;
+  const TOKEN_A = "EAAG-token-of-workspace-A-000";
+  const TOKEN_B = "EAAG-token-of-workspace-B-000";
+
+  afterAll(async () => {
+    for (const orgId of [ORG, orgB]) {
+      await db().collection("whatsappConnections").doc(orgId).delete();
+    }
+    await db().collection("whatsappPhoneNumbers").doc(NUM_A).delete();
+    await db().collection("whatsappPhoneNumbers").doc(NUM_B).delete();
+    for (const col of ["conversations", "customers", "customerPhones", "agents", "agentSessions", "whatsappInbound"]) {
+      const snap = await db().collection(col).where("organizationId", "==", orgB).get();
+      await Promise.all(snap.docs.map((d) => db().recursiveDelete(d.ref)));
+    }
+    await db().collection("organizations").doc(orgB).delete();
+    vi.unstubAllEnvs();
+    __resetEnvCacheForTests();
+  });
+
+  it("routes each change to its own workspace", async () => {
+    vi.stubEnv("ENCRYPTION_KEY", TEST_KEY);
+    __resetEnvCacheForTests();
+    await db().collection("organizations").doc(orgB).set({ name: "Shop B", ownerUid: "u2" });
+    await createAgent(
+      { organizationId: orgB, uid: "uid-b" },
+      agentInputSchema.parse({
+        name: "B sales",
+        role: "order_management",
+        status: "active",
+        channels: ["test", "whatsapp"],
+      }),
+    );
+    await saveWhatsAppConnection(ctx, { phoneNumberId: NUM_A, businessAccountId: "1022901", accessToken: TOKEN_A, enabled: true });
+    await saveWhatsAppConnection(
+      { organizationId: orgB, uid: "uid-b" },
+      { phoneNumberId: NUM_B, businessAccountId: "1022902", accessToken: TOKEN_B, enabled: true },
+    );
+
+    const tokensByNumber = new Map<string, string | null>();
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      const number = url.split("/")[4] ?? "";
+      if (init?.body && String(init.body).includes('"type":"text"')) {
+        tokensByNumber.set(number, new Headers(init.headers).get("authorization"));
+      }
+      return Response.json({ messages: [{ id: `wamid.out.${randomUUID()}` }], success: true });
+    }) as unknown as typeof fetch;
+    const provider = createMockProvider([text("Hello from A."), text("Hello from B.")]);
+    const waA = newWaPhone();
+    const waB = newWaPhone();
+    const change = (pnid: string, from: string, body: string) => ({
+      field: "messages",
+      value: {
+        messaging_product: "whatsapp" as const,
+        metadata: { display_phone_number: "+15550000000", phone_number_id: pnid },
+        contacts: [{ profile: { name: "Karim" }, wa_id: from }],
+        messages: [{ from, id: `wamid.${randomUUID()}`, timestamp: "1794251000", type: "text" as const, text: { body } }],
+      },
+    });
+    const payload: WhatsAppWebhookPayload = {
+      object: "whatsapp_business_account",
+      entry: [{ id: "entry", changes: [change(NUM_A, waA, "Hi A"), change(NUM_B, waB, "Hi B")] }],
+    };
+
+    // No resolveOrgId / whatsappClient override: real routing by number and real per-org clients.
+    await processWhatsAppWebhook(payload, { engineDeps: { provider }, fetchFn });
+
+    const convA = await conversationOf(waA);
+    const convB = (
+      await db().collection("conversations").where("organizationId", "==", orgB).get()
+    ).docs.find((d) => d.get("contactPhoneE164") === `+${waB}`);
+    expect(convA?.get("organizationId")).toBe(ORG);
+    expect(convB).toBeDefined();
+    expect(tokensByNumber.get(NUM_A)).toBe(`Bearer ${TOKEN_A}`);
+    expect(tokensByNumber.get(NUM_B)).toBe(`Bearer ${TOKEN_B}`);
   });
 });
 

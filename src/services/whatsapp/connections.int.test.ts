@@ -6,9 +6,13 @@ import { ConflictError, IntegrationNotConfiguredError, ValidationError } from "@
 import { adminDb } from "@/lib/firebase/admin";
 import { unsealSecret } from "@/lib/security/secret-box";
 
+import { __resetEnvCacheForTests } from "@/config/env";
+
 import {
   NUMBER_TAKEN_MESSAGE,
   disconnectWhatsApp,
+  resolveWhatsAppOrg,
+  whatsappClientFor,
   getWhatsAppConnection,
   saveWhatsAppConnection,
   testWhatsAppConnection,
@@ -33,10 +37,27 @@ const lockOf = async (phoneNumberId: string) =>
 
 afterEach(() => {
   vi.stubEnv("ENCRYPTION_KEY", TEST_KEY);
+  for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ORGANIZATION_ID", "WHATSAPP_ACCESS_TOKEN"]) {
+    vi.stubEnv(k, "");
+  }
+  __resetEnvCacheForTests();
 });
+
+/** Env single-number fallback: `number` belongs to `orgId` with `token`. */
+function stubEnvNumber(number: string, orgId: string, token = "ENV-token-0123456789-abcdef") {
+  vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", number);
+  vi.stubEnv("WHATSAPP_ORGANIZATION_ID", orgId);
+  vi.stubEnv("WHATSAPP_ACCESS_TOKEN", token);
+  __resetEnvCacheForTests();
+}
+
+async function seedOrg(orgId: string) {
+  await db().collection("organizations").doc(orgId).set({ name: "Shop", ownerUid: "u1" });
+}
 
 afterAll(async () => {
   for (const orgId of orgs) {
+    await db().collection("organizations").doc(orgId).delete();
     await db().collection("whatsappConnections").doc(orgId).delete();
     const locks = await db().collection("whatsappPhoneNumbers").where("organizationId", "==", orgId).get();
     await Promise.all(locks.docs.map((d) => d.ref.delete()));
@@ -176,5 +197,62 @@ describe("WhatsApp connection service", () => {
     await expect(
       saveWhatsAppConnection(ctx, { phoneNumberId: newNumber(), businessAccountId: "1022901", accessToken: TOKEN, enabled: true }),
     ).rejects.toBeInstanceOf(IntegrationNotConfiguredError);
+  });
+});
+
+describe("WhatsApp routing and sending", () => {
+  it("routes a number to the workspace that connected it", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
+    expect(await resolveWhatsAppOrg(number)).toBe(ctx.organizationId);
+    expect(await resolveWhatsAppOrg(newNumber())).toBeNull();
+    expect(await resolveWhatsAppOrg(undefined)).toBeNull();
+  });
+
+  it("lock beats env", async () => {
+    const a = newCtx();
+    const b = newCtx();
+    await seedOrg(a.organizationId);
+    const number = newNumber();
+    stubEnvNumber(number, a.organizationId);
+    await saveWhatsAppConnection(b, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
+    expect(await resolveWhatsAppOrg(number)).toBe(b.organizationId);
+  });
+
+  it("disabled connection drops and does not fall back", async () => {
+    const a = newCtx();
+    const b = newCtx();
+    await seedOrg(a.organizationId);
+    const number = newNumber();
+    stubEnvNumber(number, a.organizationId);
+    await saveWhatsAppConnection(b, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: false });
+    expect(await resolveWhatsAppOrg(number)).toBeNull();
+    expect(await whatsappClientFor(b.organizationId)).toBeNull();
+  });
+
+  it("env fallback still works", async () => {
+    const a = newCtx();
+    await seedOrg(a.organizationId);
+    const number = newNumber();
+    stubEnvNumber(number, a.organizationId);
+    expect(await resolveWhatsAppOrg(number)).toBe(a.organizationId);
+    expect(await whatsappClientFor(a.organizationId)).not.toBeNull();
+    expect(await whatsappClientFor(newCtx().organizationId)).toBeNull();
+  });
+
+  it("whatsappClientFor uses the connection token", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, auth: new Headers(init?.headers).get("authorization") });
+      return Response.json({ messages: [{ id: "wamid.sent.1" }] });
+    }) as unknown as typeof fetch;
+    const client = await whatsappClientFor(ctx.organizationId, { fetchFn });
+    await expect(client!.sendTextMessage("+8801711000000", "Hello")).resolves.toEqual({ messageId: "wamid.sent.1" });
+    expect(calls[0]!.url).toBe(`https://graph.facebook.com/v21.0/${number}/messages`);
+    expect(calls[0]!.auth).toBe(`Bearer ${TOKEN}`);
   });
 });

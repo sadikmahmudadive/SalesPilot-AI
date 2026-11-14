@@ -127,7 +127,9 @@ describe("automations API routes (integration)", () => {
     );
     expect(triggerRes.status).toBe(200);
     const triggerRun = (await triggerRes.json()).data as { status: string; summary: string };
-    expect(triggerRun.status).toBe("succeeded");
+    // No WhatsApp number is connected for this workspace: the follow-up is skipped, never faked.
+    expect(triggerRun.status).toBe("skipped");
+    expect(triggerRun.summary).toBe("WhatsApp is not connected for this workspace");
 
     // 5. Inbound n8n webhook authentication + execution
     const badHook = await INBOUND_WEBHOOK(
