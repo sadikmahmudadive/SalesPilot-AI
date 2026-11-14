@@ -17,6 +17,7 @@ import { createAgent } from "@/services/agents/agents";
 import { adjustStock } from "@/services/inventory/stock";
 import { createProduct } from "@/services/products/products";
 import { saveWhatsAppConnection } from "@/services/whatsapp/connections";
+import { fakeMeta } from "@/test/whatsapp-meta";
 
 import { defaultResolveOrgId, processWhatsAppWebhook } from "./webhook-handler";
 
@@ -158,19 +159,34 @@ describe("WhatsApp AI conversations", () => {
     expect(history).toContain("Hello, how can I help?");
   });
 
-  it("starts a new session when the stored one is escalated", async () => {
+  it("an escalation hands the conversation to a person and the AI stops answering", async () => {
     const wa = newWaPhone();
-    const provider = createMockProvider([text("First reply."), text("Second reply.")]);
-    const { client } = fakeClient();
+    const provider = createMockProvider([
+      async () => {
+        // What escalate_to_human does: mark the session escalated during the turn.
+        const conv = (await conversationOf(wa))!;
+        await db().collection("agentSessions").doc(conv.get("agentSessionId") as string).update({
+          status: "escalated",
+        });
+        return {
+          text: "Let me connect you with a person.",
+          toolCalls: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+          stopReason: "end",
+        };
+      },
+    ]);
+    const { client, sent } = fakeClient();
     const deps = { whatsappClient: client, engineDeps: { provider }, resolveOrgId: async () => ORG };
 
-    await processWhatsAppWebhook(inbound(wa, "Hi"), deps);
-    const first = (await conversationOf(wa))!.get("agentSessionId") as string;
-    await db().collection("agentSessions").doc(first).update({ status: "escalated" });
-    await processWhatsAppWebhook(inbound(wa, "Hello again"), deps);
+    await processWhatsAppWebhook(inbound(wa, "I want to talk to a person"), deps);
+    const conv = (await conversationOf(wa))!;
+    expect(conv.get("status")).toBe("needs_reply");
+    expect(conv.get("agentSessionId")).toBeNull();
 
-    const second = (await conversationOf(wa))!.get("agentSessionId") as string;
-    expect(second).not.toBe(first);
+    await processWhatsAppWebhook(inbound(wa, "Hello?"), deps);
+    expect(provider.calls).toHaveLength(1); // the AI did not answer the second message
+    expect(sent).toEqual(["Let me connect you with a person."]);
   });
 
   it("answers a redelivered message only once", async () => {
@@ -264,20 +280,19 @@ describe("two workspaces on one shared webhook", () => {
         channels: ["test", "whatsapp"],
       }),
     );
-    await saveWhatsAppConnection(ctx, { phoneNumberId: NUM_A, businessAccountId: "1022901", accessToken: TOKEN_A, enabled: true });
+    const fetchFn = fakeMeta({ [NUM_A]: TOKEN_A, [NUM_B]: TOKEN_B });
+    await saveWhatsAppConnection(
+      ctx,
+      { phoneNumberId: NUM_A, businessAccountId: "1022901", accessToken: TOKEN_A, enabled: true },
+      { fetchFn },
+    );
     await saveWhatsAppConnection(
       { organizationId: orgB, uid: "uid-b" },
       { phoneNumberId: NUM_B, businessAccountId: "1022902", accessToken: TOKEN_B, enabled: true },
+      { fetchFn },
     );
-
-    const tokensByNumber = new Map<string, string | null>();
-    const fetchFn = (async (url: string, init?: RequestInit) => {
-      const number = url.split("/")[4] ?? "";
-      if (init?.body && String(init.body).includes('"type":"text"')) {
-        tokensByNumber.set(number, new Headers(init.headers).get("authorization"));
-      }
-      return Response.json({ messages: [{ id: `wamid.out.${randomUUID()}` }], success: true });
-    }) as unknown as typeof fetch;
+    const tokenOfSend = (number: string) =>
+      fetchFn.sends.find((x) => x.phoneNumberId === number && x.body.includes('"type":"text"'))?.authorization;
     const provider = createMockProvider([text("Hello from A."), text("Hello from B.")]);
     const waA = newWaPhone();
     const waB = newWaPhone();
@@ -304,8 +319,49 @@ describe("two workspaces on one shared webhook", () => {
     ).docs.find((d) => d.get("contactPhoneE164") === `+${waB}`);
     expect(convA?.get("organizationId")).toBe(ORG);
     expect(convB).toBeDefined();
-    expect(tokensByNumber.get(NUM_A)).toBe(`Bearer ${TOKEN_A}`);
-    expect(tokensByNumber.get(NUM_B)).toBe(`Bearer ${TOKEN_B}`);
+    expect(tokenOfSend(NUM_A)).toBe(`Bearer ${TOKEN_A}`);
+    expect(tokenOfSend(NUM_B)).toBe(`Bearer ${TOKEN_B}`);
+    expect(convB!.get("whatsappPhoneNumberId")).toBe(NUM_B);
+  });
+
+  it("still stores the message when the workspace's token cannot be decrypted", async () => {
+    // A different key than the one the tokens were sealed with (a rotated or wrong ENCRYPTION_KEY).
+    vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 4).toString("base64"));
+    __resetEnvCacheForTests();
+    const provider = createMockProvider([]);
+    const wa = newWaPhone();
+    const res = await processWhatsAppWebhook(
+      {
+        object: "whatsapp_business_account",
+        entry: [
+          {
+            id: "entry",
+            changes: [
+              {
+                field: "messages",
+                value: {
+                  messaging_product: "whatsapp",
+                  metadata: { display_phone_number: "+15550000000", phone_number_id: NUM_A },
+                  contacts: [{ profile: { name: "Karim" }, wa_id: wa }],
+                  messages: [
+                    { from: wa, id: `wamid.${randomUUID()}`, timestamp: "1794251000", type: "text", text: { body: "Hello" } },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { engineDeps: { provider }, resolveOrgId: async () => ORG },
+    );
+    expect(res.processedMessages).toBe(1);
+    const conv = (await conversationOf(wa))!;
+    expect(conv.get("status")).toBe("needs_reply");
+    const msgs = await conv.ref.collection("messages").get();
+    expect(msgs.size).toBe(1);
+    expect(provider.calls).toHaveLength(0);
+    vi.stubEnv("ENCRYPTION_KEY", TEST_KEY);
+    __resetEnvCacheForTests();
   });
 });
 

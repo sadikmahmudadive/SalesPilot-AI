@@ -2,20 +2,22 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
+import { __resetEnvCacheForTests } from "@/config/env";
 import { ConflictError, IntegrationNotConfiguredError, ValidationError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { unsealSecret } from "@/lib/security/secret-box";
-
-import { __resetEnvCacheForTests } from "@/config/env";
+import type { WhatsAppConnectionInput } from "@/schemas/whatsapp-connection";
+import { fakeMeta } from "@/test/whatsapp-meta";
 
 import {
+  META_REJECTED_MESSAGE,
   NUMBER_TAKEN_MESSAGE,
   disconnectWhatsApp,
-  resolveWhatsAppOrg,
-  whatsappClientFor,
   getWhatsAppConnection,
+  resolveWhatsAppOrg,
   saveWhatsAppConnection,
   testWhatsAppConnection,
+  whatsappClientFor,
 } from "./connections";
 
 const TEST_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -34,6 +36,22 @@ const newNumber = () => String(++numberCounter) + String(Date.now()).slice(-6);
 
 const lockOf = async (phoneNumberId: string) =>
   (await db().collection("whatsappPhoneNumbers").doc(phoneNumberId).get()).data();
+const storedOf = async (orgId: string) =>
+  (await db().collection("whatsappConnections").doc(orgId).get()).data();
+
+/** Saves `number` for `ctx` with Meta accepting TOKEN for it. */
+function save(
+  ctx: { organizationId: string; uid: string },
+  number: string,
+  over: Partial<WhatsAppConnectionInput> = {},
+  meta = fakeMeta({ [number]: TOKEN }),
+) {
+  return saveWhatsAppConnection(
+    ctx,
+    { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true, ...over },
+    { fetchFn: meta },
+  );
+}
 
 afterEach(() => {
   vi.stubEnv("ENCRYPTION_KEY", TEST_KEY);
@@ -66,20 +84,22 @@ afterAll(async () => {
 });
 
 describe("WhatsApp connection service", () => {
-  it("saves and reads back without the token", async () => {
+  it("saves a number Meta confirms, without returning the token", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    const summary = await saveWhatsAppConnection(ctx, {
+    const summary = await save(ctx, number);
+    expect(summary).toMatchObject({
+      connected: true,
       phoneNumberId: number,
-      businessAccountId: "102290129340398",
-      accessToken: TOKEN,
-      enabled: true,
+      hasAccessToken: true,
+      lastTestResult: "ok",
+      displayPhoneNumber: "+880 1711-000000",
+      verifiedName: "Brand Booster",
     });
-    expect(summary).toMatchObject({ connected: true, phoneNumberId: number, hasAccessToken: true });
     expect(JSON.stringify(summary)).not.toContain(TOKEN);
     expect(JSON.stringify(await getWhatsAppConnection(ctx))).not.toContain(TOKEN);
 
-    const stored = (await db().collection("whatsappConnections").doc(ctx.organizationId).get()).data()!;
+    const stored = (await storedOf(ctx.organizationId))!;
     expect(JSON.parse(unsealSecret(stored.credentials))).toEqual({ accessToken: TOKEN });
     expect(await lockOf(number)).toEqual({ organizationId: ctx.organizationId });
     const audits = await db()
@@ -91,17 +111,46 @@ describe("WhatsApp connection service", () => {
     expect(JSON.stringify(audits.docs[0]!.data())).not.toContain(TOKEN);
   });
 
+  it("a fake token cannot claim a number", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    const err = await save(ctx, number, { accessToken: "made-up-token-0123456789" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).message).toBe(META_REJECTED_MESSAGE);
+    expect(await lockOf(number)).toBeUndefined();
+    expect((await getWhatsAppConnection(ctx)).connected).toBe(false);
+  });
+
+  it("the number must belong to the business account the token can see", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    const other = newNumber();
+    // The token is valid for `other`, not for `number`.
+    const err = await save(ctx, number, {}, fakeMeta({ [other]: TOKEN })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(await lockOf(number)).toBeUndefined();
+  });
+
+  it("another workspace cannot claim the env number", async () => {
+    const envOwner = newCtx();
+    const other = newCtx();
+    await seedOrg(envOwner.organizationId);
+    const number = newNumber();
+    stubEnvNumber(number, envOwner.organizationId);
+    const err = await save(other, number).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as ConflictError).message).toBe(NUMBER_TAKEN_MESSAGE);
+    expect(await resolveWhatsAppOrg(number)).toBe(envOwner.organizationId);
+    // The env owner itself may connect it.
+    await expect(save(envOwner, number)).resolves.toMatchObject({ connected: true });
+  });
+
   it("another workspace's number is a 409", async () => {
     const a = newCtx();
     const b = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(a, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    const err = await saveWhatsAppConnection(b, {
-      phoneNumberId: number,
-      businessAccountId: "1022902",
-      accessToken: TOKEN,
-      enabled: true,
-    }).catch((e: unknown) => e);
+    await save(a, number);
+    const err = await save(b, number).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictError);
     expect((err as ConflictError).message).toBe(NUMBER_TAKEN_MESSAGE);
     expect((await getWhatsAppConnection(b)).connected).toBe(false);
@@ -112,36 +161,27 @@ describe("WhatsApp connection service", () => {
     const b = newCtx();
     const first = newNumber();
     const second = newNumber();
-    await saveWhatsAppConnection(a, { phoneNumberId: first, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    await saveWhatsAppConnection(a, { phoneNumberId: second, businessAccountId: "1022901", enabled: true });
+    const meta = fakeMeta({ [first]: TOKEN, [second]: TOKEN });
+    await save(a, first, {}, meta);
+    await save(a, second, { accessToken: undefined }, meta);
     expect(await lockOf(first)).toBeUndefined();
     expect(await lockOf(second)).toEqual({ organizationId: a.organizationId });
-    await expect(
-      saveWhatsAppConnection(b, { phoneNumberId: first, businessAccountId: "1022902", accessToken: TOKEN, enabled: true }),
-    ).resolves.toMatchObject({ connected: true, phoneNumberId: first });
+    await expect(save(b, first, {}, meta)).resolves.toMatchObject({ connected: true, phoneNumberId: first });
   });
 
   it("update without accessToken keeps the token", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    const updated = await saveWhatsAppConnection(ctx, {
-      phoneNumberId: number,
-      businessAccountId: "1022999",
-      enabled: false,
-    });
-    expect(updated).toMatchObject({ businessAccountId: "1022999", enabled: false, hasAccessToken: true });
-    const stored = (await db().collection("whatsappConnections").doc(ctx.organizationId).get()).data()!;
+    await save(ctx, number);
+    const updated = await save(ctx, number, { accessToken: undefined, enabled: false });
+    expect(updated).toMatchObject({ enabled: false, hasAccessToken: true, lastTestResult: "ok" });
+    const stored = (await storedOf(ctx.organizationId))!;
     expect(JSON.parse(unsealSecret(stored.credentials))).toEqual({ accessToken: TOKEN });
   });
 
   it("first save without a token is a validation error", async () => {
     const ctx = newCtx();
-    const err = await saveWhatsAppConnection(ctx, {
-      phoneNumberId: newNumber(),
-      businessAccountId: "1022901",
-      enabled: true,
-    }).catch((e: unknown) => e);
+    const err = await save(ctx, newNumber(), { accessToken: undefined }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).details?.[0]?.path).toBe("accessToken");
   });
@@ -149,7 +189,7 @@ describe("WhatsApp connection service", () => {
   it("disconnect removes connection and lock", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
+    await save(ctx, number);
     await disconnectWhatsApp(ctx);
     expect((await getWhatsAppConnection(ctx)).connected).toBe(false);
     expect(await lockOf(number)).toBeUndefined();
@@ -158,28 +198,22 @@ describe("WhatsApp connection service", () => {
   it("test records ok with the display number", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    let seen: { url: string; auth: string | null } | null = null;
-    const fetchFn = (async (url: string, init?: RequestInit) => {
-      seen = { url, auth: new Headers(init?.headers).get("authorization") };
-      return Response.json({ display_phone_number: "+880 1711-000000", verified_name: "Brand Booster", id: number });
-    }) as unknown as typeof fetch;
-    const summary = await testWhatsAppConnection(ctx, { fetchFn });
+    await save(ctx, number);
+    const summary = await testWhatsAppConnection(ctx, {
+      fetchFn: fakeMeta({ [number]: TOKEN }, { displayPhoneNumber: "+880 1811-000000", verifiedName: "New Name" }),
+    });
     expect(summary).toMatchObject({
       lastTestResult: "ok",
-      displayPhoneNumber: "+880 1711-000000",
-      verifiedName: "Brand Booster",
+      displayPhoneNumber: "+880 1811-000000",
+      verifiedName: "New Name",
     });
-    expect(seen!.url).toContain(`/${number}?fields=display_phone_number,verified_name`);
-    expect(seen!.auth).toBe(`Bearer ${TOKEN}`);
   });
 
   it("test records failed on a Graph error", async () => {
     const ctx = newCtx();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: newNumber(), businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    const unauthorized = (async () =>
-      Response.json({ error: { message: "Invalid OAuth access token" } }, { status: 401 })) as unknown as typeof fetch;
-    const failed = await testWhatsAppConnection(ctx, { fetchFn: unauthorized });
+    const number = newNumber();
+    await save(ctx, number);
+    const failed = await testWhatsAppConnection(ctx, { fetchFn: fakeMeta({}) });
     expect(failed.lastTestResult).toBe("failed");
     expect(JSON.stringify(failed)).not.toContain("Invalid OAuth");
 
@@ -191,12 +225,40 @@ describe("WhatsApp connection service", () => {
     });
   });
 
+  it("a test result is not written onto a connection that changed during the call", async () => {
+    const ctx = newCtx();
+    const first = newNumber();
+    const second = newNumber();
+    const meta = fakeMeta({ [first]: TOKEN, [second]: TOKEN });
+    await save(ctx, first, {}, meta);
+    const slow = (async (input: string | URL | Request, init?: RequestInit) => {
+      // The owner switches to another number while the test call is in flight.
+      await save(ctx, second, { accessToken: undefined }, meta);
+      return fakeMeta({ [first]: TOKEN }, { verifiedName: "Old Number" })(input, init);
+    }) as typeof fetch;
+    const summary = await testWhatsAppConnection(ctx, { fetchFn: slow });
+    expect(summary.phoneNumberId).toBe(second);
+    expect((await storedOf(ctx.organizationId))!.verifiedName).not.toBe("Old Number");
+  });
+
+  it("a test during a disconnect does not fail", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    await save(ctx, number);
+    const disconnecting = (async (input: string | URL | Request, init?: RequestInit) => {
+      await disconnectWhatsApp(ctx);
+      return fakeMeta({ [number]: TOKEN })(input, init);
+    }) as typeof fetch;
+    await expect(testWhatsAppConnection(ctx, { fetchFn: disconnecting })).resolves.toMatchObject({
+      connected: false,
+    });
+    expect(await storedOf(ctx.organizationId)).toBeUndefined();
+  });
+
   it("refuses without ENCRYPTION_KEY", async () => {
     vi.stubEnv("ENCRYPTION_KEY", "");
     const ctx = newCtx();
-    await expect(
-      saveWhatsAppConnection(ctx, { phoneNumberId: newNumber(), businessAccountId: "1022901", accessToken: TOKEN, enabled: true }),
-    ).rejects.toBeInstanceOf(IntegrationNotConfiguredError);
+    await expect(save(ctx, newNumber())).rejects.toBeInstanceOf(IntegrationNotConfiguredError);
   });
 });
 
@@ -204,29 +266,26 @@ describe("WhatsApp routing and sending", () => {
   it("routes a number to the workspace that connected it", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
+    await save(ctx, number);
     expect(await resolveWhatsAppOrg(number)).toBe(ctx.organizationId);
     expect(await resolveWhatsAppOrg(newNumber())).toBeNull();
     expect(await resolveWhatsAppOrg(undefined)).toBeNull();
   });
 
-  it("lock beats env", async () => {
+  it("the env owner's own connection of the env number beats env", async () => {
     const a = newCtx();
-    const b = newCtx();
     await seedOrg(a.organizationId);
     const number = newNumber();
     stubEnvNumber(number, a.organizationId);
-    await saveWhatsAppConnection(b, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    expect(await resolveWhatsAppOrg(number)).toBe(b.organizationId);
+    await save(a, number, { enabled: false });
+    // Its connection is disabled: dropped, not handed to the env fallback.
+    expect(await resolveWhatsAppOrg(number)).toBeNull();
   });
 
-  it("disabled connection drops and does not fall back", async () => {
-    const a = newCtx();
+  it("disabled connection drops and does not send", async () => {
     const b = newCtx();
-    await seedOrg(a.organizationId);
     const number = newNumber();
-    stubEnvNumber(number, a.organizationId);
-    await saveWhatsAppConnection(b, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: false });
+    await save(b, number, { enabled: false });
     expect(await resolveWhatsAppOrg(number)).toBeNull();
     expect(await whatsappClientFor(b.organizationId)).toBeNull();
   });
@@ -244,15 +303,26 @@ describe("WhatsApp routing and sending", () => {
   it("whatsappClientFor uses the connection token", async () => {
     const ctx = newCtx();
     const number = newNumber();
-    await saveWhatsAppConnection(ctx, { phoneNumberId: number, businessAccountId: "1022901", accessToken: TOKEN, enabled: true });
-    const calls: Array<{ url: string; auth: string | null }> = [];
-    const fetchFn = (async (url: string, init?: RequestInit) => {
-      calls.push({ url, auth: new Headers(init?.headers).get("authorization") });
-      return Response.json({ messages: [{ id: "wamid.sent.1" }] });
-    }) as unknown as typeof fetch;
-    const client = await whatsappClientFor(ctx.organizationId, { fetchFn });
-    await expect(client!.sendTextMessage("+8801711000000", "Hello")).resolves.toEqual({ messageId: "wamid.sent.1" });
-    expect(calls[0]!.url).toBe(`https://graph.facebook.com/v21.0/${number}/messages`);
-    expect(calls[0]!.auth).toBe(`Bearer ${TOKEN}`);
+    await save(ctx, number);
+    const meta = fakeMeta({ [number]: TOKEN });
+    const client = await whatsappClientFor(ctx.organizationId, { fetchFn: meta });
+    await expect(client!.sendTextMessage("+8801711000000", "Hello")).resolves.toEqual({ messageId: "wamid.fake.1" });
+    expect(meta.sends[0]).toMatchObject({ phoneNumberId: number, authorization: `Bearer ${TOKEN}` });
+  });
+
+  it("a client for a specific number only exists while that number is this workspace's", async () => {
+    const a = newCtx();
+    await seedOrg(a.organizationId);
+    const envNumber = newNumber();
+    const ownNumber = newNumber();
+    stubEnvNumber(envNumber, a.organizationId, "ENV-token-0123456789-abcdef");
+    await save(a, ownNumber);
+    const meta = fakeMeta({ [envNumber]: "ENV-token-0123456789-abcdef", [ownNumber]: TOKEN });
+    // Replies to a message that arrived on the env number go out from the env number.
+    const envClient = await whatsappClientFor(a.organizationId, { fetchFn: meta, phoneNumberId: envNumber });
+    await envClient!.sendTextMessage("+8801711000000", "Hi");
+    expect(meta.sends[0]!.phoneNumberId).toBe(envNumber);
+    // A number this workspace does not have gives no client.
+    expect(await whatsappClientFor(a.organizationId, { phoneNumberId: newNumber() })).toBeNull();
   });
 });

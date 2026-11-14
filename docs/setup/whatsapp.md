@@ -49,6 +49,12 @@ Meta needs a public HTTPS URL, so `localhost` won't work.
 3. Under **Webhook fields**, click **Manage** and subscribe to **`messages`**. This one field carries
    incoming messages and the sent, delivered and read updates.
 
+**Subscribe each business account to the app.** Meta sends a WhatsApp Business Account's webhooks
+only to apps subscribed to that account. The account created with the app's test number is subscribed
+automatically. For any other account, subscribe it once with a token that can manage it:
+`POST https://graph.facebook.com/v21.0/<WABA_ID>/subscribed_apps` with header
+`Authorization: Bearer <token>`. You can do this from the Graph API Explorer.
+
 **Whose numbers can be added?** Numbers in WhatsApp Business Accounts inside your own Meta Business
 Manager can be added to this app directly. To connect numbers that belong to other companies' Meta
 accounts, the platform has to become a **Meta Tech Provider**, with embedded signup or shared business
@@ -65,16 +71,25 @@ assets. That onboarding is not built into SalesPilot yet.
    `whatsapp_business_management`. The API Setup page also has a temporary token, but it expires after
    about 24 hours.
 3. In SalesPilot, open **Integrations** > **Platform** > **WhatsApp business number**. Enter the two IDs and
-   the token, then click **Save**. The card tests the details with Meta right away and shows the number and
-   verified business name when they work.
+   the token, then click **Save**. Before saving, the server asks Meta to confirm that the token can see
+   the number and that the number belongs to the Business Account. A number that Meta does not confirm
+   cannot be saved, so no workspace can claim a number it doesn't control. The card then shows the number
+   and verified business name.
 
 Notes:
 
 - The token is stored encrypted and is never shown again. To keep it, leave the field blank when you save.
 - A number can be connected to only one workspace. If another workspace already connected it, saving says
   so.
-- If you **disable** a number, its messages are neither received nor sent. **Disconnect** frees the number
-  so another workspace can connect it.
+- If you **disable** a number, nothing is sent from it. Messages that arrive while it is disabled are
+  discarded, not held for later. **Disconnect** frees the number so another workspace can connect it.
+- Replies always go out from the number the customer wrote to. If that number has since been changed or
+  disconnected, staff replies in that conversation are refused with a clear message instead of being sent
+  from a different number, which Meta would reject.
+- With no number connected, staff replies are refused, not faked, and WhatsApp automation follow-ups are
+  recorded as skipped. A skipped follow-up is not retried after you connect a number.
+- When the AI escalates to a person, the conversation moves to **Needs reply** and the AI stops answering
+  until a team member hands it back.
 - While you use Meta's test number, add your own phone under **To** as an allowed recipient (up to 5).
 
 ### Make the AI answer
@@ -97,7 +112,11 @@ WHATSAPP_ACCESS_TOKEN=...
 WHATSAPP_ORGANIZATION_ID=...   # the workspace (Firestore organization id) that owns this number
 ```
 
-A number connected on the Integrations card always takes priority over this setup.
+A number connected on the Integrations card always takes priority over this setup. Only the workspace
+named in `WHATSAPP_ORGANIZATION_ID` can connect the env number on the card.
+
+**Upgrading an env-only deployment:** set `WHATSAPP_ORGANIZATION_ID`. Without it, inbound messages are
+dropped, automations skip, and staff replies are refused.
 
 ---
 
@@ -111,7 +130,9 @@ A number connected on the Integrations card always takes priority over this setu
 - **Messages never appear:** check the logs for `/api/webhooks/whatsapp`.
   - A `401` means `WHATSAPP_APP_SECRET` is wrong.
   - `whatsapp.webhook.unknown_number` means no workspace has connected that number.
-  - `whatsapp.webhook.number_disabled` means the connection is disabled.
+  - `whatsapp.webhook.number_disabled` means the number's connection is disabled or missing.
+  - `whatsapp.webhook.client_unavailable` means the stored token couldn't be decrypted. Messages are kept
+    and go to **Needs reply**. Check that `ENCRYPTION_KEY` is the one the token was saved with.
 - **No AI reply:** no active agent has the WhatsApp channel, or `OPENAI_API_KEY` is missing.
 
 ## Limitations

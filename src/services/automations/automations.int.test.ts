@@ -11,6 +11,7 @@ import { listConversationMessages } from "@/repositories/inbox-messages";
 import { findConversationByContact } from "@/repositories/conversations";
 import { ORDERS } from "@/repositories/orders";
 import { saveWhatsAppConnection } from "@/services/whatsapp/connections";
+import { fakeMeta } from "@/test/whatsapp-meta";
 
 import {
   evaluateOrganizationAutomations,
@@ -23,23 +24,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Connects a WhatsApp number for `orgId` and answers Graph sends; returns the captured sends. */
+/** Connects a WhatsApp number for `orgId` (verified by a fake Meta); returns the captured sends. */
 async function connectWhatsApp(orgId: string) {
+  const number = `6${String(Date.now()).slice(-9)}${Math.floor(Math.random() * 10)}`;
+  const token = "EAAG-automation-token-000001";
+  const meta = fakeMeta({ [number]: token });
   await saveWhatsAppConnection(
     { organizationId: orgId, uid: "u_owner" },
-    {
-      phoneNumberId: `6${String(Date.now()).slice(-9)}${Math.floor(Math.random() * 10)}`,
-      businessAccountId: "1022901",
-      accessToken: "EAAG-automation-token-000001",
-      enabled: true,
-    },
+    { phoneNumberId: number, businessAccountId: "1022901", accessToken: token, enabled: true },
+    { fetchFn: meta },
   );
-  const sends: string[] = [];
-  vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
-    sends.push(String(init?.body ?? ""));
-    return Response.json({ messages: [{ id: `wamid.auto.${sends.length}` }] });
-  });
-  return sends;
+  vi.stubGlobal("fetch", meta);
+  return meta.sends;
 }
 
 describe("automations engine & sweep (integration)", () => {

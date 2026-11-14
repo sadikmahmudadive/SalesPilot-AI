@@ -5,6 +5,8 @@ import { UnauthenticatedError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Role } from "@/lib/security/permissions";
 import { conversationRepo } from "@/repositories/conversations";
+import { saveWhatsAppConnection } from "@/services/whatsapp/connections";
+import { fakeMeta } from "@/test/whatsapp-meta";
 
 import { GET as GET_ONE, PATCH } from "./[id]/route";
 import { GET as GET_MESSAGES, POST as POST_MESSAGE } from "./[id]/messages/route";
@@ -136,6 +138,17 @@ describe("Inbox API Routes", () => {
     );
     expect(patchRes.status).toBe(200);
 
+    // The workspace's WhatsApp number (verified by a fake Meta that also accepts the send).
+    vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 2).toString("base64"));
+    const number = `9${String(Date.now()).slice(-9)}`;
+    const meta = fakeMeta({ [number]: "EAAG-inbox-route-token-00001" });
+    await saveWhatsAppConnection(
+      { organizationId: agent.organizationId, uid: agent.uid },
+      { phoneNumberId: number, businessAccountId: "1022901", accessToken: "EAAG-inbox-route-token-00001", enabled: true },
+      { fetchFn: meta },
+    );
+    vi.stubGlobal("fetch", meta);
+
     // POST message -> 201
     const postRes = await POST_MESSAGE(
       send("POST", `${BASE}/${conv.id}/messages`, { text: "We have stock available!" }),
@@ -155,5 +168,32 @@ describe("Inbox API Routes", () => {
     const msgsData = await getMsgsRes.json();
     expect(msgsData.items.length).toBe(1);
     expect(msgsData.items[0]?.id).toBe(msg.id);
+    expect(meta.sends).toHaveLength(1);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("refuses a staff reply with 409 when the workspace has no WhatsApp number", async () => {
+    const agent = await seed("agent");
+    signIn(agent.uid);
+    const conv = await conversationRepo.create(agent.organizationId, {
+      channel: "whatsapp",
+      contactPhoneE164: "+8801700000003",
+      contactName: "Customer 3",
+      customerId: null,
+      assignedAgentId: null,
+      assignedUserId: null,
+      status: "needs_reply",
+      unreadCount: 1,
+      lastMessage: null,
+      lastActivityAt: new Date().toISOString(),
+      searchLower: "customer 3 +8801700000003",
+    });
+    const res = await POST_MESSAGE(
+      send("POST", `${BASE}/${conv.id}/messages`, { text: "Hello" }),
+      idCtx(conv.id),
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.message).toBe("WhatsApp is not connected for this workspace");
   });
 });

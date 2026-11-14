@@ -111,9 +111,9 @@ export function WhatsAppCard() {
             enabled,
           },
         });
+        // The server verifies the number and token with Meta before saving.
         apply(next);
-        toast.success("WhatsApp number saved");
-        await test();
+        toast.success("WhatsApp number verified and saved");
       } catch (err) {
         toast.error(messageOf(err, "Couldn't save the WhatsApp number"));
       }

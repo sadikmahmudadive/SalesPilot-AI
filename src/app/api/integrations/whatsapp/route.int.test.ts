@@ -24,7 +24,11 @@ const TOKEN = "EAAG-route-test-token-000001";
 const URL_BASE = "http://localhost/api/integrations/whatsapp";
 const orgs = new Set<string>();
 let counter = 0;
-const newNumber = () => `8${String(Date.now()).slice(-8)}${++counter}`;
+const newNumber = () => {
+  const n = `8${String(Date.now()).slice(-8)}${++counter}`;
+  used.add(n);
+  return n;
+};
 
 async function seed(role: Role) {
   const organizationId = `org-${randomUUID()}`;
@@ -47,6 +51,18 @@ function req(method: string, body?: unknown, headers: Record<string, string> = {
   return new Request(URL_BASE, { method, headers: h, body: raw });
 }
 
+/** Meta accepts TOKEN for every number these tests use. */
+const acceptAll = (async (input: string | URL | Request, init?: RequestInit) => {
+  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
+  const auth = new Headers(init?.headers).get("authorization");
+  if (auth !== `Bearer ${TOKEN}`) return Response.json({ error: {} }, { status: 401 });
+  const [, id = "", edge] = url.pathname.split("/").filter(Boolean);
+  if (edge === "phone_numbers") return Response.json({ data: [...used].map((n) => ({ id: n })) });
+  return Response.json({ id, display_phone_number: "+880 1711-000000", verified_name: "Shop" });
+}) as typeof fetch;
+const used = new Set<string>();
+vi.stubGlobal("fetch", acceptAll);
+
 const input = (phoneNumberId: string) => ({
   phoneNumberId,
   businessAccountId: "102290129340398",
@@ -66,6 +82,7 @@ afterAll(async () => {
     await Promise.all(locks.docs.map((d) => d.ref.delete()));
   }
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("WhatsApp connection API", () => {

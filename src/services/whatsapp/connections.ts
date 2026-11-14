@@ -71,43 +71,146 @@ export async function getWhatsAppConnection(ctx: OrgCtx): Promise<WhatsAppConnec
   return toConnectionSummary(await readConnection(ctx.organizationId), isPlatformWebhookReady());
 }
 
+export const META_REJECTED_MESSAGE =
+  "Meta did not accept these details. Check the Phone Number ID, the Business Account ID and the access token.";
+
+type MetaCheck =
+  | { ok: true; displayPhoneNumber: string | null; verifiedName: string | null }
+  | { ok: false; status: number | null };
+
+/**
+ * Proves the token controls the number: Meta must return the number itself (`id` equal to
+ * `phoneNumberId`) AND list it among the business account's phone numbers. Any HTTP error, timeout
+ * or mismatch is `ok: false`; Meta's error body is never passed on.
+ */
+async function checkWithMeta(
+  phoneNumberId: string,
+  businessAccountId: string,
+  accessToken: string,
+  fetchFn: typeof fetch,
+): Promise<MetaCheck> {
+  const base = `https://graph.facebook.com/${graphApiVersion()}`;
+  const get = (path: string) =>
+    fetchFn(`${base}${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+    });
+  try {
+    const numberRes = await get(
+      `/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name`,
+    );
+    if (!numberRes.ok) return { ok: false, status: numberRes.status };
+    const number = (await numberRes.json()) as Record<string, unknown>;
+    if (number.id !== phoneNumberId) return { ok: false, status: numberRes.status };
+
+    const listRes = await get(
+      `/${encodeURIComponent(businessAccountId)}/phone_numbers?fields=id&limit=100`,
+    );
+    if (!listRes.ok) return { ok: false, status: listRes.status };
+    const list = (await listRes.json()) as { data?: Array<{ id?: unknown }> };
+    if (!Array.isArray(list.data) || !list.data.some((n) => n?.id === phoneNumberId)) {
+      return { ok: false, status: listRes.status };
+    }
+    const text = (v: unknown) => (typeof v === "string" ? v.slice(0, 120) : null);
+    return {
+      ok: true,
+      displayPhoneNumber: text(number.display_phone_number),
+      verifiedName: text(number.verified_name),
+    };
+  } catch {
+    return { ok: false, status: null };
+  }
+}
+
+/**
+ * Creates or updates the workspace's number. A save that sets a new number, token or business
+ * account is VERIFIED with Meta first (`checkWithMeta`): an unproven number can never be claimed,
+ * so a workspace cannot take over another number's messages. The env single-number setup's number
+ * can only be connected by its env owner (`WHATSAPP_ORGANIZATION_ID`).
+ */
 export async function saveWhatsAppConnection(
   ctx: OrgCtx,
   input: WhatsAppConnectionInput,
+  deps: { fetchFn?: typeof fetch } = {},
 ): Promise<WhatsAppConnectionSummary> {
   assertOrgCtx(ctx, "WhatsApp connection");
   if (!isEncryptionConfigured()) throw new IntegrationNotConfiguredError("encryption");
   const orgId = ctx.organizationId;
+  const env = getServerEnv();
+  if (
+    env.WHATSAPP_PHONE_NUMBER_ID === input.phoneNumberId &&
+    env.WHATSAPP_ORGANIZATION_ID !== orgId
+  ) {
+    throw new ConflictError(NUMBER_TAKEN_MESSAGE);
+  }
   const ref = connectionRef(orgId);
   const newLock = phoneLockRef(input.phoneNumberId);
+
+  // Verify with Meta outside the transaction (a network call), then re-check inside it.
+  const before = await readConnection(orgId);
+  if (!before && input.accessToken === undefined) {
+    throw new ValidationError([{ path: "accessToken", message: "Enter the access token" }]);
+  }
+  const ownerBefore: unknown = (await newLock.get()).get("organizationId");
+  if (ownerBefore !== undefined && ownerBefore !== orgId) {
+    throw new ConflictError(NUMBER_TAKEN_MESSAGE);
+  }
+  const needsCheck =
+    !before ||
+    before.phoneNumberId !== input.phoneNumberId ||
+    before.businessAccountId !== input.businessAccountId ||
+    input.accessToken !== undefined;
+  let verified: Extract<MetaCheck, { ok: true }> | null = null;
+  if (needsCheck) {
+    const token = input.accessToken ?? accessTokenOf(before!);
+    const check = await checkWithMeta(
+      input.phoneNumberId,
+      input.businessAccountId,
+      token,
+      deps.fetchFn ?? fetch,
+    );
+    if (!check.ok) {
+      logger.warn("whatsapp.connection.save_rejected", {
+        organizationId: orgId,
+        phoneNumberId: input.phoneNumberId,
+        status: check.status,
+      });
+      throw new ValidationError(
+        [{ path: "accessToken", message: META_REJECTED_MESSAGE }],
+        META_REJECTED_MESSAGE,
+      );
+    }
+    verified = check;
+  }
 
   const saved = await adminDb().runTransaction(async (tx) => {
     const [snap, lockSnap] = await Promise.all([tx.get(ref), tx.get(newLock)]);
     const existing = snap.exists ? (snap.data() as WhatsAppConnectionDoc) : null;
     if (existing && existing.organizationId !== orgId) throw new NotFoundError();
+    // What Meta verified must still be what is stored (no concurrent save in between).
+    if ((existing?.updatedAt ?? null) !== (before?.updatedAt ?? null)) {
+      throw new ConflictError("The WhatsApp connection changed while saving. Try again.");
+    }
     const owner: unknown = lockSnap.exists ? lockSnap.get("organizationId") : undefined;
     if (owner !== undefined && owner !== orgId) throw new ConflictError(NUMBER_TAKEN_MESSAGE);
-    if (!existing && input.accessToken === undefined) {
-      throw new ValidationError([{ path: "accessToken", message: "Enter the access token" }]);
-    }
 
     const now = new Date().toISOString();
     const numberChanged = existing !== null && existing.phoneNumberId !== input.phoneNumberId;
-    // A new number or token invalidates what the last test learned.
-    const retest = !existing || numberChanged || input.accessToken !== undefined;
     const doc: WhatsAppConnectionDoc = {
       organizationId: orgId,
       phoneNumberId: input.phoneNumberId,
       businessAccountId: input.businessAccountId,
-      displayPhoneNumber: retest || !existing ? null : existing.displayPhoneNumber,
-      verifiedName: retest || !existing ? null : existing.verifiedName,
+      displayPhoneNumber: verified
+        ? verified.displayPhoneNumber
+        : (existing?.displayPhoneNumber ?? null),
+      verifiedName: verified ? verified.verifiedName : (existing?.verifiedName ?? null),
       credentials:
         input.accessToken !== undefined
           ? sealSecret(JSON.stringify({ accessToken: input.accessToken }))
           : existing!.credentials,
       enabled: input.enabled,
-      lastTestedAt: retest || !existing ? null : existing.lastTestedAt,
-      lastTestResult: retest || !existing ? null : existing.lastTestResult,
+      lastTestedAt: verified ? now : (existing?.lastTestedAt ?? null),
+      lastTestResult: verified ? "ok" : (existing?.lastTestResult ?? null),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -115,7 +218,6 @@ export async function saveWhatsAppConnection(
     if (numberChanged && existing) tx.delete(phoneLockRef(existing.phoneNumberId));
     tx.set(newLock, { organizationId: orgId });
     tx.set(ref, doc);
-    const summary = toConnectionSummary(doc, false);
     writeAuditInTransaction(tx, {
       organizationId: orgId,
       actorUid: ctx.uid,
@@ -123,9 +225,9 @@ export async function saveWhatsAppConnection(
       resource: "whatsappConnection",
       resourceId: orgId,
       after: {
-        phoneNumberId: summary.phoneNumberId,
-        businessAccountId: summary.businessAccountId,
-        enabled: summary.enabled,
+        phoneNumberId: doc.phoneNumberId,
+        businessAccountId: doc.businessAccountId,
+        enabled: doc.enabled,
         tokenChanged: input.accessToken !== undefined,
       },
     });
@@ -136,62 +238,54 @@ export async function saveWhatsAppConnection(
 }
 
 /**
- * Asks Meta for the number's display phone and verified business name with the stored token and
- * records the outcome. Never throws for a Meta or network failure: that is `failed`, and Meta's
- * error body is not passed on.
+ * Re-checks the stored number and token with Meta and records the outcome. Never throws for a Meta
+ * or network failure: that is `failed`, and Meta's error body is not passed on. The result is
+ * written only if the connection is unchanged since it was read (a save or disconnect during the
+ * call wins; the current state is returned).
  */
 export async function testWhatsAppConnection(
   ctx: OrgCtx,
   deps: { fetchFn?: typeof fetch } = {},
 ): Promise<WhatsAppConnectionSummary> {
   assertOrgCtx(ctx, "WhatsApp connection");
+  if (!isEncryptionConfigured()) throw new IntegrationNotConfiguredError("encryption");
   const doc = await readConnection(ctx.organizationId);
   if (!doc) throw new NotFoundError();
-  const fetchFn = deps.fetchFn ?? fetch;
 
-  let result: { ok: true; display: string | null; name: string | null } | { ok: false };
-  let status: number | null = null;
-  try {
-    const url =
-      `https://graph.facebook.com/${graphApiVersion()}/${encodeURIComponent(doc.phoneNumberId)}` +
-      "?fields=display_phone_number,verified_name";
-    const res = await fetchFn(url, {
-      headers: { Authorization: `Bearer ${accessTokenOf(doc)}` },
-      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+  const check = await checkWithMeta(
+    doc.phoneNumberId,
+    doc.businessAccountId,
+    accessTokenOf(doc),
+    deps.fetchFn ?? fetch,
+  );
+  if (!check.ok) {
+    logger.warn("whatsapp.connection.test_failed", {
+      organizationId: ctx.organizationId,
+      phoneNumberId: doc.phoneNumberId,
+      status: check.status,
     });
-    status = res.status;
-    if (!res.ok) {
-      result = { ok: false };
-    } else {
-      const body = (await res.json()) as {
-        display_phone_number?: unknown;
-        verified_name?: unknown;
-      };
-      const text = (v: unknown) => (typeof v === "string" ? v.slice(0, 120) : null);
-      result = {
-        ok: true,
-        display: text(body.display_phone_number),
-        name: text(body.verified_name),
-      };
-    }
-  } catch {
-    result = { ok: false };
-  }
-  if (!result.ok) {
-    logger.warn("whatsapp.connection.test_failed", { organizationId: ctx.organizationId, status });
   }
 
-  const now = new Date().toISOString();
-  const patch: Partial<WhatsAppConnectionDoc> = result.ok
-    ? {
-        lastTestResult: "ok",
-        lastTestedAt: now,
-        displayPhoneNumber: result.display,
-        verifiedName: result.name,
-      }
-    : { lastTestResult: "failed", lastTestedAt: now };
-  await connectionRef(ctx.organizationId).update(patch);
-  return toConnectionSummary({ ...doc, ...patch }, isPlatformWebhookReady());
+  const ref = connectionRef(ctx.organizationId);
+  const current = await adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const now = snap.data() as WhatsAppConnectionDoc;
+    if (now.organizationId !== ctx.organizationId) return null;
+    if (now.updatedAt !== doc.updatedAt || now.phoneNumberId !== doc.phoneNumberId) return now;
+    const at = new Date().toISOString();
+    const patch: Partial<WhatsAppConnectionDoc> = check.ok
+      ? {
+          lastTestResult: "ok",
+          lastTestedAt: at,
+          displayPhoneNumber: check.displayPhoneNumber,
+          verifiedName: check.verifiedName,
+        }
+      : { lastTestResult: "failed", lastTestedAt: at };
+    tx.update(ref, patch);
+    return { ...now, ...patch };
+  });
+  return toConnectionSummary(current, isPlatformWebhookReady());
 }
 
 export async function disconnectWhatsApp(ctx: OrgCtx): Promise<void> {
@@ -235,22 +329,22 @@ export async function resolveWhatsAppOrg(
     if (typeof orgId !== "string" || !isValidIdSegment(orgId)) return null;
     const doc = await readConnection(orgId);
     if (doc && doc.enabled && doc.phoneNumberId === phoneNumberId) return orgId;
-    logger.warn("whatsapp.webhook.number_disabled", {});
+    logger.warn("whatsapp.webhook.number_disabled", { phoneNumberId });
     return null;
   }
   const env = getServerEnv();
   if (env.WHATSAPP_PHONE_NUMBER_ID !== phoneNumberId) {
-    logger.warn("whatsapp.webhook.unknown_number", {});
+    logger.warn("whatsapp.webhook.unknown_number", { phoneNumberId });
     return null;
   }
   const orgId = env.WHATSAPP_ORGANIZATION_ID;
   if (!orgId || !isValidIdSegment(orgId)) {
-    logger.warn("whatsapp.webhook.no_organization", {});
+    logger.warn("whatsapp.webhook.no_organization", { phoneNumberId });
     return null;
   }
   const org = await adminDb().collection(ORGANIZATIONS).doc(orgId).get();
   if (!org.exists) {
-    logger.warn("whatsapp.webhook.organization_missing", {});
+    logger.warn("whatsapp.webhook.organization_missing", { phoneNumberId });
     return null;
   }
   return orgId;
@@ -262,10 +356,12 @@ export async function resolveWhatsAppOrg(
  */
 export async function whatsappClientFor(
   orgId: string,
-  deps: { fetchFn?: typeof fetch } = {},
+  deps: { fetchFn?: typeof fetch; phoneNumberId?: string | null } = {},
 ): Promise<WhatsAppClient | null> {
+  // With `phoneNumberId` (the number a conversation came in on) only that number may send.
+  const wanted = deps.phoneNumberId ?? null;
   const doc = await readConnection(orgId);
-  if (doc) {
+  if (doc && (wanted === null || doc.phoneNumberId === wanted)) {
     if (!doc.enabled) return null;
     return createWhatsAppClient({
       accessToken: accessTokenOf(doc),
@@ -278,7 +374,8 @@ export async function whatsappClientFor(
   if (
     env.WHATSAPP_ORGANIZATION_ID === orgId &&
     env.WHATSAPP_PHONE_NUMBER_ID &&
-    env.WHATSAPP_ACCESS_TOKEN
+    env.WHATSAPP_ACCESS_TOKEN &&
+    (wanted === null ? !doc : env.WHATSAPP_PHONE_NUMBER_ID === wanted)
   ) {
     return createWhatsAppClient({
       accessToken: env.WHATSAPP_ACCESS_TOKEN,

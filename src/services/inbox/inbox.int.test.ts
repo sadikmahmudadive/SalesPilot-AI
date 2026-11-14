@@ -1,7 +1,9 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { ConflictError } from "@/lib/errors";
 import { conversationRepo } from "@/repositories/conversations";
+import { fakeMeta } from "@/test/whatsapp-meta";
 import { disconnectWhatsApp, saveWhatsAppConnection } from "@/services/whatsapp/connections";
 
 import {
@@ -9,6 +11,7 @@ import {
   listConversations,
   listMessages,
   sendHumanMessage,
+  WHATSAPP_NOT_CONNECTED_MESSAGE,
   updateConversation,
 } from "./inbox";
 
@@ -164,9 +167,11 @@ describe("Inbox Service", () => {
     vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 3).toString("base64"));
     const token = "EAAG-inbox-workspace-token-0001";
     const number = `7${String(Date.now()).slice(-9)}`;
+    const meta = fakeMeta({ [number]: token });
     await saveWhatsAppConnection(
       { organizationId: ORG, uid: UID },
       { phoneNumberId: number, businessAccountId: "1022901", accessToken: token, enabled: true },
+      { fetchFn: meta },
     );
     const conv = await conversationRepo.create(ORG, {
       channel: "whatsapp",
@@ -181,26 +186,45 @@ describe("Inbox Service", () => {
       lastActivityAt: "2026-11-10T01:00:00.000Z",
       searchLower: "rina +8801711000009",
     });
-    const calls: Array<{ url: string; auth: string | null }> = [];
-    const fetchFn = (async (url: string, init?: RequestInit) => {
-      calls.push({ url, auth: new Headers(init?.headers).get("authorization") });
-      return Response.json({ messages: [{ id: "wamid.staff.1" }] });
-    }) as unknown as typeof fetch;
     try {
       const msg = await sendHumanMessage(
         { organizationId: ORG, uid: UID, name: "Manager Alice" },
         conv.id,
         { text: "Hello Rina" },
-        { fetchFn },
+        { fetchFn: meta },
       );
-      expect(msg.externalId).toBe("wamid.staff.1");
-      expect(calls).toHaveLength(1);
-      expect(calls[0]!.url).toContain(`/${number}/messages`);
-      expect(calls[0]!.auth).toBe(`Bearer ${token}`);
+      expect(msg.externalId).toBe("wamid.fake.1");
+      expect(meta.sends).toHaveLength(1);
+      expect(meta.sends[0]).toMatchObject({ phoneNumberId: number, authorization: `Bearer ${token}` });
     } finally {
       await disconnectWhatsApp({ organizationId: ORG, uid: UID });
       vi.unstubAllEnvs();
     }
+  });
+
+  it("sendHumanMessage refuses instead of pretending when no number is connected", async () => {
+    const conv = await conversationRepo.create(ORG, {
+      channel: "whatsapp",
+      contactPhoneE164: "+8801711000010",
+      contactName: "Mitu",
+      customerId: null,
+      assignedAgentId: null,
+      assignedUserId: null,
+      status: "needs_reply",
+      unreadCount: 1,
+      lastMessage: null,
+      lastActivityAt: "2026-11-10T01:00:00.000Z",
+      searchLower: "mitu +8801711000010",
+    });
+    const err = await sendHumanMessage(
+      { organizationId: ORG, uid: UID, name: "Manager Alice" },
+      conv.id,
+      { text: "Hello" },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as ConflictError).message).toBe(WHATSAPP_NOT_CONNECTED_MESSAGE);
+    const messages = await listMessages({ organizationId: ORG, uid: UID }, conv.id);
+    expect(messages.items).toHaveLength(0);
   });
 
   it("updateConversation transitions status, assigns user/agent, and records audit", async () => {

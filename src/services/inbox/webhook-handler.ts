@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { logger } from "@/lib/logger";
 import { normalizePhone } from "@/lib/phone";
 import { adminDb } from "@/lib/firebase/admin";
 import { getChatProvider } from "@/lib/ai/openai-provider";
@@ -30,6 +31,7 @@ import { createCustomer } from "@/services/crm/customers";
 import { customerInputSchema } from "@/schemas/customer";
 import { listAgents } from "@/services/agents/agents";
 import { createSession, findReusableSession } from "@/services/agents/sessions";
+import { sessionRepo } from "@/repositories/agent-sessions";
 import { resolveWhatsAppOrg, whatsappClientFor } from "@/services/whatsapp/connections";
 import { runAgentTurn, type EngineDeps } from "@/services/agents/engine";
 
@@ -106,10 +108,24 @@ export async function processWhatsAppWebhook(
       if (Array.isArray(value.messages)) {
         const orgId = await resolveOrg(phoneNumberId);
         if (!orgId) continue;
-        // Replies go out from the number of the workspace the message belongs to.
-        const client: WhatsAppClient | null =
-          deps.whatsappClient ??
-          (await whatsappClientFor(orgId, deps.fetchFn ? { fetchFn: deps.fetchFn } : {}));
+        // Replies go out from the number the message arrived on. A client that cannot be built
+        // (e.g. the token cannot be decrypted) must not drop the messages: they are still stored
+        // and handed to a person.
+        let client: WhatsAppClient | null = deps.whatsappClient ?? null;
+        if (!client) {
+          try {
+            client = await whatsappClientFor(orgId, {
+              phoneNumberId: phoneNumberId ?? null,
+              ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
+            });
+          } catch (err) {
+            logger.warn("whatsapp.webhook.client_unavailable", {
+              organizationId: orgId,
+              error: err instanceof Error ? err.name : "unknown",
+            });
+            client = null;
+          }
+        }
 
         for (const msg of value.messages) {
           if (msg.type !== "text" || !msg.text?.body) continue;
@@ -183,6 +199,7 @@ export async function processWhatsAppWebhook(
               customerId,
               assignedAgentId: defaultAgentId,
               agentSessionId: null,
+              whatsappPhoneNumberId: phoneNumberId ?? null,
               assignedUserId: null,
               status: defaultAgentId ? "ai_handling" : "needs_reply",
               unreadCount: 1,
@@ -196,6 +213,15 @@ export async function processWhatsAppWebhook(
               searchLower: `${contactName} ${senderPhone}`.toLowerCase(),
             });
             conv = created;
+          }
+
+          // Staff replies go out from the number the customer last wrote to.
+          if (phoneNumberId && conv.whatsappPhoneNumberId !== phoneNumberId) {
+            await adminDb()
+              .collection(CONVERSATIONS)
+              .doc(conv.id)
+              .update({ whatsappPhoneNumberId: phoneNumberId });
+            conv = { ...conv, whatsappPhoneNumberId: phoneNumberId };
           }
 
           // Persist inbound message in conversation subcollection
@@ -251,6 +277,17 @@ export async function processWhatsAppWebhook(
                   }
                 },
               });
+
+              // The AI escalated: a person takes over, and the AI stops answering this conversation
+              // until staff hand it back (which then starts a fresh session).
+              const after = await sessionRepo.get(orgId, session.id);
+              if (after?.status === "escalated") {
+                await adminDb().collection(CONVERSATIONS).doc(conv.id).update({
+                  status: "needs_reply",
+                  agentSessionId: null,
+                  updatedAt: FieldValue.serverTimestamp(),
+                });
+              }
 
               if (replyText.trim().length > 0) {
                 // Send outbound WhatsApp reply

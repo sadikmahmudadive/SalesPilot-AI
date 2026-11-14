@@ -8,11 +8,15 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
-import { NotFoundError } from "@/lib/errors";
+import { ConflictError, NotFoundError } from "@/lib/errors";
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAudit } from "@/lib/security/audit";
 import type { WhatsAppClient } from "@/lib/whatsapp/client";
 import { whatsappClientFor } from "@/services/whatsapp/connections";
+
+export const WHATSAPP_NOT_CONNECTED_MESSAGE = "WhatsApp is not connected for this workspace";
+export const NUMBER_CHANGED_MESSAGE =
+  "This conversation came in on a WhatsApp number that is no longer connected.";
 import {
   conversationRepo,
   CONVERSATIONS,
@@ -103,16 +107,23 @@ export async function sendHumanMessage(
   let externalId: string | null = null;
 
   if (conv.channel === "whatsapp") {
-    // The workspace's own number; with none connected the message is kept with a simulated id.
+    // Send from the number the customer wrote to (or the workspace's number for older
+    // conversations). Never pretend: without a number the send is refused.
     const client =
       deps?.whatsappClient ??
-      (await whatsappClientFor(ctx.organizationId, deps?.fetchFn ? { fetchFn: deps.fetchFn } : {}));
-    if (client) {
-      const sendRes = await client.sendTextMessage(conv.contactPhoneE164, input.text);
-      externalId = sendRes.messageId;
-    } else {
-      externalId = `wamid_sim_${Date.now()}`;
+      (await whatsappClientFor(ctx.organizationId, {
+        phoneNumberId: conv.whatsappPhoneNumberId ?? null,
+        ...(deps?.fetchFn ? { fetchFn: deps.fetchFn } : {}),
+      }));
+    if (!client) {
+      throw new ConflictError(
+        conv.whatsappPhoneNumberId && (await whatsappClientFor(ctx.organizationId))
+          ? NUMBER_CHANGED_MESSAGE
+          : WHATSAPP_NOT_CONNECTED_MESSAGE,
+      );
     }
+    const sendRes = await client.sendTextMessage(conv.contactPhoneE164, input.text);
+    externalId = sendRes.messageId;
   }
 
   const senderName = ctx.name?.trim() || "Staff Member";
