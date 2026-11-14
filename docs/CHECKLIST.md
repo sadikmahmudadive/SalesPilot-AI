@@ -73,6 +73,8 @@ Unit tests are `*.test.ts`; integration tests (`*.int.test.ts`) and rules tests 
 - [x] 40. Webhook and inbox API routes: `src/app/api/webhooks/whatsapp/route.test.ts`, `src/app/api/inbox/conversations/route.int.test.ts`
 - [~] 41. Unified Inbox UI and navigation: navigation data tested (`src/config/nav.test.ts`); the inbox screens (`src/components/inbox/*`) have no tests and were not seen in a browser
 - [x] 42. WhatsApp setup guide: `docs/setup/whatsapp.md`
+- [x] 42b. WhatsApp numbers per workspace (spec `docs/superpowers/specs/2026-11-14-whatsapp-workspace-numbers-design.md`): numbers connected per workspace with the token encrypted, one owner per number, routing by number on the shared webhook, and replies, staff messages and automations sent from the workspace's own number: `src/schemas/whatsapp-connection.test.ts`, `src/services/whatsapp/connections.int.test.ts`, `src/app/api/integrations/whatsapp/route.int.test.ts`, `src/services/inbox/webhook-ai.int.test.ts`, `src/services/inbox/inbox.int.test.ts`, `src/services/automations/automations.int.test.ts`
+- [~] 42c. WhatsApp business number card on Integrations > Platform (`src/components/integrations/whatsapp-card.tsx`): not seen in a browser
 - [x] 42a. WhatsApp conversations (fix after Phase 5a review): one agent session per conversation, redelivered messages answered once, the workspace set by `WHATSAPP_ORGANIZATION_ID` with no fallback to another workspace, and an AI order drafted in one message confirmed in the next: `src/services/inbox/webhook-ai.int.test.ts`, `src/services/agents/tools/order-tools.int.test.ts`
 
 ### Phase 5a: Orders and Cash on Delivery
