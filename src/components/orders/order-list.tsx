@@ -27,9 +27,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const NOUN = { singular: "order", plural: "orders" };
 
-export function OrderList({ role }: { role: Role }) {
+export function OrderList({ role, initialSearch = "" }: { role: Role; initialSearch?: string }) {
   const canWrite = can(role, "orders:write");
-  const [filters, setFilters] = useState<OrderFilterState>(DEFAULT_ORDER_FILTERS);
+  const [filters, setFilters] = useState<OrderFilterState>(() => ({
+    ...DEFAULT_ORDER_FILTERS,
+    search: initialSearch,
+  }));
 
   // Typing is debounced; pills and the select apply immediately. An invalid search sends no
   // request: the list stays as the filters alone describe it.

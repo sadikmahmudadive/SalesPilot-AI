@@ -28,9 +28,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const NOUN = { singular: "customer", plural: "customers" };
 
-export function CustomerList({ role }: { role: Role }) {
+export function CustomerList({ role, initialSearch = "" }: { role: Role; initialSearch?: string }) {
   const canWrite = can(role, "customers:write");
-  const [filters, setFilters] = useState<ListFilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<ListFilterState>(() => ({
+    ...DEFAULT_FILTERS,
+    search: initialSearch,
+  }));
   const [form, setForm] = useState<{ open: boolean; customer?: Customer }>({ open: false });
   const [deleting, setDeleting] = useState<Customer | null>(null);
 

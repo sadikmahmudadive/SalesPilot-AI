@@ -30,12 +30,22 @@ import { ChatThread } from "./chat-thread";
 import { ConversationList } from "./conversation-list";
 import { CustomerSidebar } from "./customer-sidebar";
 
-export function InboxShell({ canWrite }: { canWrite: boolean }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function InboxShell({
+  canWrite,
+  initialSearch = "",
+  initialConversationId = null,
+}: {
+  canWrite: boolean;
+  initialSearch?: string;
+  initialConversationId?: string | null;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId);
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showDetails, setShowDetails] = useState(true);
-  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
+  const [mobileView, setMobileView] = useState<"list" | "thread">(
+    initialConversationId ? "thread" : "list",
+  );
 
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 250);
 
