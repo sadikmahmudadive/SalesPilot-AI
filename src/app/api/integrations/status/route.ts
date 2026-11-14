@@ -1,5 +1,6 @@
-import { getServerEnv, isConfigured } from "@/config/env";
+import { isConfigured } from "@/config/env";
 import { withApi } from "@/lib/api/handler";
+import { whatsappClientFor } from "@/services/whatsapp/connections";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +11,10 @@ export const GET = withApi(
   },
   async ({ organizationId }) => {
     return {
-      // This workspace's id, so an admin can set WHATSAPP_ORGANIZATION_ID to it.
-      workspaceId: organizationId,
       status: {
-        whatsapp: isConfigured("whatsapp"),
-        // WhatsApp messages are delivered to THIS workspace only when it is the configured owner.
-        whatsappLinkedHere: getServerEnv().WHATSAPP_ORGANIZATION_ID === organizationId,
+        // This workspace has a number to send from: its own enabled connection, or the env
+        // single-number setup naming this workspace.
+        whatsapp: (await whatsappClientFor(organizationId)) !== null,
         openai: isConfigured("openai"),
         cloudinary: isConfigured("cloudinary"),
         n8n: isConfigured("n8n"),
