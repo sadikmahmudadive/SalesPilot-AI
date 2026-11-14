@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SalesPilot AI — Automations User Manual</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#ffffff;--bg2:#f8fafc;--bg3:#f1f5f9;--fg:#0f172a;--fg2:#475569;--fg3:#94a3b8;--accent:#2563eb;--accent-bg:#eff6ff;--border:#e2e8f0;--green:#16a34a;--green-bg:#f0fdf4;--red:#dc2626;--red-bg:#fef2f2;--orange:#ea580c;--orange-bg:#fff7ed;--purple:#7c3aed;--purple-bg:#f5f3ff;--radius:12px}
+body{font-family:'Inter','Noto Sans Bengali',system-ui,sans-serif;background:var(--bg);color:var(--fg);line-height:1.7;-webkit-font-smoothing:antialiased}
+.container{max-width:900px;margin:0 auto;padding:24px 20px 80px}
+h1{font-size:28px;font-weight:700;margin-bottom:6px;letter-spacing:-0.5px}
+.subtitle{font-size:15px;color:var(--fg2);margin-bottom:32px}
+.lang-switch{display:flex;gap:8px;margin-bottom:32px;position:sticky;top:0;z-index:10;background:var(--bg);padding:12px 0;border-bottom:1px solid var(--border)}
+.lang-btn{padding:8px 20px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;font-size:14px;font-weight:600;transition:all .15s}
+.lang-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.lang-btn:hover:not(.active){background:var(--bg3)}
+.section{margin-bottom:36px}
+h2{font-size:20px;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--accent);display:inline-block}
+h3{font-size:16px;font-weight:600;margin:18px 0 10px;color:var(--fg)}
+p,li{font-size:14.5px;color:var(--fg2);margin-bottom:8px}
+ul,ol{padding-left:24px;margin-bottom:14px}
+li{margin-bottom:6px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-title{font-size:15px;font-weight:600;color:var(--fg);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.badge-trigger{background:var(--accent-bg);color:var(--accent)}
+.badge-action{background:var(--purple-bg);color:var(--purple)}
+.badge-status-ok{background:var(--green-bg);color:var(--green)}
+.badge-status-skip{background:var(--orange-bg);color:var(--orange)}
+.badge-status-fail{background:var(--red-bg);color:var(--red)}
+table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:14px}
+th{text-align:left;padding:10px 14px;background:var(--bg3);font-weight:600;font-size:13px;color:var(--fg2);border-bottom:2px solid var(--border)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--fg2)}
+tr:last-child td{border-bottom:none}
+code{background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:13px;font-family:'SF Mono','Fira Code',monospace}
+.callout{border-left:4px solid var(--accent);background:var(--accent-bg);padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0;font-size:14px}
+.callout-warn{border-left-color:var(--orange);background:var(--orange-bg)}
+.callout-success{border-left-color:var(--green);background:var(--green-bg)}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--accent);color:#fff;border-radius:50%;font-size:13px;font-weight:700;margin-right:8px;flex-shrink:0}
+.step{display:flex;align-items:flex-start;margin-bottom:14px}
+.step-content{flex:1}
+.toc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:32px}
+.toc-title{font-weight:700;margin-bottom:10px;font-size:15px}
+.toc a{color:var(--accent);text-decoration:none;font-size:14px;display:block;padding:3px 0}
+.toc a:hover{text-decoration:underline}
+.template-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.template-grid{grid-template-columns:1fr}}
+.var-tag{display:inline-block;background:var(--purple-bg);color:var(--purple);padding:1px 8px;border-radius:4px;font-size:12px;font-family:monospace;margin:2px}
+.hidden{display:none}
+.footer{text-align:center;color:var(--fg3);font-size:12px;margin-top:48px;padding-top:24px;border-top:1px solid var(--border)}
+.screenshot-hint{background:var(--bg3);border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;color:var(--fg3);font-size:13px;margin:14px 0}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="lang-switch">
+  <button class="lang-btn active" onclick="switchLang('en')" id="btn-en">English</button>
+  <button class="lang-btn" onclick="switchLang('bn')" id="btn-bn">বাংলা</button>
+</div>
+
+<!-- ==================== ENGLISH ==================== -->
+<div id="lang-en">
+
+<h1>SalesPilot AI — Automations User Manual</h1>
+<p class="subtitle">Follow-ups, alerts, CRM tagging and webhook integrations</p>
+
+<div class="toc">
+  <div class="toc-title">Table of Contents</div>
+  <a href="#en-overview">1. Overview</a>
+  <a href="#en-access">2. Accessing the Automations Page</a>
+  <a href="#en-dashboard">3. Dashboard KPIs</a>
+  <a href="#en-templates">4. Quick-Start Templates</a>
+  <a href="#en-create">5. Creating a Custom Automation Rule</a>
+  <a href="#en-triggers">6. Triggers (When)</a>
+  <a href="#en-actions">7. Actions (Then)</a>
+  <a href="#en-variables">8. Template Variables</a>
+  <a href="#en-manage">9. Managing Rules</a>
+  <a href="#en-test">10. Testing a Rule</a>
+  <a href="#en-sweep">11. Running a Sweep</a>
+  <a href="#en-history">12. Run History</a>
+  <a href="#en-webhooks">13. Inbound & Outbound Webhooks (n8n)</a>
+  <a href="#en-permissions">14. Roles & Permissions</a>
+  <a href="#en-faq">15. FAQ & Troubleshooting</a>
+</div>
+
+<!-- 1. Overview -->
+<div class="section" id="en-overview">
+<h2>1. Overview</h2>
+<p>The <strong>Follow-ups & Automations</strong> module lets you set up rules that automatically act when something happens in your store. Each rule follows a simple pattern:</p>
+<div class="callout"><strong>When</strong> [something happens] <strong>&rarr; Then</strong> [do this action]</div>
+<p>Examples:</p>
+<ul>
+  <li>When a draft order sits unconfirmed for 30 minutes &rarr; send the customer a WhatsApp follow-up.</li>
+  <li>When an order is delivered &rarr; tag the customer as a repeat buyer.</li>
+  <li>When stock drops below 5 units &rarr; fire a webhook to n8n or Slack.</li>
+</ul>
+<p>Every execution is logged with its status (<span class="badge badge-status-ok">Succeeded</span>, <span class="badge badge-status-skip">Skipped</span>, or <span class="badge badge-status-fail">Failed</span>) so you can always see what happened and why.</p>
+</div>
+
+<!-- 2. Access -->
+<div class="section" id="en-access">
+<h2>2. Accessing the Automations Page</h2>
+<p>From the dashboard sidebar, click <strong>Automations</strong> (or navigate to <code>/automations</code>). Every role can view automations. Creating, editing, testing and running them needs the <strong>owner</strong>, <strong>admin</strong> or <strong>agent</strong> role.</p>
+</div>
+
+<!-- 3. Dashboard KPIs -->
+<div class="section" id="en-dashboard">
+<h2>3. Dashboard KPIs</h2>
+<p>At the top of the page, four KPI cards give you a quick overview:</p>
+<table>
+  <tr><th>Card</th><th>Shows</th></tr>
+  <tr><td><strong>Active Rules</strong></td><td>How many rules are currently enabled</td></tr>
+  <tr><td><strong>Total Executions</strong></td><td>Lifetime count of all rule runs</td></tr>
+  <tr><td><strong>Succeeded</strong></td><td>Runs that completed successfully</td></tr>
+  <tr><td><strong>Skipped</strong></td><td>Runs skipped (opt-out, missing phone, etc.)</td></tr>
+</table>
+</div>
+
+<!-- 4. Templates -->
+<div class="section" id="en-templates">
+<h2>4. Quick-Start Templates</h2>
+<p>Below the KPIs, you'll find five ready-made templates. Click <strong>+ Use Template</strong> on any card to pre-fill the creation form:</p>
+<div class="template-grid">
+  <div class="card">
+    <div class="card-title">Abandoned Draft Follow-up</div>
+    <p>Sends a WhatsApp message when a draft order sits unconfirmed for 30+ minutes.</p>
+    <span class="badge badge-trigger">Stale Draft</span> &rarr; <span class="badge badge-action">WhatsApp</span>
+  </div>
+  <div class="card">
+    <div class="card-title">COD Order Voice Confirmation</div>
+    <p>Places an AI voice call to confirm a newly confirmed COD order.</p>
+    <span class="badge badge-trigger">Order Confirmed</span> &rarr; <span class="badge badge-action">Voice Call</span>
+  </div>
+  <div class="card">
+    <div class="card-title">Post-Delivery Repeat Customer Tagging</div>
+    <p>Tags customers as repeat buyers after their order is delivered.</p>
+    <span class="badge badge-trigger">Order Delivered</span> &rarr; <span class="badge badge-action">Update CRM</span>
+  </div>
+  <div class="card">
+    <div class="card-title">n8n Order Sync Webhook</div>
+    <p>Sends a signed webhook to n8n when an order is confirmed.</p>
+    <span class="badge badge-trigger">Order Confirmed</span> &rarr; <span class="badge badge-action">Webhook</span>
+  </div>
+  <div class="card">
+    <div class="card-title">Low Stock Restock Alert</div>
+    <p>Fires a webhook when available stock drops to 5 or less.</p>
+    <span class="badge badge-trigger">Low Stock</span> &rarr; <span class="badge badge-action">Webhook</span>
+  </div>
+</div>
+</div>
+
+<!-- 5. Create -->
+<div class="section" id="en-create">
+<h2>5. Creating a Custom Automation Rule</h2>
+<p>Click the <strong>New Automation Rule</strong> button in the top-right corner. A dialog opens with these fields:</p>
+<div class="step"><span class="step-num">1</span><div class="step-content"><strong>Rule Name</strong> — Give it a short, descriptive name (max 80 characters).</div></div>
+<div class="step"><span class="step-num">2</span><div class="step-content"><strong>Description</strong> — Optional note for your team (max 300 characters).</div></div>
+<div class="step"><span class="step-num">3</span><div class="step-content"><strong>When (Trigger)</strong> — Choose what event starts this rule. See <a href="#en-triggers">Triggers</a>.</div></div>
+<div class="step"><span class="step-num">4</span><div class="step-content"><strong>Then (Action)</strong> — Choose what happens when triggered. See <a href="#en-actions">Actions</a>.</div></div>
+<div class="step"><span class="step-num">5</span><div class="step-content"><strong>Configure</strong> — Fill in the trigger-specific and action-specific settings that appear below the dropdowns.</div></div>
+<div class="step"><span class="step-num">6</span><div class="step-content"><strong>Rule Enabled</strong> — Check this to activate immediately, or uncheck to save as paused.</div></div>
+<div class="step"><span class="step-num">7</span><div class="step-content">Click <strong>Create Rule</strong>.</div></div>
+</div>
+
+<!-- 6. Triggers -->
+<div class="section" id="en-triggers">
+<h2>6. Triggers (When)</h2>
+<table>
+  <tr><th>Trigger</th><th>Fires when...</th><th>Config</th></tr>
+  <tr><td><strong>Stale Draft Order</strong></td><td>A draft order has been waiting longer than the configured delay</td><td>Wait time in minutes (1 – 10,080)</td></tr>
+  <tr><td><strong>Order Confirmed</strong></td><td>An order's status changes to "confirmed"</td><td>None</td></tr>
+  <tr><td><strong>Order Delivered</strong></td><td>An order's status changes to "delivered"</td><td>None</td></tr>
+  <tr><td><strong>Inactive Customer</strong></td><td>A customer hasn't interacted in N days</td><td>Inactive days (1 – 365)</td></tr>
+  <tr><td><strong>Low Stock Alert</strong></td><td>A product's available stock drops to or below the threshold</td><td>Threshold (0 – 10,000 units)</td></tr>
+  <tr><td><strong>Inbound Webhook (n8n)</strong></td><td>An external system calls your inbound webhook URL</td><td>Optional shared secret</td></tr>
+</table>
+</div>
+
+<!-- 7. Actions -->
+<div class="section" id="en-actions">
+<h2>7. Actions (Then)</h2>
+<table>
+  <tr><th>Action</th><th>What it does</th><th>Config</th></tr>
+  <tr><td><strong>Send WhatsApp Message</strong></td><td>Sends a template message via WhatsApp to the customer's phone</td><td>Message template (with variables)</td></tr>
+  <tr><td><strong>Place AI Voice Call</strong></td><td>Initiates an automated AI voice call to the customer</td><td>Call purpose (optional)</td></tr>
+  <tr><td><strong>Update Customer CRM</strong></td><td>Adds tags and/or changes the customer's segment</td><td>Tags (comma-separated) and/or target segment</td></tr>
+  <tr><td><strong>Send Signed Webhook (n8n)</strong></td><td>POSTs a JSON payload to an external URL with HMAC-SHA256 signature</td><td>Destination URL + optional webhook secret</td></tr>
+</table>
+<div class="callout-warn callout"><strong>WhatsApp requirement:</strong> The "Send WhatsApp Message" action requires a WhatsApp business number to be connected in Integrations &gt; Platform &amp; Webhooks. If not connected, the run status will be "Skipped".</div>
+</div>
+
+<!-- 8. Variables -->
+<div class="section" id="en-variables">
+<h2>8. Template Variables</h2>
+<p>Use these placeholders in WhatsApp message templates and voice call purposes. They are replaced with real values at execution time:</p>
+<table>
+  <tr><th>Variable</th><th>Replaced with</th></tr>
+  <tr><td><span class="var-tag">{{customerName}}</span></td><td>Customer's full name</td></tr>
+  <tr><td><span class="var-tag">{{orderNumber}}</span></td><td>Order number (e.g., SP-000042)</td></tr>
+  <tr><td><span class="var-tag">{{totalBdt}}</span></td><td>Order total in BDT (e.g., 1250)</td></tr>
+  <tr><td><span class="var-tag">{{productName}}</span></td><td>Product name</td></tr>
+  <tr><td><span class="var-tag">{{phone}}</span></td><td>Customer's phone number</td></tr>
+</table>
+<p><strong>Example message:</strong></p>
+<div class="card" style="font-family:monospace;font-size:13px;">Hi {{customerName}}, your order #{{orderNumber}} (&#x09F3;{{totalBdt}}) is still waiting! Reply YES to confirm delivery.</div>
+</div>
+
+<!-- 9. Manage -->
+<div class="section" id="en-manage">
+<h2>9. Managing Rules</h2>
+<p>In the <strong>Rules</strong> tab, each rule card shows its name, status (Active/Paused), trigger, action and run stats. You can:</p>
+<ul>
+  <li><strong>Edit</strong> (pencil icon) — Opens the form dialog with current values pre-filled.</li>
+  <li><strong>Delete</strong> (trash icon) — Permanently removes the rule after confirmation.</li>
+  <li><strong>Pause / Enable</strong> — Toggles the rule on or off without deleting it.</li>
+  <li><strong>Test</strong> — Manually triggers the rule once (see next section).</li>
+</ul>
+</div>
+
+<!-- 10. Test -->
+<div class="section" id="en-test">
+<h2>10. Testing a Rule</h2>
+<p>Click the <strong>Test</strong> button on any rule card. This manually triggers the rule with a <code>force: true</code> flag, meaning it bypasses the deduplication check and runs immediately. The result (succeeded/failed/skipped) appears as a toast notification.</p>
+<div class="callout">Testing does <em>not</em> disable opt-out checks. If the target customer has consent denied, the run will still be skipped.</div>
+</div>
+
+<!-- 11. Sweep -->
+<div class="section" id="en-sweep">
+<h2>11. Running a Sweep</h2>
+<p>Click <strong>Run Sweep Now</strong> in the header to evaluate all enabled rules at once. The sweep:</p>
+<ol>
+  <li>Loops through every enabled rule in your workspace.</li>
+  <li>Checks each rule's trigger condition against current data (e.g., stale drafts, low stock).</li>
+  <li>Executes the action for every matching target, with deduplication (same target won't be processed twice).</li>
+  <li>Reports a summary: how many were evaluated, succeeded, skipped or failed.</li>
+</ol>
+<div class="callout callout-warn"><strong>Important:</strong> Rules do not run by themselves. Time-based triggers (stale drafts, confirmed or delivered orders, inactive customers, low stock) are only checked when someone clicks <strong>Run Sweep Now</strong>. There is no scheduled sweep yet, so click it regularly or ask your developer to add one.</div>
+</div>
+
+<!-- 12. History -->
+<div class="section" id="en-history">
+<h2>12. Run History</h2>
+<p>Switch to the <strong>Run History</strong> tab to see the last 50 executions. Each row shows:</p>
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><strong>Rule</strong></td><td>Rule name and its trigger &rarr; action pair</td></tr>
+  <tr><td><strong>Status</strong></td><td><span class="badge badge-status-ok">Succeeded</span>, <span class="badge badge-status-skip">Skipped</span>, or <span class="badge badge-status-fail">Failed</span></td></tr>
+  <tr><td><strong>Target</strong></td><td>What the rule acted on (order, customer, product, webhook, manual)</td></tr>
+  <tr><td><strong>Summary</strong></td><td>Human-readable result, e.g., "Sent WhatsApp follow-up to +8801711..."</td></tr>
+  <tr><td><strong>Executed</strong></td><td>Date and time of execution</td></tr>
+</table>
+</div>
+
+<!-- 13. Webhooks -->
+<div class="section" id="en-webhooks">
+<h2>13. Inbound & Outbound Webhooks (n8n)</h2>
+
+<h3>Inbound Webhook (trigger from n8n)</h3>
+<p>When you create a rule with the <strong>Inbound Webhook (n8n)</strong> trigger, the system generates a unique URL for that rule. You'll see it on the rule card — click <strong>Copy</strong> to copy it.</p>
+<p>Configure your n8n workflow to POST to this URL with this JSON body:</p>
+<div class="card" style="font-family:monospace;font-size:13px;white-space:pre;">{
+  "customerId": "cust_abc123",
+  "orderId": "order_xyz",
+  "phone": "+8801711234567",
+  "variables": {
+    "customKey": "any value"
+  }
+}</div>
+<p>If you set a <strong>webhook secret</strong>, n8n must send it in the <code>x-n8n-secret</code> or <code>x-automation-secret</code> header.</p>
+
+<h3>Outbound Webhook (send to n8n)</h3>
+<p>When a rule's action is <strong>Send Signed Webhook</strong>, SalesPilot POSTs a JSON payload to your destination URL whenever the trigger fires. The payload includes order, customer and product data. If you set a webhook secret, the request includes an <code>x-salespilot-signature</code> header with an HMAC-SHA256 signature (<code>sha256=&lt;hex&gt;</code>) so n8n can verify the request is authentic.</p>
+</div>
+
+<!-- 14. Permissions -->
+<div class="section" id="en-permissions">
+<h2>14. Roles & Permissions</h2>
+<table>
+  <tr><th>Role</th><th>View Rules & Runs</th><th>Create / Edit / Delete</th><th>Run Sweep / Test</th></tr>
+  <tr><td>Owner</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Admin</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Agent</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Viewer</td><td>Yes</td><td>No</td><td>No</td></tr>
+</table>
+</div>
+
+<!-- 15. FAQ -->
+<div class="section" id="en-faq">
+<h2>15. FAQ & Troubleshooting</h2>
+
+<h3>Q: Why does a WhatsApp rule show "Skipped"?</h3>
+<p>Common reasons: (a) No WhatsApp number is connected in Integrations; (b) The customer has no valid phone number; (c) The customer has opted out (consent denied).</p>
+
+<h3>Q: Will the same customer get the same follow-up twice?</h3>
+<p>No. The sweep uses deduplication keys (<code>ruleId:targetType:targetId</code>). Once a particular order or customer has been processed by a rule, it won't be processed again in future sweeps — unless you use the Test button (which forces execution).</p>
+
+<h3>Q: How often does the sweep run automatically?</h3>
+<p>It does not. The sweep only runs when someone clicks "Run Sweep Now". A scheduled sweep is not set up yet; your developer would need to add one.</p>
+
+<h3>Q: Can I use automations without WhatsApp?</h3>
+<p>Yes. The "Update Customer CRM" and "Send Signed Webhook" actions work without WhatsApp. Voice calls require the voice integration to be set up.</p>
+
+<h3>Q: What happens if an outbound webhook fails?</h3>
+<p>The run is recorded as <span class="badge badge-status-fail">Failed</span> with the HTTP status code in the summary. Check your n8n/destination URL and retry via the Test button.</p>
+</div>
+
+</div><!-- /lang-en -->
+
+<!-- ==================== BANGLA ==================== -->
+<div id="lang-bn" class="hidden">
+
+<h1>SalesPilot AI — অটোমেশন ব্যবহার নির্দেশিকা</h1>
+<p class="subtitle">ফলো-আপ, অ্যালার্ট, CRM ট্যাগিং এবং ওয়েবহুক ইন্টিগ্রেশন</p>
+
+<div class="toc">
+  <div class="toc-title">সূচিপত্র</div>
+  <a href="#bn-overview">১. সংক্ষিপ্ত পরিচিতি</a>
+  <a href="#bn-access">২. অটোমেশন পেজে যাওয়া</a>
+  <a href="#bn-dashboard">৩. ড্যাশবোর্ড KPI</a>
+  <a href="#bn-templates">৪. কুইক-স্টার্ট টেমপ্লেট</a>
+  <a href="#bn-create">৫. কাস্টম অটোমেশন রুল তৈরি</a>
+  <a href="#bn-triggers">৬. ট্রিগার (কখন)</a>
+  <a href="#bn-actions">৭. অ্যাকশন (তারপর কি হবে)</a>
+  <a href="#bn-variables">৮. টেমপ্লেট ভ্যারিয়েবল</a>
+  <a href="#bn-manage">৯. রুল ম্যানেজমেন্ট</a>
+  <a href="#bn-test">১০. রুল টেস্ট করা</a>
+  <a href="#bn-sweep">১১. সুইপ চালানো</a>
+  <a href="#bn-history">১২. রান হিস্ট্রি</a>
+  <a href="#bn-webhooks">১৩. ইনবাউন্ড ও আউটবাউন্ড ওয়েবহুক (n8n)</a>
+  <a href="#bn-permissions">১৪. রোল ও পারমিশন</a>
+  <a href="#bn-faq">১৫. সচরাচর জিজ্ঞাসা ও সমস্যা সমাধান</a>
+</div>
+
+<!-- 1 -->
+<div class="section" id="bn-overview">
+<h2>১. সংক্ষিপ্ত পরিচিতি</h2>
+<p><strong>Follow-ups & Automations</strong> মডিউল দিয়ে আপনি এমন রুল সেট করতে পারেন যা আপনার স্টোরে কিছু ঘটলে স্বয়ংক্রিয়ভাবে কাজ করবে। প্রতিটি রুল একটি সহজ প্যাটার্ন অনুসরণ করে:</p>
+<div class="callout"><strong>যখন</strong> [কিছু ঘটবে] <strong>&rarr; তখন</strong> [এই কাজটি করো]</div>
+<p>উদাহরণ:</p>
+<ul>
+  <li>যখন একটি ড্রাফট অর্ডার ৩০ মিনিট ধরে অনিশ্চিত থাকে &rarr; কাস্টমারকে WhatsApp এ ফলো-আপ পাঠাও।</li>
+  <li>যখন একটি অর্ডার ডেলিভারি হয় &rarr; কাস্টমারকে "repeat buyer" হিসেবে ট্যাগ করো।</li>
+  <li>যখন স্টক ৫ ইউনিটের নিচে নামে &rarr; n8n বা Slack এ ওয়েবহুক পাঠাও।</li>
+</ul>
+<p>প্রতিটি এক্সিকিউশন লগ হয়ে থাকে — <span class="badge badge-status-ok">সফল</span>, <span class="badge badge-status-skip">স্কিপ</span>, অথবা <span class="badge badge-status-fail">ব্যর্থ</span> — যাতে আপনি সবসময় দেখতে পারেন কি হয়েছে এবং কেন।</p>
+</div>
+
+<!-- 2 -->
+<div class="section" id="bn-access">
+<h2>২. অটোমেশন পেজে যাওয়া</h2>
+<p>ড্যাশবোর্ডের সাইডবার থেকে <strong>Automations</strong> এ ক্লিক করুন (অথবা <code>/automations</code> এ যান)। সব রোলই অটোমেশন দেখতে পারে। তৈরি, এডিট, টেস্ট বা রান করতে <strong>owner</strong>, <strong>admin</strong> অথবা <strong>agent</strong> রোল লাগবে।</p>
+</div>
+
+<!-- 3 -->
+<div class="section" id="bn-dashboard">
+<h2>৩. ড্যাশবোর্ড KPI</h2>
+<p>পেজের উপরে চারটি KPI কার্ড আপনাকে দ্রুত একটি ওভারভিউ দেয়:</p>
+<table>
+  <tr><th>কার্ড</th><th>কি দেখায়</th></tr>
+  <tr><td><strong>Active Rules</strong></td><td>কতগুলো রুল এখন সক্রিয় আছে</td></tr>
+  <tr><td><strong>Total Executions</strong></td><td>মোট কতবার রুল চলেছে</td></tr>
+  <tr><td><strong>Succeeded</strong></td><td>সফলভাবে সম্পন্ন হওয়া রান</td></tr>
+  <tr><td><strong>Skipped</strong></td><td>স্কিপ হওয়া রান (অপ্ট-আউট, ফোন নেই, ইত্যাদি)</td></tr>
+</table>
+</div>
+
+<!-- 4 -->
+<div class="section" id="bn-templates">
+<h2>৪. কুইক-স্টার্ট টেমপ্লেট</h2>
+<p>KPI এর নিচে পাঁচটি তৈরি টেমপ্লেট পাবেন। যেকোনো কার্ডে <strong>+ Use Template</strong> ক্লিক করলে ফর্ম আগে থেকে পূরণ হয়ে যাবে:</p>
+<div class="template-grid">
+  <div class="card">
+    <div class="card-title">Abandoned Draft Follow-up</div>
+    <p>ড্রাফট অর্ডার ৩০+ মিনিট অনিশ্চিত থাকলে WhatsApp মেসেজ পাঠায়।</p>
+    <span class="badge badge-trigger">স্টেল ড্রাফট</span> &rarr; <span class="badge badge-action">WhatsApp</span>
+  </div>
+  <div class="card">
+    <div class="card-title">COD Order Voice Confirmation</div>
+    <p>নতুন কনফার্ম হওয়া COD অর্ডারে AI ভয়েস কল করে।</p>
+    <span class="badge badge-trigger">অর্ডার কনফার্ম</span> &rarr; <span class="badge badge-action">ভয়েস কল</span>
+  </div>
+  <div class="card">
+    <div class="card-title">Post-Delivery Repeat Customer Tagging</div>
+    <p>ডেলিভারির পর কাস্টমারকে repeat buyer হিসেবে ট্যাগ করে।</p>
+    <span class="badge badge-trigger">অর্ডার ডেলিভার্ড</span> &rarr; <span class="badge badge-action">CRM আপডেট</span>
+  </div>
+  <div class="card">
+    <div class="card-title">n8n Order Sync Webhook</div>
+    <p>অর্ডার কনফার্ম হলে n8n-এ সাইন করা ওয়েবহুক পাঠায়।</p>
+    <span class="badge badge-trigger">অর্ডার কনফার্ম</span> &rarr; <span class="badge badge-action">ওয়েবহুক</span>
+  </div>
+  <div class="card">
+    <div class="card-title">Low Stock Restock Alert</div>
+    <p>স্টক ৫ বা তার কম হলে ওয়েবহুক ফায়ার করে।</p>
+    <span class="badge badge-trigger">কম স্টক</span> &rarr; <span class="badge badge-action">ওয়েবহুক</span>
+  </div>
+</div>
+</div>
+
+<!-- 5 -->
+<div class="section" id="bn-create">
+<h2>৫. কাস্টম অটোমেশন রুল তৈরি</h2>
+<p>উপরে ডান কোণায় <strong>New Automation Rule</strong> বাটনে ক্লিক করুন। একটি ডায়ালগ খুলবে এই ফিল্ডগুলো নিয়ে:</p>
+<div class="step"><span class="step-num">১</span><div class="step-content"><strong>Rule Name</strong> — একটি ছোট, বর্ণনামূলক নাম দিন (সর্বোচ্চ ৮০ অক্ষর)।</div></div>
+<div class="step"><span class="step-num">২</span><div class="step-content"><strong>Description</strong> — আপনার টিমের জন্য ঐচ্ছিক নোট (সর্বোচ্চ ৩০০ অক্ষর)।</div></div>
+<div class="step"><span class="step-num">৩</span><div class="step-content"><strong>When (Trigger)</strong> — কোন ইভেন্টে এই রুল শুরু হবে তা বেছে নিন। <a href="#bn-triggers">ট্রিগার</a> দেখুন।</div></div>
+<div class="step"><span class="step-num">৪</span><div class="step-content"><strong>Then (Action)</strong> — ট্রিগার হলে কি ঘটবে তা বেছে নিন। <a href="#bn-actions">অ্যাকশন</a> দেখুন।</div></div>
+<div class="step"><span class="step-num">৫</span><div class="step-content"><strong>Configure</strong> — ড্রপডাউনের নিচে যে ট্রিগার ও অ্যাকশন-নির্দিষ্ট সেটিংস দেখাবে, সেগুলো পূরণ করুন।</div></div>
+<div class="step"><span class="step-num">৬</span><div class="step-content"><strong>Rule Enabled</strong> — সাথে সাথে সক্রিয় করতে চাইলে চেক করুন, অথবা paused হিসেবে সেভ করতে আনচেক রাখুন।</div></div>
+<div class="step"><span class="step-num">৭</span><div class="step-content"><strong>Create Rule</strong> ক্লিক করুন।</div></div>
+</div>
+
+<!-- 6 -->
+<div class="section" id="bn-triggers">
+<h2>৬. ট্রিগার (কখন)</h2>
+<table>
+  <tr><th>ট্রিগার</th><th>কখন কাজ করে</th><th>কনফিগারেশন</th></tr>
+  <tr><td><strong>Stale Draft Order</strong></td><td>একটি ড্রাফট অর্ডার নির্ধারিত সময়ের বেশি অপেক্ষা করছে</td><td>অপেক্ষার সময় (মিনিটে, ১ – ১০,০৮০)</td></tr>
+  <tr><td><strong>Order Confirmed</strong></td><td>অর্ডারের স্ট্যাটাস "confirmed" হয়</td><td>নেই</td></tr>
+  <tr><td><strong>Order Delivered</strong></td><td>অর্ডারের স্ট্যাটাস "delivered" হয়</td><td>নেই</td></tr>
+  <tr><td><strong>Inactive Customer</strong></td><td>কাস্টমার N দিন ধরে কোনো ইন্টারঅ্যাকশন করেনি</td><td>নিষ্ক্রিয় দিন (১ – ৩৬৫)</td></tr>
+  <tr><td><strong>Low Stock Alert</strong></td><td>পণ্যের উপলব্ধ স্টক থ্রেশহোল্ডের সমান বা কম</td><td>থ্রেশহোল্ড (০ – ১০,০০০ ইউনিট)</td></tr>
+  <tr><td><strong>Inbound Webhook (n8n)</strong></td><td>বাইরের সিস্টেম আপনার ইনবাউন্ড ওয়েবহুক URL কল করে</td><td>ঐচ্ছিক শেয়ার্ড সিক্রেট</td></tr>
+</table>
+</div>
+
+<!-- 7 -->
+<div class="section" id="bn-actions">
+<h2>৭. অ্যাকশন (তারপর কি হবে)</h2>
+<table>
+  <tr><th>অ্যাকশন</th><th>কি করে</th><th>কনফিগারেশন</th></tr>
+  <tr><td><strong>Send WhatsApp Message</strong></td><td>কাস্টমারের ফোনে WhatsApp এ টেমপ্লেট মেসেজ পাঠায়</td><td>মেসেজ টেমপ্লেট (ভ্যারিয়েবল সহ)</td></tr>
+  <tr><td><strong>Place AI Voice Call</strong></td><td>কাস্টমারকে AI ভয়েস কল করে</td><td>কলের উদ্দেশ্য (ঐচ্ছিক)</td></tr>
+  <tr><td><strong>Update Customer CRM</strong></td><td>কাস্টমারে ট্যাগ যোগ এবং/অথবা সেগমেন্ট পরিবর্তন করে</td><td>ট্যাগ (কমা-বিভক্ত) এবং/অথবা টার্গেট সেগমেন্ট</td></tr>
+  <tr><td><strong>Send Signed Webhook (n8n)</strong></td><td>HMAC-SHA256 সিগনেচার সহ JSON পেলোড বাইরের URL এ POST করে</td><td>গন্তব্য URL + ঐচ্ছিক ওয়েবহুক সিক্রেট</td></tr>
+</table>
+<div class="callout-warn callout"><strong>WhatsApp প্রয়োজনীয়তা:</strong> "Send WhatsApp Message" অ্যাকশনের জন্য Integrations &gt; Platform &amp; Webhooks এ একটি WhatsApp বিজনেস নম্বর কানেক্ট থাকতে হবে। কানেক্ট না থাকলে রানের স্ট্যাটাস "Skipped" হবে।</div>
+</div>
+
+<!-- 8 -->
+<div class="section" id="bn-variables">
+<h2>৮. টেমপ্লেট ভ্যারিয়েবল</h2>
+<p>WhatsApp মেসেজ টেমপ্লেট এবং ভয়েস কলের উদ্দেশ্যে এই প্লেসহোল্ডারগুলো ব্যবহার করুন। এক্সিকিউশনের সময় এগুলো আসল মান দিয়ে প্রতিস্থাপিত হয়:</p>
+<table>
+  <tr><th>ভ্যারিয়েবল</th><th>কি দিয়ে প্রতিস্থাপিত হয়</th></tr>
+  <tr><td><span class="var-tag">{{customerName}}</span></td><td>কাস্টমারের পুরো নাম</td></tr>
+  <tr><td><span class="var-tag">{{orderNumber}}</span></td><td>অর্ডার নম্বর (যেমন, SP-000042)</td></tr>
+  <tr><td><span class="var-tag">{{totalBdt}}</span></td><td>BDT তে অর্ডারের মোট মূল্য (যেমন, 1250)</td></tr>
+  <tr><td><span class="var-tag">{{productName}}</span></td><td>পণ্যের নাম</td></tr>
+  <tr><td><span class="var-tag">{{phone}}</span></td><td>কাস্টমারের ফোন নম্বর</td></tr>
+</table>
+<p><strong>উদাহরণ মেসেজ:</strong></p>
+<div class="card" style="font-family:monospace;font-size:13px;">Hi {{customerName}}, আপনার অর্ডার #{{orderNumber}} (&#x09F3;{{totalBdt}}) এখনও অপেক্ষায় আছে! ডেলিভারি কনফার্ম করতে YES লিখুন।</div>
+</div>
+
+<!-- 9 -->
+<div class="section" id="bn-manage">
+<h2>৯. রুল ম্যানেজমেন্ট</h2>
+<p><strong>Rules</strong> ট্যাবে প্রতিটি রুল কার্ডে নাম, স্ট্যাটাস (Active/Paused), ট্রিগার, অ্যাকশন এবং রান পরিসংখ্যান দেখায়। আপনি যা করতে পারেন:</p>
+<ul>
+  <li><strong>Edit</strong> (পেন্সিল আইকন) — বর্তমান মান দিয়ে ফর্ম ডায়ালগ খোলে।</li>
+  <li><strong>Delete</strong> (ট্র্যাশ আইকন) — নিশ্চিত করার পর রুলটি স্থায়ীভাবে মুছে ফেলে।</li>
+  <li><strong>Pause / Enable</strong> — রুলটি না মুছে অন বা অফ করে।</li>
+  <li><strong>Test</strong> — রুলটি ম্যানুয়ালি একবার ট্রিগার করে (পরবর্তী অংশ দেখুন)।</li>
+</ul>
+</div>
+
+<!-- 10 -->
+<div class="section" id="bn-test">
+<h2>১০. রুল টেস্ট করা</h2>
+<p>যেকোনো রুল কার্ডে <strong>Test</strong> বাটনে ক্লিক করুন। এটি <code>force: true</code> ফ্ল্যাগ দিয়ে রুলটি ম্যানুয়ালি ট্রিগার করে, অর্থাৎ ডিডুপ্লিকেশন চেক এড়িয়ে সাথে সাথে চলে। ফলাফল (succeeded/failed/skipped) একটি টোস্ট নোটিফিকেশন হিসেবে দেখায়।</p>
+<div class="callout">টেস্ট করলেও অপ্ট-আউট চেক বন্ধ হয় না। যদি টার্গেট কাস্টমার consent denied করে থাকে, রান তখনও স্কিপ হবে।</div>
+</div>
+
+<!-- 11 -->
+<div class="section" id="bn-sweep">
+<h2>১১. সুইপ চালানো</h2>
+<p>হেডারে <strong>Run Sweep Now</strong> ক্লিক করুন সকল সক্রিয় রুল একসাথে মূল্যায়ন করতে। সুইপ যা করে:</p>
+<ol>
+  <li>আপনার ওয়ার্কস্পেসের প্রতিটি সক্রিয় রুল লুপ করে।</li>
+  <li>বর্তমান ডেটার (যেমন, স্টেল ড্রাফট, কম স্টক) বিপরীতে প্রতিটি রুলের ট্রিগার কন্ডিশন চেক করে।</li>
+  <li>প্রতিটি ম্যাচিং টার্গেটের জন্য অ্যাকশন চালায়, ডিডুপ্লিকেশন সহ (একই টার্গেট দুইবার প্রসেস হবে না)।</li>
+  <li>সারাংশ দেখায়: কতগুলো মূল্যায়ন হয়েছে, সফল, স্কিপ বা ব্যর্থ।</li>
+</ol>
+<div class="callout callout-warn"><strong>গুরুত্বপূর্ণ:</strong> রুল নিজে নিজে চলে না। সময়-ভিত্তিক ট্রিগারগুলো (স্টেল ড্রাফট, কনফার্ম বা ডেলিভার্ড অর্ডার, নিষ্ক্রিয় কাস্টমার, কম স্টক) শুধু তখনই চেক হয় যখন কেউ <strong>Run Sweep Now</strong> ক্লিক করে। এখনও কোনো নির্ধারিত (scheduled) সুইপ নেই, তাই নিয়মিত ক্লিক করুন অথবা আপনার ডেভেলপারকে এটি যোগ করতে বলুন।</div>
+</div>
+
+<!-- 12 -->
+<div class="section" id="bn-history">
+<h2>১২. রান হিস্ট্রি</h2>
+<p>শেষ ৫০টি এক্সিকিউশন দেখতে <strong>Run History</strong> ট্যাবে সুইচ করুন। প্রতিটি সারিতে দেখায়:</p>
+<table>
+  <tr><th>কলাম</th><th>বর্ণনা</th></tr>
+  <tr><td><strong>Rule</strong></td><td>রুলের নাম এবং তার trigger &rarr; action জোড়া</td></tr>
+  <tr><td><strong>Status</strong></td><td><span class="badge badge-status-ok">সফল</span>, <span class="badge badge-status-skip">স্কিপ</span>, অথবা <span class="badge badge-status-fail">ব্যর্থ</span></td></tr>
+  <tr><td><strong>Target</strong></td><td>রুল কিসের উপর কাজ করেছে (order, customer, product, webhook, manual)</td></tr>
+  <tr><td><strong>Summary</strong></td><td>মানুষ-পাঠযোগ্য ফলাফল, যেমন "Sent WhatsApp follow-up to +8801711..."</td></tr>
+  <tr><td><strong>Executed</strong></td><td>এক্সিকিউশনের তারিখ ও সময়</td></tr>
+</table>
+</div>
+
+<!-- 13 -->
+<div class="section" id="bn-webhooks">
+<h2>১৩. ইনবাউন্ড ও আউটবাউন্ড ওয়েবহুক (n8n)</h2>
+
+<h3>ইনবাউন্ড ওয়েবহুক (n8n থেকে ট্রিগার)</h3>
+<p><strong>Inbound Webhook (n8n)</strong> ট্রিগার দিয়ে রুল তৈরি করলে, সিস্টেম সেই রুলের জন্য একটি ইউনিক URL তৈরি করে। রুল কার্ডে এটি দেখাবে — <strong>Copy</strong> ক্লিক করে কপি করুন।</p>
+<p>আপনার n8n workflow কনফিগার করুন এই URL এ POST করতে, এই JSON বডি সহ:</p>
+<div class="card" style="font-family:monospace;font-size:13px;white-space:pre;">{
+  "customerId": "cust_abc123",
+  "orderId": "order_xyz",
+  "phone": "+8801711234567",
+  "variables": {
+    "customKey": "যেকোনো মান"
+  }
+}</div>
+<p>আপনি যদি <strong>webhook secret</strong> সেট করেন, n8n-কে <code>x-n8n-secret</code> বা <code>x-automation-secret</code> হেডারে সেটা পাঠাতে হবে।</p>
+
+<h3>আউটবাউন্ড ওয়েবহুক (n8n-এ পাঠানো)</h3>
+<p>রুলের অ্যাকশন <strong>Send Signed Webhook</strong> হলে, SalesPilot ট্রিগার ফায়ার হওয়ার সময় আপনার গন্তব্য URL-এ JSON পেলোড POST করে। পেলোডে অর্ডার, কাস্টমার এবং প্রোডাক্ট ডেটা থাকে। আপনি webhook secret সেট করলে, রিকোয়েস্টে <code>x-salespilot-signature</code> হেডার থাকে HMAC-SHA256 সিগনেচার সহ (<code>sha256=&lt;hex&gt;</code>) যাতে n8n যাচাই করতে পারে রিকোয়েস্টটি আসল কিনা।</p>
+</div>
+
+<!-- 14 -->
+<div class="section" id="bn-permissions">
+<h2>১৪. রোল ও পারমিশন</h2>
+<table>
+  <tr><th>রোল</th><th>রুল ও রান দেখা</th><th>তৈরি / এডিট / মুছে ফেলা</th><th>সুইপ / টেস্ট চালানো</th></tr>
+  <tr><td>Owner</td><td>হ্যাঁ</td><td>হ্যাঁ</td><td>হ্যাঁ</td></tr>
+  <tr><td>Admin</td><td>হ্যাঁ</td><td>হ্যাঁ</td><td>হ্যাঁ</td></tr>
+  <tr><td>Agent</td><td>হ্যাঁ</td><td>হ্যাঁ</td><td>হ্যাঁ</td></tr>
+  <tr><td>Viewer</td><td>হ্যাঁ</td><td>না</td><td>না</td></tr>
+</table>
+</div>
+
+<!-- 15 -->
+<div class="section" id="bn-faq">
+<h2>১৫. সচরাচর জিজ্ঞাসা ও সমস্যা সমাধান</h2>
+
+<h3>প্র: কেন একটি WhatsApp রুল "Skipped" দেখাচ্ছে?</h3>
+<p>সাধারণ কারণ: (ক) Integrations এ কোনো WhatsApp নম্বর কানেক্ট করা হয়নি; (খ) কাস্টমারের কোনো বৈধ ফোন নম্বর নেই; (গ) কাস্টমার অপ্ট-আউট করেছে (consent denied)।</p>
+
+<h3>প্র: একই কাস্টমার কি একই ফলো-আপ দুইবার পাবে?</h3>
+<p>না। সুইপ ডিডুপ্লিকেশন কী (<code>ruleId:targetType:targetId</code>) ব্যবহার করে। একটি নির্দিষ্ট অর্ডার বা কাস্টমার একবার একটি রুল দ্বারা প্রসেস হলে, ভবিষ্যতে সুইপে আবার প্রসেস হবে না — যতক্ষণ না আপনি Test বাটন ব্যবহার করেন (যা জোরপূর্বক এক্সিকিউশন করে)।</p>
+
+<h3>প্র: সুইপ স্বয়ংক্রিয়ভাবে কত ঘন ঘন চলে?</h3>
+<p>চলে না। সুইপ শুধু তখনই চলে যখন কেউ "Run Sweep Now" ক্লিক করে। নির্ধারিত (scheduled) সুইপ এখনও সেট করা নেই; এটি আপনার ডেভেলপারকে যোগ করতে হবে।</p>
+
+<h3>প্র: WhatsApp ছাড়া কি অটোমেশন ব্যবহার করা যায়?</h3>
+<p>হ্যাঁ। "Update Customer CRM" এবং "Send Signed Webhook" অ্যাকশনগুলো WhatsApp ছাড়াই কাজ করে। ভয়েস কলের জন্য ভয়েস ইন্টিগ্রেশন সেটআপ থাকতে হবে।</p>
+
+<h3>প্র: আউটবাউন্ড ওয়েবহুক ব্যর্থ হলে কি হয়?</h3>
+<p>রানটি <span class="badge badge-status-fail">Failed</span> হিসেবে রেকর্ড হয়, সারাংশে HTTP স্ট্যাটাস কোড সহ। আপনার n8n/গন্তব্য URL চেক করুন এবং Test বাটনের মাধ্যমে পুনরায় চেষ্টা করুন।</p>
+</div>
+
+</div><!-- /lang-bn -->
+
+<div class="footer">SalesPilot AI &mdash; User Manual v1.0 &mdash; Last updated November 2026</div>
+
+</div><!-- /container -->
+
+<script>
+function switchLang(lang) {
+  document.getElementById('lang-en').classList.toggle('hidden', lang !== 'en');
+  document.getElementById('lang-bn').classList.toggle('hidden', lang !== 'bn');
+  document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+  document.getElementById('btn-bn').classList.toggle('active', lang === 'bn');
+}
+</script>
+</body>
+</html>
