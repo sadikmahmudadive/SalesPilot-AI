@@ -127,6 +127,10 @@ export function GlobalSearch() {
           setActive(-1);
         }}
         onFocus={() => setOpen(true)}
+        onBlur={(e) => {
+          // Tabbing away closes it; moving focus onto a result inside the dropdown does not.
+          if (!rootRef.current?.contains(e.relatedTarget as Node | null)) close();
+        }}
         onKeyDown={onKeyDown}
         className="pr-14 pl-8"
         autoComplete="off"
