@@ -28,6 +28,9 @@ const ORG_B = "orgB";
 const ORG_C = "orgC";
 const BUSINESS = ["customers", "products", "categories", "inventory", "agents"] as const;
 const LOCKED = [
+  "whatsappConnections",
+  "whatsappPhoneNumbers",
+  "whatsappInbound",
   "rateLimits",
   "auditLogs",
   "customerPhones",
