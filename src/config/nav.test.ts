@@ -36,44 +36,56 @@ describe("NAV_ITEMS", () => {
     expect([...NAV_ITEMS.map((i) => i.href)].sort()).toEqual([...PROTECTED_PREFIXES].sort());
   });
 
-  it("only the pages built in this plan have no phase", () => {
+  it("only the pages built so far have no phase", () => {
     const built = NAV_ITEMS.filter((i) => i.phase === undefined).map((i) => i.label);
-    expect(built).toEqual(["Overview", "Customers", "Products", "Inventory", "Settings"]);
+    expect(built).toEqual([
+      "Overview",
+      "Unified Inbox",
+      "AI Agents",
+      "Customers",
+      "Products",
+      "Inventory",
+      "Orders",
+      "Voice Calls",
+      "Automations",
+      "Analytics",
+      "Integrations",
+      "Settings",
+    ]);
   });
 
   it("assigns the planned phases", () => {
     const phases = Object.fromEntries(
       NAV_ITEMS.filter((i) => i.phase).map((i) => [i.href, i.phase]),
     );
-    expect(phases).toEqual({
-      "/inbox": 4,
-      "/agents": 3,
-      "/orders": 5,
-      "/voice": 6,
-      "/automations": 7,
-      "/analytics": 8,
-      "/integrations": 8,
-    });
+    expect(phases).toEqual({});
   });
 
-  it("gates customers, products and inventory on their read permissions", () => {
+  it("gates inbox, customers, products, inventory, agents, voice, automations, analytics and integrations on permissions", () => {
     const perms = Object.fromEntries(
       NAV_ITEMS.filter((i) => i.permission).map((i) => [i.href, i.permission]),
     );
     expect(perms).toEqual({
+      "/inbox": "inbox:read",
+      "/agents": "agents:read",
       "/customers": "customers:read",
       "/products": "products:read",
       "/inventory": "inventory:read",
+      "/voice": "voice:read",
+      "/automations": "automations:read",
+      "/analytics": "analytics:read",
+      "/integrations": "integrations:manage",
     });
   });
 });
 
 describe("visibleNavItems", () => {
-  it("shows a viewer the built pages plus the phase placeholders", () => {
+  it("shows a viewer the built pages plus the phase placeholders (excluding admin/integrations)", () => {
     const labels = visibleNavItems("viewer").map((i) => i.label);
     for (const l of ["Overview", "Customers", "Products", "Inventory", "Settings"])
       expect(labels).toContain(l);
-    expect(labels).toHaveLength(12);
+    expect(labels).toHaveLength(11);
+    expect(labels).not.toContain("Integrations");
   });
 
   it.each(ROLES)("returns items in nav order for %s", (role: Role) => {

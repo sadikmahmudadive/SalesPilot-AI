@@ -29,6 +29,21 @@ export const limitParam = (max: number = MAX_LIMIT) =>
       .pipe(z.number().int().min(1).max(max)),
   );
 
+/**
+ * The page size of a list request: `limit` when given, else `defaultLimit`. It must be an
+ * integer from 1 to `maxLimit`, otherwise a ValidationError with a static message.
+ */
+export function resolveListLimit(
+  limit: number | undefined,
+  opts: { defaultLimit: number; maxLimit: number },
+): number {
+  const value = limit ?? opts.defaultLimit;
+  if (!Number.isInteger(value) || value < 1 || value > opts.maxLimit) {
+    throw staticInvalid("limit", `Limit must be an integer between 1 and ${opts.maxLimit}`);
+  }
+  return value;
+}
+
 export const cursorParam = () => optionalParam(z.string().max(1024));
 
 /**

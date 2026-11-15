@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 
 import { inventoryKeys, productKeys } from "@/hooks/query-keys";
@@ -82,14 +82,34 @@ export function useProducts(params: Omit<ProductListParams, "cursor">) {
   );
 }
 
-export function useProduct(id: string) {
-  return useQuery({
+/** Shared by `useProduct` and `useProductsByIds`, so both fill the same cache entry. */
+function productQuery(id: string) {
+  return {
     queryKey: productKeys.detail(id),
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       apiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, { signal }),
     // A missing product will not appear on retry.
-    retry: (count, error) =>
+    retry: (count: number, error: unknown) =>
       !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 1,
+  };
+}
+
+export function useProduct(id: string) {
+  return useQuery(productQuery(id));
+}
+
+/** Loads several products at once (blank and repeated ids are skipped); the result is keyed by product id. */
+export function useProductsByIds(ids: readonly string[]) {
+  const unique = [...new Set(ids.filter((id) => id !== ""))];
+  return useQueries({
+    queries: unique.map(productQuery),
+    combine: (results) => {
+      const products = new Map<string, Product>();
+      results.forEach((r, i) => {
+        if (r.data) products.set(unique[i]!, r.data);
+      });
+      return { products, loading: results.some((r) => r.isPending) };
+    },
   });
 }
 

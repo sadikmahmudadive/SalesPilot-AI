@@ -26,9 +26,10 @@ const SIZES = {
 
 /**
  * App Icon ("s." mark) from Turn 2 of the SalesPilot AI Typography Logo Design System.
- * - Background: Brand green (#1a8a5c)
- * - Letter "s": Pure white (#ffffff)
- * - Accent dot ".": Dark neutral (#0f1a14) in light mode, mint green (#4fd39a) in dark mode.
+ * Colours come from the brand tokens in `globals.css` (`--brand*`):
+ * - Background: `bg-brand` (green in both modes)
+ * - Letter "s": `text-brand-foreground` (white)
+ * - Accent dot ".": `text-brand-ink` (dark neutral in light mode, mint in dark mode).
  */
 export function BrandMark({
   size = "md",
@@ -42,21 +43,21 @@ export function BrandMark({
     <span
       aria-hidden="true"
       className={cn(
-        "flex shrink-0 items-center justify-center font-[family-name:var(--font-manrope)] font-extrabold leading-none tracking-[-0.06em] select-none text-white shadow-xs transition-colors",
-        "bg-[#1a8a5c] dark:bg-[#1a8a5c]",
+        "flex shrink-0 items-center justify-center font-[family-name:var(--font-manrope)] font-extrabold leading-none tracking-[-0.06em] select-none bg-brand text-brand-foreground shadow-xs transition-colors",
         current.iconSize,
         className,
       )}
     >
-      s<span className="text-[#0f1a14] dark:text-[#4fd39a]">.</span>
+      s<span className="text-brand-ink">.</span>
     </span>
   );
 }
 
 /**
  * Wordmark ("salespilot.ai") from the Typography Logo Design System.
- * - "salespilot": Dark text in light mode, crisp white in dark mode.
- * - ".ai": Brand green (#1a8a5c) in light mode, vibrant mint (#4fd39a) in dark mode.
+ * - "salespilot": `text-brand-wordmark` (dark in light mode, white in dark mode).
+ * - ".ai": `text-brand-accent` (brand green in light mode, mint in dark mode).
+ * The visual text is hidden from assistive tech and replaced by one readable name.
  */
 export function BrandWordmark({
   size = "md",
@@ -69,12 +70,15 @@ export function BrandWordmark({
   return (
     <span
       className={cn(
-        "font-[family-name:var(--font-manrope)] font-extrabold leading-none select-none text-[#141815] dark:text-white transition-colors",
+        "font-[family-name:var(--font-manrope)] font-extrabold leading-none select-none text-brand-wordmark transition-colors",
         current.textClass,
         className,
       )}
     >
-      salespilot<span className="text-[#1a8a5c] dark:text-[#4fd39a]">.ai</span>
+      <span aria-hidden="true">
+        salespilot<span className="text-brand-accent">.ai</span>
+      </span>
+      <span className="sr-only">SalesPilot AI</span>
     </span>
   );
 }

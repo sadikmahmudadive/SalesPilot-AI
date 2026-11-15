@@ -68,6 +68,9 @@ const phoneCore = z
   .transform(cleanDisplayText)
   .pipe(z.string().refine((v) => normalizePhone(v) !== null, { error: PHONE_MESSAGE }));
 
+/** The customer phone rules, reused by other schemas (e.g. order shipping address). */
+export const phoneInputSchema = phoneCore;
+
 const emailCore = z
   .string({ error: EMAIL_MESSAGE })
   .max(254, { error: EMAIL_MESSAGE }) // before any pipe, so the email regex never sees huge input

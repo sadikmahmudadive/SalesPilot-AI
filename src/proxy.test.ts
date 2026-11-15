@@ -66,4 +66,9 @@ describe("proxy", () => {
   it("lets anonymous visitors see /login", () => {
     expect(run("/login").headers.get("location")).toBeNull();
   });
+
+  it("leaves /pay open to anonymous visitors", () => {
+    const res = run("/pay/token_123");
+    expect(res.headers.get("location")).toBeNull();
+  });
 });

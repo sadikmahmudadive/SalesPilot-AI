@@ -33,6 +33,7 @@ function NavLink({
   const link = (
     <Link
       href={item.href}
+      prefetch={false}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(
@@ -114,7 +115,10 @@ export function DesktopSidebar({ items, collapsed, animate, onToggle }: DesktopS
         )}
       >
         {collapsed ? (
-          <BrandMark size="sm" />
+          <>
+            <BrandMark size="sm" />
+            <span className="sr-only">SalesPilot AI</span>
+          </>
         ) : (
           <Brand />
         )}

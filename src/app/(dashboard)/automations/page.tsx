@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Workflow } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { AutomationsConsole } from "@/components/automations/automations-console";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { can } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Automations" };
 
-export default function Page() {
-  return (
-    <ComingLater
-      phase={7}
-      title="Automations"
-      icon={Workflow}
-      description="Rules that follow up with customers, restock reminders and routine tasks will be built and monitored here."
-    />
-  );
+export default async function AutomationsPage() {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  if (!can(ctx.role, "automations:read")) {
+    redirect("/");
+  }
+  return <AutomationsConsole role={ctx.role} />;
 }

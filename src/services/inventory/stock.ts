@@ -58,6 +58,13 @@
  * is one document, so a very hot product (flash sale) can see this error under heavy parallel
  * load; sharding counters is deliberately out of scope.
  *
+ * OPTIONAL BUDGET. Every mutator takes a trailing `options?: { maxAttempts?: number }` (a whole
+ * number from 1 to 11 for reserve / release / commit, 1 to 5 for adjust; anything else is a
+ * ValidationError). The defaults above are unchanged. Phase 5 callers that run inside an HTTP
+ * request (a checkout, a webhook) should pass a SMALL value, e.g. `{ maxAttempts: 3 }` (about 2.5
+ * s of backoff), so the request answers promptly with a retryable InventoryBusyError instead of
+ * holding the function for up to two minutes; background workers can keep the default.
+ *
  * ADJUSTMENTS (`adjustStock`, owner/admin through the API) change `onHand` by a nonzero delta and
  * are audited in the same transaction (a failing audit write persists nothing). `adjustStock` is
  * NOT idempotent: a lost acknowledgement (the commit succeeded but the response did not arrive)
@@ -101,6 +108,10 @@ export const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 export const RESERVATION_MAX_ATTEMPTS = 11;
 /** Attempts of adjustStock, which answers an HTTP request (see the header). */
 export const ADJUST_MAX_ATTEMPTS = 5;
+/** Per-call tuning of the transaction retry budget (see "OPTIONAL BUDGET" in the header). */
+export interface StockOptions {
+  maxAttempts?: number;
+}
 const KEY_CONFLICT_MESSAGE = "This idempotency key was already used with a different quantity";
 const RELEASED_MESSAGE = "This reservation was already released";
 const COMMITTED_MESSAGE = "This reservation was already committed";
@@ -138,6 +149,20 @@ function assertKey(key: unknown): asserts key is string {
   if (!isValidIdSegment(key) || key.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
     throw invalid("idempotencyKey", "Invalid idempotency key");
   }
+}
+
+/** Validated attempt budget: `options.maxAttempts` (whole number 1..max) or `defaultAttempts`. */
+function resolveMaxAttempts(
+  options: StockOptions | undefined,
+  defaultAttempts: number,
+  max: number,
+): number {
+  const requested = options?.maxAttempts;
+  if (requested === undefined) return defaultAttempts;
+  if (!Number.isInteger(requested) || requested < 1 || requested > max) {
+    throw invalid("options.maxAttempts", `Attempts must be a whole number from 1 to ${max}`);
+  }
+  return requested;
 }
 
 /** Invalid ids are the same NotFound as missing documents. */
@@ -244,14 +269,20 @@ export async function reserveStock(
   variantId: string,
   quantity: number,
   idempotencyKey: string,
+  options?: StockOptions,
 ): Promise<ReservationResult> {
   assertOrgId(orgId);
   assertQuantity(quantity);
   assertKey(idempotencyKey);
+  const maxAttempts = resolveMaxAttempts(
+    options,
+    RESERVATION_MAX_ATTEMPTS,
+    RESERVATION_MAX_ATTEMPTS,
+  );
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  return runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
+  return runStockTransaction(invRef.id, maxAttempts, async (tx) => {
     // Reads first (both documents), writes after.
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
@@ -297,13 +328,19 @@ export async function releaseStock(
   productId: string,
   variantId: string,
   idempotencyKey: string,
+  options?: StockOptions,
 ): Promise<void> {
   assertOrgId(orgId);
   assertKey(idempotencyKey);
+  const maxAttempts = resolveMaxAttempts(
+    options,
+    RESERVATION_MAX_ATTEMPTS,
+    RESERVATION_MAX_ATTEMPTS,
+  );
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  await runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
+  await runStockTransaction(invRef.id, maxAttempts, async (tx) => {
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
     const res = readReservation(resSnap!, orgId);
@@ -331,13 +368,19 @@ export async function commitStock(
   productId: string,
   variantId: string,
   idempotencyKey: string,
+  options?: StockOptions,
 ): Promise<void> {
   assertOrgId(orgId);
   assertKey(idempotencyKey);
+  const maxAttempts = resolveMaxAttempts(
+    options,
+    RESERVATION_MAX_ATTEMPTS,
+    RESERVATION_MAX_ATTEMPTS,
+  );
   const invRef = inventoryRefOrNotFound(productId, variantId);
   const resRef = invRef.collection("reservations").doc(idempotencyKey);
 
-  await runStockTransaction(invRef.id, RESERVATION_MAX_ATTEMPTS, async (tx) => {
+  await runStockTransaction(invRef.id, maxAttempts, async (tx) => {
     const [invSnap, resSnap] = await tx.getAll(invRef, resRef);
     const counts = readCounts(invSnap!, orgId);
     const res = readReservation(resSnap!, orgId);
@@ -369,8 +412,10 @@ export async function adjustStock(
   productId: string,
   variantId: string,
   input: { delta: number; reason: string },
+  options?: StockOptions,
 ): Promise<InventoryRecord> {
   assertOrgCtx(ctx, "Inventory");
+  const maxAttempts = resolveMaxAttempts(options, ADJUST_MAX_ATTEMPTS, ADJUST_MAX_ATTEMPTS);
   const parsed = adjustFieldsSchema.safeParse(input);
   if (!parsed.success) {
     throw new ValidationError(
@@ -381,7 +426,7 @@ export async function adjustStock(
   const orgId = ctx.organizationId;
   const invRef = inventoryRefOrNotFound(productId, variantId);
 
-  await runStockTransaction(invRef.id, ADJUST_MAX_ATTEMPTS, async (tx) => {
+  await runStockTransaction(invRef.id, maxAttempts, async (tx) => {
     const counts = readCounts(await tx.get(invRef), orgId);
     const onHand = counts.onHand + delta;
     if (onHand < counts.reserved) throw new ConflictError(BELOW_RESERVED_MESSAGE);

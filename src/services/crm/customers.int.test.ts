@@ -173,6 +173,23 @@ describe("createCustomer", () => {
     expect(explicit.consent.at).toBe("2024-01-02T03:04:05.000Z");
   });
 
+  it("stores an explicit consent.at as UTC and rejects one in the future", async () => {
+    const ctx = newCtx();
+    const offset = await createCustomer(
+      ctx,
+      make({ consent: { status: "granted", source: "form", at: "2024-01-02T09:04:05+06:00" } }),
+    );
+    expect(offset.consent.at).toBe("2024-01-02T03:04:05.000Z");
+
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await expect(
+      createCustomer(
+        ctx,
+        make({ phone: "01712000999", consent: { status: "granted", source: "form", at: future } }),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it("does not persist extra client props or client-supplied managed/derived fields", async () => {
     const ctx = newCtx();
     const evil = {

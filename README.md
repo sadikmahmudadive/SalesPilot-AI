@@ -4,24 +4,28 @@ SalesPilot AI is a multi-tenant sales platform for small businesses: staff sign 
 
 ## Current scope
 
-Sub-projects 1 and 2 of 8 are implemented; their logic is tested but no UI has been run in a browser. Nothing from sub-projects 3 to 8 exists yet; their dashboard pages show an explicit "coming later" state, not mock data.
+Sub-projects 1 to 8 (foundation, core data, AI agents, WhatsApp & unified inbox, orders/payments/couriers, voice calls, follow-ups & automations, and analytics & integrations settings) are implemented; their logic is tested, and UI verification in a browser remains pending.
 
 | #   | Sub-project                                                                | State                                |
 | --- | -------------------------------------------------------------------------- | ------------------------------------ |
 | 1   | Foundation: auth, organizations, roles, security baseline, dashboard shell | implemented; UI not browser-verified |
 | 2   | Core data: CRM, products, inventory, Cloudinary uploads, overview KPIs     | implemented; UI not browser-verified |
-| 3   | AI agents (RAG, tool calling)                                              | roadmap                              |
-| 4   | WhatsApp and unified inbox                                                 | roadmap                              |
-| 5   | Orders, payments, courier                                                  | roadmap                              |
-| 6   | Voice calls                                                                | roadmap                              |
-| 7   | Follow-ups and automations (n8n)                                           | roadmap                              |
-| 8   | Analytics and integrations settings                                        | roadmap                              |
+| 3   | AI agents: Phase 3a tool calling, bounded engine, test console              | implemented; UI not browser-verified |
+| 4   | WhatsApp and unified inbox                                                 | implemented; UI not browser-verified |
+| 5   | Orders, payments, courier                                                  | 5a orders, 5b payments, 5c couriers implemented; UI not browser-verified |
+| 6   | Voice calls (Vapi, Twilio Voice, Mock)                                     | implemented; UI not browser-verified |
+| 7   | Follow-ups and automations (n8n)                                           | implemented; UI not browser-verified |
+| 8   | Analytics and integrations settings                                        | implemented; UI not browser-verified |
+
+### Orders (5a)
+
+Staff create orders from the Orders page (a draft first, then confirm), and AI agents can draft and confirm cash-on-delivery orders in WhatsApp conversations. A draft holds its stock; the hold expires and a scheduled sweep (`/api/cron/orders/expire`, see [docs/setup/vercel.md](docs/setup/vercel.md)) releases it. Delivery charges and hold times are set under Settings > Orders (owner and admin). The overview shows orders placed today and this month's paid or collected revenue (Asia/Dhaka time). Money is stored as integer paisa, currency BDT. Online payments and couriers are not built yet.
 
 The design is in [docs/superpowers/specs/2026-11-06-foundation-core-data-design.md](docs/superpowers/specs/2026-11-06-foundation-core-data-design.md). What has and has not been verified is in [docs/CHECKLIST.md](docs/CHECKLIST.md).
 
 ## Prerequisites
 
-- Node.js 20.11 or newer (`engines` in `package.json`) and npm. Use npm only; the lockfile is `package-lock.json`.
+- Node.js 22.x or 24.x (22.12 or newer; `engines` in `package.json`) and npm. Use npm only; the lockfile is `package-lock.json`. Node 20 is not supported: `firebase-admin` 14 requires Node 22, and on Node 20 `jwks-rsa` fails with `ERR_REQUIRE_ESM` when it loads `jose`.
 - Java 21 or newer on `PATH`. The Firestore emulator needs it.
 - `firebase-tools`. It is a dev dependency, so `npx firebase` works after `npm install`; no global install is required.
 
@@ -79,11 +83,20 @@ src/app (routes, UI) -> src/services (business rules) -> src/repositories (Fires
 - `src/schemas` holds the Zod schemas shared by API handlers and forms. All input is validated with them.
 - `src/config` holds env validation, navigation, security headers (CSP, HSTS and friends).
 - **Reads and writes.** Server Components and route handlers use the Firebase Admin SDK. Every write goes through a route handler wrapped by `withApi` (`src/lib/api/handler.ts`), which runs, in order, the same-origin (CSRF) check, session authentication, organization membership, the permission check, the rate limit and body validation. Mutations write an audit log entry.
-- **Auth and session.** The browser signs in with Firebase Auth and posts the ID token to `/api/auth/session`; the server verifies it and sets an httpOnly `__session` cookie. `src/proxy.ts` (the Next 16 name for middleware) only checks that the cookie exists, to redirect. It is not a security boundary: every protected server call verifies the cookie with the Admin SDK.
+- **Auth and session.** The browser signs in with Firebase Auth and posts the ID token to `/api/auth/session`; the server verifies it and sets an httpOnly `__session` cookie. `src/proxy.ts` (the Next 16 name for middleware) only checks that the cookie exists, to redirect. It is not a security boundary: every protected server call verifies the cookie with the Admin SDK. A cookie Firebase calls invalid (expired, revoked, user disabled) signs the user out; if Firebase Auth cannot be reached the request fails with a 500 or the error page and the cookie is kept, so an outage does not log everyone out. **Sign-out revokes the user's refresh tokens, so it signs the user out on all devices**; the user menu says so.
 - **Tenancy and roles.** Every business document carries `organizationId`. Role and organization come from the `organizationMembers` document, never from the client. Roles are `owner`, `admin`, `agent` and `viewer`; the matrix is in `src/lib/security/permissions.ts`.
 - **Firestore rules** (`firestore.rules`) let a member read their own organization's documents and deny every client write. Cross-organization access is denied. Rules are tested in `tests/rules/tenancy.rules.test.ts`.
 - **Money** is stored as integer minor units (BDT). **Phone numbers** are normalized to E.164 and unique per organization. **Inventory** reserve, release and commit are server-only transactions; manual adjustments go through `/api/inventory/adjust` with a reason.
 - **Indexes.** Composite indexes for the customer, product and inventory lists are in `firestore.indexes.json` and must be deployed to any real project (see the Firebase guide).
+
+## Dependency overrides
+
+`package.json` pins `jwks-rsa` to `jose@4.15.9` through `overrides`.
+
+- **Why.** `jwks-rsa` 4 depends on `jose@6`, which is ESM-only. When the package is loaded with `require()` on an older Node, or through a bundling path that does not support `require(esm)`, it fails with `ERR_REQUIRE_ESM`. The override gives `jwks-rsa` the dual-format `jose@4` instead.
+- **Is 4.15.9 enough?** `jwks-rsa` only uses `importJWK`, `exportSPKI`, `decodeJwt` and `decodeProtectedHeader`, all present in `jose` 4.15.9, which also contains the fix for CVE-2024-28176.
+- **Where it matters.** `jwks-rsa` is reached only through `firebase-admin`'s App Check and phone-number verification code paths. Session cookies and ID tokens (the paths this app uses) verify with `firebase-admin`'s own keys code.
+- **Rule.** On any `firebase-admin` or `jwks-rsa` upgrade, re-check which `jose` APIs `jwks-rsa` calls, and try removing the override on Node 22.12 or newer. Remove it if everything still loads (`node -e "require('firebase-admin/auth'); require('jwks-rsa')"`) and the tests pass.
 
 ## Real versus mock
 
@@ -91,9 +104,10 @@ Nothing is faked in the UI. Integrations are either real or absent.
 
 | Service                                   | Local development                                                                                                   | Real                                                                                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Firebase Auth and Firestore               | Emulators (`npm run emu`), project `demo-salespilot`.                                                               | Only after the setup in [docs/setup/firebase.md](docs/setup/firebase.md). Not done yet.                                     |
+| Firebase Auth and Firestore               | Emulators (`npm run emu`), project `demo-salespilot`.                                                               | The project is `salespilot-ai-9b1cd` (decided 2026-11-08); setup per [docs/setup/firebase.md](docs/setup/firebase.md) is not done yet. Always pass `--project` to Firebase CLI deploy commands.                                     |
 | Cloudinary                                | Not configured until `CLOUDINARY_*` are set; uploads answer 503 and the UI says so. Integration tests mock the SDK. | Set the three variables ([docs/setup/cloudinary.md](docs/setup/cloudinary.md)). Never exercised against a real account yet. |
-| WhatsApp, OpenAI, Twilio, SSLCommerz, n8n | Not built. The variables exist in `.env.example` for later sub-projects.                                            | Sub-projects 3 to 7.                                                                                                        |
+| OpenAI                                    | Not configured until `OPENAI_API_KEY` is set; agent routes answer 503 and console shows setup notice. Integration tests mock the provider. | Set `OPENAI_API_KEY` ([docs/setup/openai.md](docs/setup/openai.md)). Never exercised against real OpenAI in CI. |
+| WhatsApp, Twilio, SSLCommerz, n8n         | Not built. The variables exist in `.env.example` for later sub-projects.                                            | Sub-projects 4 to 7.                                                                                                        |
 
 ## Windows notes
 
@@ -106,11 +120,12 @@ The Firestore emulator runs as a Java process that `firebase emulators:exec` can
   ```
 
 - If a port is held by a leftover `java` process from an earlier run, stop that process yourself (for example `Stop-Process -Id <pid>` after confirming the PID with the command above). Nothing in this repo kills processes for you.
-- If the default ports are taken by something you cannot stop, copy `firebase.json` to a temporary file with different `firestore.port` and `auth.port`, point both the emulator command (`--config <file>`) and the host variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) at the new ports, and delete the temporary file afterwards. Do not commit it.
+- If the default ports are taken by something you cannot stop, copy `firebase.json` to a temporary file with different `firestore.port` and `auth.port`, point both the emulator command (`--config <file>`) and the host variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) at the new ports, and delete the temporary file afterwards. Do not commit it. If you run `npm run dev` against a non-default Auth port, also set `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL` (for example `http://127.0.0.1:9299`) in `.env.local`; the browser SDK otherwise looks for the Auth emulator on 9199.
 
 ## Setup guides
 
 - [Firebase](docs/setup/firebase.md): project, auth providers, service account, rules, indexes, TTL, smoke test.
 - [Cloudinary](docs/setup/cloudinary.md): account, keys, what the app signs, known limits, smoke test.
+- [OpenAI](docs/setup/openai.md): API key, model options, limits, smoke test.
 - [Vercel](docs/setup/vercel.md): import, environment variables, build, preview versus production.
 - [Checklist](docs/CHECKLIST.md): sub-project status, verified versus unverified, open decisions.

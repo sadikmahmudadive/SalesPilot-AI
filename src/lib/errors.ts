@@ -157,3 +157,21 @@ export function isAppError(err: unknown): err is AppErrorLike {
     return false;
   }
 }
+
+export type AiProviderErrorKind = "timeout" | "rate_limited" | "unavailable" | "bad_request";
+
+/**
+ * The AI provider failed (after the adapter's single retry). The message is a fixed user-safe
+ * string: provider error text, request ids and keys must never reach it. `kind` and the HTTP
+ * status of the provider response are the only details that may be logged.
+ */
+export class AiProviderError extends AppError {
+  readonly code = "AI_PROVIDER_ERROR";
+  readonly status: number;
+
+  constructor(readonly kind: AiProviderErrorKind) {
+    super("The AI service didn't respond. Try again.");
+    this.name = "AiProviderError";
+    this.status = kind === "bad_request" ? 502 : 503;
+  }
+}

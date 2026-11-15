@@ -37,9 +37,12 @@ function AddProductButton() {
   );
 }
 
-export function ProductList({ role }: { role: Role }) {
+export function ProductList({ role, initialSearch = "" }: { role: Role; initialSearch?: string }) {
   const canWrite = can(role, "products:write");
-  const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<ProductFilterState>(() => ({
+    ...DEFAULT_FILTERS,
+    search: initialSearch,
+  }));
 
   // Typing is debounced; selects and toggles apply immediately.
   const search = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);

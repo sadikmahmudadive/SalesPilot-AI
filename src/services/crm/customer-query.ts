@@ -26,6 +26,7 @@ import {
   limitParam,
   optionalParam,
   parseQueryParams,
+  resolveListLimit,
   staticInvalid as invalid,
 } from "@/lib/list-params";
 import { cleanPhoneInput } from "@/lib/phone";
@@ -132,10 +133,7 @@ const enumHas = <T extends string>(list: readonly T[], v: unknown): v is T =>
 
 /** Validates a list request and produces the repository query plus its index shape. */
 export function buildListPlan(q: CustomerListQuery): ListPlan {
-  const limit = q.limit ?? DEFAULT_LIMIT;
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-    throw invalid("limit", `Limit must be an integer between 1 and ${MAX_LIMIT}`);
-  }
+  const limit = resolveListLimit(q.limit, { defaultLimit: DEFAULT_LIMIT, maxLimit: MAX_LIMIT });
   if (!Object.hasOwn(SORT_FIELDS, q.sort)) throw invalid("sort", "Invalid sort");
   if (q.dir !== "asc" && q.dir !== "desc")
     throw invalid("dir", "Sort direction must be asc or desc");

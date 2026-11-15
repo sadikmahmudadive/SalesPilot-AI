@@ -1,17 +1,32 @@
 import type { Metadata } from "next";
-import { BarChart3 } from "lucide-react";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { AnalyticsConsole } from "@/components/analytics/analytics-console";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { Card, CardContent } from "@/components/ui/card";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { can } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Analytics" };
 
-export default function Page() {
+export default async function AnalyticsPage() {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+
   return (
-    <ComingLater
-      phase={8}
-      title="Analytics"
-      icon={BarChart3}
-      description="Sales, response-time and inventory reports based on your real activity will appear here."
-    />
+    <div>
+      <PageHeader
+        title="Analytics"
+        description="Sales revenue, product performance, customer growth, inbox volume, voice calls, and stock health."
+      />
+      {can(ctx.role, "analytics:read") ? (
+        <AnalyticsConsole />
+      ) : (
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            You do not have permission to view analytics for this organization.
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }

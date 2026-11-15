@@ -7,7 +7,7 @@ Date: 2026-11-06 · Scope: sub-projects 1–2 of 8 · Status: draft for review
 Build the secure, org-scoped base of an AI sales platform: authentication, organizations and roles, a dashboard shell, CRM, products/inventory, and Cloudinary media. Success means a user can register, get an organization, log in, manage customers and products, adjust stock, and upload images, with provable tenant isolation and no secrets in client bundles. AI, WhatsApp, orders, payments, voice, follow-ups, and analytics are later sub-projects and are out of scope here, except where this work must expose the interfaces they need (stock reservation, consent fields, audit logging).
 
 From the user's brief: stack (Next.js App Router, TypeScript, Tailwind, shadcn/ui, Firebase Auth + Firestore + Admin SDK, Cloudinary, Vercel), org-scoped data from day one, Zod on all inputs, no fake integrations presented as real.
-Assumptions (correct me): single npm package; roles `owner|admin|agent|viewer`; money as integer minor units (BDT); the Firebase project is chosen later (emulators with a `demo-` id until then).
+Assumptions (correct me): single npm package; roles `owner|admin|agent|viewer`; money as integer minor units (BDT); the Firebase project is `salespilot-ai-9b1cd` (decided 2026-11-08), while development and tests use emulators with the `demo-salespilot` id.
 
 ## 2. Architecture
 
@@ -66,5 +66,5 @@ AI/RAG/tool calling, WhatsApp, inbox, orders, payments, courier, voice, follow-u
 
 ## 8. Open questions
 
-1. Reuse Firebase project `salespilot-ai-9b1cd` (asia-southeast1), or create a new project for production? Development uses the emulators until this is decided.
+1. Firebase project. **Decided 2026-11-08:** reuse `salespilot-ai-9b1cd` (asia-southeast1); development and tests still use the `demo-salespilot` emulator project.
 2. Cloudinary credentials will be provided by the user directly in `.env.local`.

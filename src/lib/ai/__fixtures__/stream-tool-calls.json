@@ -1,0 +1,64 @@
+[
+  {
+    "type": "response.created",
+    "sequence_number": 0,
+    "response": { "id": "resp_2", "status": "in_progress", "output": [] }
+  },
+  {
+    "type": "response.output_text.delta",
+    "sequence_number": 1,
+    "item_id": "msg_2",
+    "output_index": 0,
+    "content_index": 0,
+    "delta": "Let me check.",
+    "logprobs": []
+  },
+  {
+    "type": "response.function_call_arguments.delta",
+    "sequence_number": 2,
+    "item_id": "fc_1",
+    "output_index": 1,
+    "delta": "{\"query\":"
+  },
+  {
+    "type": "response.completed",
+    "sequence_number": 3,
+    "response": {
+      "id": "resp_2",
+      "status": "completed",
+      "incomplete_details": null,
+      "output": [
+        {
+          "type": "message",
+          "id": "msg_2",
+          "role": "assistant",
+          "status": "completed",
+          "content": [{ "type": "output_text", "text": "Let me check.", "annotations": [] }]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_1",
+          "call_id": "call_abc",
+          "name": "search_products",
+          "arguments": "{\"query\":\"red shirt\",\"limit\":null}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call",
+          "id": "fc_2",
+          "call_id": "call_def",
+          "name": "get_stock",
+          "arguments": "{\"productId\":\"p1\"}",
+          "status": "completed"
+        }
+      ],
+      "usage": {
+        "input_tokens": 200,
+        "input_tokens_details": { "cached_tokens": 0 },
+        "output_tokens": 40,
+        "output_tokens_details": { "reasoning_tokens": 0 },
+        "total_tokens": 240
+      }
+    }
+  }
+]

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AiProviderError,
   ConflictError,
   ForbiddenError,
   InsufficientStockError,
@@ -30,6 +31,8 @@ describe("toErrorResponse", () => {
       503,
       "INTEGRATION_NOT_CONFIGURED",
     ],
+    ["AiProviderError", new AiProviderError("timeout"), 503, "AI_PROVIDER_ERROR"],
+    ["AiProviderError", new AiProviderError("bad_request"), 502, "AI_PROVIDER_ERROR"],
   ];
 
   it.each(cases)("%s -> status and envelope", async (_name, err, status, code) => {

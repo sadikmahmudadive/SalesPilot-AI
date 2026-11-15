@@ -24,8 +24,11 @@ const serverShape = {
       key
         .trim()
         .replace(/^["']|["']$/g, "")
+        .trim()
         .replace(/\\n/g, "\n"),
     )
+    // A value that is only quotes / whitespace becomes empty: reject it (names the variable only).
+    .pipe(z.string().min(1))
     .optional(),
   FIRESTORE_EMULATOR_HOST: optional,
   FIREBASE_AUTH_EMULATOR_HOST: optional,
@@ -43,11 +46,17 @@ const serverShape = {
   WHATSAPP_ACCESS_TOKEN: optional,
   WHATSAPP_VERIFY_TOKEN: optional,
   WHATSAPP_APP_SECRET: optional,
+  WHATSAPP_APP_ID: optional,
+  WHATSAPP_ORGANIZATION_ID: optional,
   META_GRAPH_API_VERSION: optional,
 
   OPENAI_API_KEY: optional,
   OPENAI_CHAT_MODEL: optional,
   OPENAI_REALTIME_MODEL: optional,
+  AI_DAILY_MESSAGE_LIMIT: z.preprocess(
+    (value) => (value === undefined ? 500 : Number(value)),
+    z.number().int().min(1).max(100_000),
+  ),
 
   TWILIO_ACCOUNT_SID: optional,
   TWILIO_AUTH_TOKEN: optional,
@@ -108,6 +117,7 @@ const INTEGRATION_KEYS: Record<Integration, readonly (keyof ServerEnv)[]> = {
     "WHATSAPP_ACCESS_TOKEN",
     "WHATSAPP_VERIFY_TOKEN",
     "WHATSAPP_APP_SECRET",
+    "WHATSAPP_ORGANIZATION_ID",
   ],
   openai: ["OPENAI_API_KEY"],
   twilio: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],

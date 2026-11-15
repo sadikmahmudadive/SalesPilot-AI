@@ -1,0 +1,17 @@
+[
+  {
+    "type": "response.created",
+    "sequence_number": 0,
+    "response": { "id": "resp_4", "status": "in_progress", "output": [] }
+  },
+  {
+    "type": "response.failed",
+    "sequence_number": 1,
+    "response": {
+      "id": "resp_4",
+      "status": "failed",
+      "error": { "code": "server_error", "message": "SECRET-PROVIDER-TEXT sk-live-123 req_999" },
+      "output": []
+    }
+  }
+]

@@ -1,17 +1,30 @@
 import type { Metadata } from "next";
-import { Inbox } from "lucide-react";
 
-import { ComingLater } from "@/components/dashboard/coming-later";
+import { InboxShell } from "@/components/inbox/inbox-shell";
+import { requireDashboardContext } from "@/lib/auth/dashboard-context";
+import { textParam } from "@/lib/search-param";
+import { can } from "@/lib/security/permissions";
 
 export const metadata: Metadata = { title: "Unified Inbox" };
 
-export default function Page() {
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const ctx = await requireDashboardContext();
+  if (!ctx) return null;
+  const canWrite = can(ctx.role, "inbox:write");
+  // `?q=` starts with that search; `?c=` opens that conversation (header search links).
+  const sp = await searchParams;
+  const initialSearch = textParam(sp.q);
+  const initialConversationId = textParam(sp.c, 200) || null;
   return (
-    <ComingLater
-      phase={4}
-      title="Unified Inbox"
-      icon={Inbox}
-      description="Every customer conversation from WhatsApp, Messenger, Instagram and email will arrive in one shared inbox, with AI-suggested replies and clear handoff to your team."
+    <InboxShell
+      key={`${initialSearch}|${initialConversationId ?? ""}`}
+      canWrite={canWrite}
+      initialSearch={initialSearch}
+      initialConversationId={initialConversationId}
     />
   );
 }
