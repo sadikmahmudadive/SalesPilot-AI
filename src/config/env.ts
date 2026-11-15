@@ -46,6 +46,7 @@ const serverShape = {
   WHATSAPP_ACCESS_TOKEN: optional,
   WHATSAPP_VERIFY_TOKEN: optional,
   WHATSAPP_APP_SECRET: optional,
+  WHATSAPP_APP_ID: optional,
   WHATSAPP_ORGANIZATION_ID: optional,
   META_GRAPH_API_VERSION: optional,
 

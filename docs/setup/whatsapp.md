@@ -31,6 +31,7 @@ WHATSAPP_APP_SECRET=your_meta_app_secret               # verifies Meta's webhook
 WHATSAPP_VERIFY_TOKEN=choose_a_secure_random_string    # e.g. openssl rand -hex 32
 META_GRAPH_API_VERSION=v21.0
 ENCRYPTION_KEY=...                                     # required to store workspace tokens encrypted
+WHATSAPP_APP_ID=your_meta_app_id                       # optional: refuse tokens made in another Meta app
 ```
 
 ### 1.3 Webhook
@@ -49,11 +50,10 @@ Meta needs a public HTTPS URL, so `localhost` won't work.
 3. Under **Webhook fields**, click **Manage** and subscribe to **`messages`**. This one field carries
    incoming messages and the sent, delivered and read updates.
 
-**Subscribe each business account to the app.** Meta sends a WhatsApp Business Account's webhooks
-only to apps subscribed to that account. The account created with the app's test number is subscribed
-automatically. For any other account, subscribe it once with a token that can manage it:
-`POST https://graph.facebook.com/v21.0/<WABA_ID>/subscribed_apps` with header
-`Authorization: Bearer <token>`. You can do this from the Graph API Explorer.
+**Business accounts are subscribed automatically.** Meta sends a WhatsApp Business Account's webhooks
+only to apps subscribed to that account. When a workspace connects a number, SalesPilot subscribes the
+app to the number's account for you (`POST /<WABA_ID>/subscribed_apps` with the workspace's token). If
+Meta refuses, the number is not connected and the card says so.
 
 **Whose numbers can be added?** Numbers in WhatsApp Business Accounts inside your own Meta Business
 Manager can be added to this app directly. To connect numbers that belong to other companies' Meta
@@ -64,17 +64,23 @@ assets. That onboarding is not built into SalesPilot yet.
 
 ## 2. Connect a business number (per workspace)
 
-1. In the Meta app, open **WhatsApp** > **API Setup** for the number. Copy its **Phone Number ID** and the
-   **WhatsApp Business Account ID**.
-2. Create a token that does not expire. In Meta **Business Settings**, create a **System User**, assign it
+1. Create a token that does not expire. In Meta **Business Settings**, create a **System User**, assign it
    the app and the WhatsApp account, and generate a token with `whatsapp_business_messaging` and
    `whatsapp_business_management`. The API Setup page also has a temporary token, but it expires after
    about 24 hours.
-3. In SalesPilot, open **Integrations** > **Platform** > **WhatsApp business number**. Enter the two IDs and
-   the token, then click **Save**. Before saving, the server asks Meta to confirm that the token can see
-   the number and that the number belongs to the Business Account. A number that Meta does not confirm
-   cannot be saved, so no workspace can claim a number it doesn't control. The card then shows the number
-   and verified business name.
+2. In SalesPilot, open **Integrations** > **Platform & Webhooks** > **WhatsApp business number**, paste the
+   token and click **Connect WhatsApp**. SalesPilot asks Meta which numbers the token covers. If there is
+   one, it is connected straight away; if there are several, pick one from the list.
+3. The card then shows the number and verified business name.
+
+Before connecting, the server asks Meta to confirm that the token can see the number and that the number
+belongs to the Business Account. A number that Meta does not confirm cannot be saved, so no workspace can
+claim a number it doesn't control.
+
+**Entering the IDs yourself.** If Meta does not report which numbers a token covers, or you prefer to type
+them, click **Enter the IDs manually instead**. Copy the **Phone Number ID** and the **WhatsApp Business
+Account ID** from the Meta app under **WhatsApp** > **API Setup**, enter them with the token, and click
+**Save**.
 
 Notes:
 

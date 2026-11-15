@@ -35,6 +35,23 @@ export const whatsappConnectionInputSchema = z.object({
 });
 export type WhatsAppConnectionInput = z.output<typeof whatsappConnectionInputSchema>;
 
+/** `POST /api/integrations/whatsapp/numbers`: the token whose numbers to list. */
+export const whatsappNumbersInputSchema = z.object({
+  accessToken: z
+    .string({ error: "Enter the access token" })
+    .trim()
+    .min(20, { error: "That access token looks too short" })
+    .max(1000, { error: "That access token is too long" }),
+});
+
+/** A number an access token can connect (never includes the token). */
+export interface WhatsAppNumberOption {
+  phoneNumberId: string;
+  businessAccountId: string;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+}
+
 export type ConnectionTestResult = "ok" | "failed";
 
 /** `whatsappConnections/{orgId}` as read by the server (timestamps as ISO strings). */
