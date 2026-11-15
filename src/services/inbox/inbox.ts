@@ -37,6 +37,21 @@ export interface InboxCtx {
   name?: string;
 }
 
+const SEARCH_BATCH = 200;
+const SEARCH_SCAN_LIMIT = 2000;
+
+/**
+ * Matches a conversation by part of the contact's name, or by part of the phone number however it
+ * is typed: spaces, dashes and a leading `+` are ignored, and a local `01…` matches `+8801…`.
+ */
+export function conversationMatcher(search: string): (c: Conversation) => boolean {
+  const term = search.trim().toLowerCase();
+  const digits = /^[\d\s+()-]+$/.test(term) ? term.replace(/\D/g, "") : "";
+  return (c) =>
+    c.contactName.toLowerCase().includes(term) ||
+    (digits !== "" && c.contactPhoneE164.replace(/\D/g, "").includes(digits));
+}
+
 export async function listConversations(
   ctx: InboxCtx,
   query: Partial<ConversationListQuery> = {},
@@ -50,7 +65,32 @@ export async function listConversations(
     q = q.where("status", "==", query.status);
   }
 
-  q = q.orderBy("lastActivityAt", "desc").limit(limit + 1);
+  q = q.orderBy("lastActivityAt", "desc");
+
+  if (query.search) {
+    // Firestore cannot match inside a name or number, so a search reads the workspace's
+    // conversations newest first (in batches, up to SEARCH_SCAN_LIMIT) and returns the newest
+    // `limit` matches. No cursor: a search result is one page.
+    const matches = conversationMatcher(query.search);
+    const items: Conversation[] = [];
+    let scanned = 0;
+    let last: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    while (items.length < limit && scanned < SEARCH_SCAN_LIMIT) {
+      const page: FirebaseFirestore.QuerySnapshot = await (last ? q.startAfter(last) : q)
+        .limit(SEARCH_BATCH)
+        .get();
+      for (const d of page.docs) {
+        const c = conversationRepo.fromSnapshot(d, ctx.organizationId);
+        if (c && matches(c) && items.length < limit) items.push(c);
+      }
+      scanned += page.docs.length;
+      last = page.docs[page.docs.length - 1] ?? null;
+      if (page.docs.length < SEARCH_BATCH) break;
+    }
+    return { items, nextCursor: null };
+  }
+
+  q = q.limit(limit + 1);
 
   if (query.cursor) {
     const cursorDoc = await db.collection(CONVERSATIONS).doc(query.cursor).get();
@@ -64,16 +104,9 @@ export async function listConversations(
   const docs = hasMore ? snap.docs.slice(0, limit) : snap.docs;
   const nextCursor = hasMore ? (docs[docs.length - 1]?.id ?? null) : null;
 
-  let items: Conversation[] = docs
+  const items: Conversation[] = docs
     .map((d) => conversationRepo.fromSnapshot(d, ctx.organizationId))
     .filter((c): c is ConversationDoc => c !== null);
-
-  if (query.search) {
-    const term = query.search.toLowerCase();
-    items = items.filter(
-      (c) => c.contactName.toLowerCase().includes(term) || c.contactPhoneE164.includes(term),
-    );
-  }
 
   return { items, nextCursor };
 }

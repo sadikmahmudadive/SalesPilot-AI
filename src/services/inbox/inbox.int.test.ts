@@ -23,7 +23,10 @@ describe("Inbox Service", () => {
   beforeEach(async () => {
     // Clean up test conversations in demo emulator
     const db = adminDb();
-    const snaps = await db.collection("conversations").where("organizationId", "in", [ORG, OTHER_ORG]).get();
+    const snaps = await db
+      .collection("conversations")
+      .where("organizationId", "in", [ORG, OTHER_ORG])
+      .get();
     for (const d of snaps.docs) {
       await d.ref.delete();
     }
@@ -96,6 +99,45 @@ describe("Inbox Service", () => {
     expect(searchFiltered.items[0]?.id).toBe(c2.id);
   });
 
+  it("search finds a conversation beyond the first page, however the number is typed", async () => {
+    const make = (i: number, phone: string, name: string, status: "needs_reply" | "resolved") =>
+      conversationRepo.create(ORG, {
+        channel: "whatsapp",
+        contactPhoneE164: phone,
+        contactName: name,
+        customerId: null,
+        assignedAgentId: null,
+        assignedUserId: null,
+        status,
+        unreadCount: 0,
+        lastMessage: null,
+        lastActivityAt: new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(),
+        searchLower: `${name} ${phone}`.toLowerCase(),
+      });
+    // The oldest conversation, behind 25 newer ones.
+    const old = await make(0, "+8801999888777", "Old Buyer", "resolved");
+    await Promise.all(
+      Array.from({ length: 25 }, (_, i) =>
+        make(i + 1, `+88017110000${String(i).padStart(2, "0")}`, `Filler ${i}`, "needs_reply"),
+      ),
+    );
+    const ctx = { organizationId: ORG, uid: UID };
+    const ids = async (search: string, extra: object = {}) =>
+      (await listConversations(ctx, { limit: 20, search, ...extra })).items.map((c) => c.id);
+
+    expect(await ids("01999888777")).toEqual([old.id]);
+    expect(await ids("+880 1999-888 777")).toEqual([old.id]);
+    expect(await ids("old buy")).toEqual([old.id]);
+    expect(await ids("888777", { status: "resolved" })).toEqual([old.id]);
+    expect(await ids("888777", { status: "needs_reply" })).toEqual([]);
+
+    // More matches than the limit: the newest `limit` are returned, with no cursor to a stale page.
+    const many = await listConversations(ctx, { limit: 20, search: "filler" });
+    expect(many.items).toHaveLength(20);
+    expect(many.items[0]?.contactName).toBe("Filler 24");
+    expect(many.nextCursor).toBeNull();
+  });
+
   it("getConversation enforces tenant isolation", async () => {
     const c = await conversationRepo.create(ORG, {
       channel: "whatsapp",
@@ -115,9 +157,9 @@ describe("Inbox Service", () => {
     expect(found.id).toBe(c.id);
 
     // Cross-tenant access throws NotFound
-    await expect(
-      getConversation({ organizationId: OTHER_ORG, uid: UID }, c.id),
-    ).rejects.toThrow("Conversation not found");
+    await expect(getConversation({ organizationId: OTHER_ORG, uid: UID }, c.id)).rejects.toThrow(
+      "Conversation not found",
+    );
   });
 
   it("sendHumanMessage sends via WhatsApp client, switches status to human_handling, and clears unread", async () => {
@@ -195,7 +237,10 @@ describe("Inbox Service", () => {
       );
       expect(msg.externalId).toBe("wamid.fake.1");
       expect(meta.sends).toHaveLength(1);
-      expect(meta.sends[0]).toMatchObject({ phoneNumberId: number, authorization: `Bearer ${token}` });
+      expect(meta.sends[0]).toMatchObject({
+        phoneNumberId: number,
+        authorization: `Bearer ${token}`,
+      });
     } finally {
       await disconnectWhatsApp({ organizationId: ORG, uid: UID });
       vi.unstubAllEnvs();
@@ -242,11 +287,10 @@ describe("Inbox Service", () => {
       searchLower: "nadia +8801711000005",
     });
 
-    const updated = await updateConversation(
-      { organizationId: ORG, uid: UID },
-      conv.id,
-      { status: "resolved", assignedUserId: "usr_agent_2" },
-    );
+    const updated = await updateConversation({ organizationId: ORG, uid: UID }, conv.id, {
+      status: "resolved",
+      assignedUserId: "usr_agent_2",
+    });
 
     expect(updated.status).toBe("resolved");
     expect(updated.assignedUserId).toBe("usr_agent_2");
