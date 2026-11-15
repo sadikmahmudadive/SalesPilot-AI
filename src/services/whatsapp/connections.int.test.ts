@@ -12,6 +12,7 @@ import { fakeMeta } from "@/test/whatsapp-meta";
 import {
   META_REJECTED_MESSAGE,
   NUMBER_TAKEN_MESSAGE,
+  SUBSCRIBE_FAILED_MESSAGE,
   disconnectWhatsApp,
   getWhatsAppConnection,
   resolveWhatsAppOrg,
@@ -253,6 +254,29 @@ describe("WhatsApp connection service", () => {
       connected: false,
     });
     expect(await storedOf(ctx.organizationId)).toBeUndefined();
+  });
+
+  it("saving subscribes the platform app to the number's business account", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    const meta = fakeMeta({ [number]: TOKEN });
+    await save(ctx, number, {}, meta);
+    expect(meta.subscriptions).toEqual(["1022901"]);
+
+    // Toggling `enabled` alone changes nothing at Meta, so it does not subscribe again.
+    await save(ctx, number, { accessToken: undefined, enabled: false }, meta);
+    expect(meta.subscriptions).toEqual(["1022901"]);
+  });
+
+  it("a number whose business account cannot be subscribed is not connected", async () => {
+    const ctx = newCtx();
+    const number = newNumber();
+    const meta = fakeMeta({ [number]: TOKEN }, { subscribeFails: true });
+    const err = await save(ctx, number, {}, meta).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).message).toBe(SUBSCRIBE_FAILED_MESSAGE);
+    expect(await lockOf(number)).toBeUndefined();
+    expect((await getWhatsAppConnection(ctx)).connected).toBe(false);
   });
 
   it("refuses without ENCRYPTION_KEY", async () => {

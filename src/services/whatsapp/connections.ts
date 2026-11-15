@@ -74,6 +74,33 @@ export async function getWhatsAppConnection(ctx: OrgCtx): Promise<WhatsAppConnec
 export const META_REJECTED_MESSAGE =
   "Meta did not accept these details. Check the Phone Number ID, the Business Account ID and the access token.";
 
+export const SUBSCRIBE_FAILED_MESSAGE =
+  "Meta did not let this platform receive messages for that business account. Create the access token with the whatsapp_business_management permission and try again.";
+
+/**
+ * Subscribes the token's Meta app to the business account's webhooks, without which Meta delivers
+ * none of the number's messages. Idempotent at Meta. False on any HTTP error or timeout.
+ */
+async function subscribeApp(
+  businessAccountId: string,
+  accessToken: string,
+  fetchFn: typeof fetch,
+): Promise<{ ok: boolean; status: number | null }> {
+  try {
+    const res = await fetchFn(
+      `https://graph.facebook.com/${graphApiVersion()}/${encodeURIComponent(businessAccountId)}/subscribed_apps`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+      },
+    );
+    return { ok: res.ok, status: res.status };
+  } catch {
+    return { ok: false, status: null };
+  }
+}
+
 type MetaCheck =
   | { ok: true; displayPhoneNumber: string | null; verifiedName: string | null }
   | { ok: false; status: number | null };
@@ -125,7 +152,8 @@ async function checkWithMeta(
 /**
  * Creates or updates the workspace's number. A save that sets a new number, token or business
  * account is VERIFIED with Meta first (`checkWithMeta`): an unproven number can never be claimed,
- * so a workspace cannot take over another number's messages. The env single-number setup's number
+ * so a workspace cannot take over another number's messages. The platform app is then subscribed
+ * to the business account (`subscribeApp`) so its messages reach the shared webhook. The env single-number setup's number
  * can only be connected by its env owner (`WHATSAPP_ORGANIZATION_ID`).
  */
 export async function saveWhatsAppConnection(
@@ -178,6 +206,18 @@ export async function saveWhatsAppConnection(
       throw new ValidationError(
         [{ path: "accessToken", message: META_REJECTED_MESSAGE }],
         META_REJECTED_MESSAGE,
+      );
+    }
+    const subscribed = await subscribeApp(input.businessAccountId, token, deps.fetchFn ?? fetch);
+    if (!subscribed.ok) {
+      logger.warn("whatsapp.connection.subscribe_failed", {
+        organizationId: orgId,
+        phoneNumberId: input.phoneNumberId,
+        status: subscribed.status,
+      });
+      throw new ValidationError(
+        [{ path: "accessToken", message: SUBSCRIBE_FAILED_MESSAGE }],
+        SUBSCRIBE_FAILED_MESSAGE,
       );
     }
     verified = check;
